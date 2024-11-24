@@ -1,0 +1,6 @@
+openai:
+  apikey: "your-api-key-here"
+  aiModel: "gryphe/mythomax-l2-13b:extended"
+ai:
+  defaultContext: ""
+  chatFormat: "<gray>%npc_name% <italic>:</italic></gray> <white>%message%</white>"

@@ -1,0 +1,32 @@
+name: Story
+version: '1.0-SNAPSHOT'
+main: com.canefe.story.Story
+api-version: '1.21'
+commands:
+  togglegpt:
+    description: Toggles NPC chat with GPT.
+    usage: /togglegpt
+  setnpcrole:
+    description: Sets the role for an NPC.
+    usage: /setnpcrole <npc name> <role description>
+  removenpcrole:
+    description: Removes the role for an NPC.
+    usage: /removenpcrole <npc name>
+  resetconversation:
+    description: Resets the conversation history.
+    usage: /resetconversation
+  maketalk:
+    description: Makes an NPC say something.
+    usage: /npctalk <npc name> <message>
+  aireload:
+    description: Reloads the AI configuration.
+    usage: /ai reload
+  feednpc:
+    description: Feeds the current NPC a message.
+    usage: /feednpc <message>
+  g:
+    description: Makes the current npc say something.
+    usage: /g <message>
+  setcurq:
+    description: Sets the current npc.
+    usage: /setcurq <npc>
