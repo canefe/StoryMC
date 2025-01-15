@@ -10,10 +10,6 @@ commands:
     description: Toggles NPC chat with GPT.
     usage: /togglegpt
     permission: story.togglegpt
-  maketalk:
-    description: Makes an NPC say something.
-    usage: /npctalk <npc name> <message>
-    permission: story.maketalk
   aireload:
     description: Reloads the AI configuration.
     usage: /ai reload

@@ -2,6 +2,7 @@ package com.canefe.story;
 
 import net.citizensnpcs.api.ai.Navigator;
 import net.citizensnpcs.api.ai.event.NavigationCompleteEvent;
+import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -81,6 +82,41 @@ public class NPCManager {
             ex.printStackTrace();
             return null;
         });
+    }
+
+    public void walkToNPC(NPC npc, NPC targetNPC, String firstMessage) {
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            // Get the target NPC's location
+            Location targetLocation = targetNPC.getEntity().getLocation();
+
+            // Make the NPC navigate to the target NPC
+            Navigator navigator = npc.getNavigator();
+            navigator.setTarget(targetLocation); // Set the target location
+            navigator.getDefaultParameters().distanceMargin(2.0); // Stop 2 blocks away
+
+            // Register event listener for navigation completion
+            Bukkit.getPluginManager().registerEvents(new Listener() {
+                @EventHandler
+                public void onNavigationComplete(NavigationCompleteEvent event) {
+                    if (event.getNPC().equals(npc)) {
+                        // Unregister the listener after completion
+                        NavigationCompleteEvent.getHandlerList().unregister(this);
+
+                        // Start the conversation once NPC reaches the target NPC
+                        List<String> npcNames = new ArrayList<>();
+                        npcNames.add(npc.getName());
+                        npcNames.add(targetNPC.getName());
+                        GroupConversation conversation = plugin.conversationManager.startRadiantConversation(npcNames);
+                        // Send the message to the player
+                        conversation.addMessage(new Story.ConversationMessage("system", npc.getName() + ": " + firstMessage));
+                        conversation.addMessage(new Story.ConversationMessage("user", targetNPC.getName() + " is listening..."));
+                        plugin.broadcastNPCMessage(firstMessage, npc.getName(), false, npc, null, null, "#BD2C19");
+                    }
+                }
+            }, plugin);
+        });
+
     }
 
 }

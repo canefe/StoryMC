@@ -6,6 +6,7 @@ import dev.jorel.commandapi.CommandAPI;
 import dev.jorel.commandapi.CommandAPIBukkitConfig;
 import dev.jorel.commandapi.CommandAPICommand;
 import dev.jorel.commandapi.arguments.GreedyStringArgument;
+import dev.jorel.commandapi.arguments.IntegerArgument;
 import dev.jorel.commandapi.arguments.PlayerArgument;
 import dev.jorel.commandapi.arguments.StringArgument;
 import kr.toxicity.healthbar.api.event.HealthBarCreateEvent;
@@ -139,7 +140,6 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         // Register commands with the new CommandHandler
         CommandHandler commandHandler = new CommandHandler(this);
         getCommand("togglegpt").setExecutor(commandHandler);
-        getCommand("maketalk").setExecutor(commandHandler);
         getCommand("aireload").setExecutor(commandHandler);
         getCommand("feednpc").setExecutor(commandHandler);
         getCommand("g").setExecutor(commandHandler);
@@ -355,6 +355,26 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 })
                 .register();
 
+        // commant /npctalk <npc_id:int> <npc_id_target:int>
+        new CommandAPICommand("npctalk")
+                .withPermission("storymaker.npc.talk")
+                .withArguments(new IntegerArgument("npc_id"))
+                .withArguments(new IntegerArgument("npc_id_target"))
+                .withArguments(new GreedyStringArgument("message"))
+                .executesPlayer((player, args) -> {
+                    int npcId = (int) args.get("npc_id");
+                    int npcIdTarget = (int) args.get("npc_id_target");
+                    String message = (String) args.get("message");
+                    NPC npc = CitizensAPI.getNPCRegistry().getById(npcId);
+                    NPC target = CitizensAPI.getNPCRegistry().getById(npcIdTarget);
+                    if (npc == null || target == null) {
+                        player.sendMessage(ChatColor.RED + "NPC not found.");
+                        return;
+                    }
+                    walkAndInitiateConversation(npc, target, message);
+                })
+                .register();
+
 
 
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) { //
@@ -548,6 +568,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     private void updateCooldown(NPC npc) {
         npcCooldowns.put(npc, System.currentTimeMillis());
+    }
+
+    public void walkAndInitiateConversation(NPC actor, NPC target, String firstMessage) {
+        // Walk to the target NPC
+        npcManager.walkToNPC(actor, target, firstMessage);
     }
 
     private void triggerRadiantConversation(NPC initiator, Player player) {
@@ -993,6 +1018,23 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         npcDataManager.saveNPCFile(npcName, config);
     }
 
+    public void saveNPCRelationValue(String npcName, String relationName, String value) {
+        FileConfiguration config = npcDataManager.loadNPCData(npcName);
+        String currentValue = config.getString("relations." + relationName, "0");
+
+        // Extract the integer value, including negative sign if present
+        currentValue = currentValue.replaceAll("[^\\d-]", "");
+        int currentValueInt = currentValue.isEmpty() ? 0 : Integer.parseInt(currentValue);
+
+        // Extract the integer value from the input value, including negative sign if present
+        value = value.replaceAll("[^\\d-]", "");
+        int valueInt = value.isEmpty() ? 0 : Integer.parseInt(value);
+
+        int updatedValue = currentValueInt + valueInt;
+        config.set("relations." + relationName, updatedValue);
+        npcDataManager.saveNPCFile(npcName, config);
+    }
+
 
 
 
@@ -1055,16 +1097,33 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             // Parse JSON response
             JsonObject responseJson = gson.fromJson(response, JsonObject.class);
             getLogger().info("OpenAI response: " + responseJson);
-            String aiMessage = responseJson
-                    .getAsJsonArray("choices")
-                    .get(0)
-                    .getAsJsonObject()
-                    .getAsJsonObject("message")
-                    .get("content")
-                    .getAsString()
-                    .trim();
 
-            return aiMessage;
+            try {
+                if (responseJson.has("error")) {
+                    JsonObject errorObject = responseJson.getAsJsonObject("error");
+                    String errorMessage = errorObject.get("message").getAsString();
+                    int errorCode = errorObject.get("code").getAsInt();
+                    getLogger().warning("OpenAI response error: " + errorMessage + " (Code: " + errorCode + ")");
+                    return null;
+                }
+
+                if (responseJson.has("choices")) {
+                    JsonObject choiceObject = responseJson.getAsJsonArray("choices").get(0).getAsJsonObject();
+                    if (choiceObject.has("message")) {
+                        JsonObject messageObject = choiceObject.getAsJsonObject("message");
+                        if (messageObject.has("content")) {
+                            String aiMessage = messageObject.get("content").getAsString().trim();
+                            return aiMessage;
+                        }
+                    }
+                }
+
+                getLogger().warning("Unexpected OpenAI response format.");
+                return null;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
 
         } catch (Exception e) {
             e.printStackTrace();

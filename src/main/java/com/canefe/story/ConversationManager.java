@@ -10,6 +10,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
@@ -101,6 +102,7 @@ public class ConversationManager {
 
     public void endRadiantConversation(GroupConversation conversation) {
 
+
         if (conversation != null && conversation.isActive()) {
             conversation.setActive(false);
             activeConversations.remove(conversation);
@@ -188,7 +190,7 @@ public class ConversationManager {
                                 List<ConversationMessage> tempHistory = new ArrayList<>(conversation.getConversationHistory());
 
                                 tempHistory.addFirst(new ConversationMessage("system",
-                                        "You are " + npcName + " in a group conversation with " + String.join(", ", npcNames) + "."));
+                                        "You are " + npcName + " in a with " + String.join(", ", npcNames) + ". Conversation can be about anything like about day or recent events. Don't make it go waste by asking questions."));
                                 plugin.getGeneralContexts().forEach(context -> tempHistory.addFirst(new ConversationMessage("system", context)));
                                 if (storyLocation != null)
                                     storyLocation.getContext().forEach(context -> tempHistory.addFirst(new ConversationMessage("system", context)));
@@ -202,17 +204,17 @@ public class ConversationManager {
                                 // Request AI response
                                 String aiResponse = plugin.getAIResponse(tempHistory);
 
-                                if (aiResponse == null || aiResponse.isEmpty()) {
-                                    plugin.getLogger().warning("Failed to generate NPC response for " + npcName);
-                                    return;
-                                }
-
                                 DHAPI.removeHologram(plugin.getNPCUUID(npcName).toString());
 
                                 Integer taskId = hologramTasks.get(npcName);
                                 if (taskId != null) {
                                     Bukkit.getScheduler().cancelTask(taskId);
                                     hologramTasks.remove(npcName);
+                                }
+
+                                if (aiResponse == null || aiResponse.isEmpty()) {
+                                    plugin.getLogger().warning("Failed to generate NPC response for " + npcName);
+                                    return;
                                 }
 
                                 // Add NPC response to conversation
@@ -242,11 +244,9 @@ public class ConversationManager {
                                     plugin.broadcastNPCMessage(aiResponse, npcName, false, null, null, null, colorCodes.get(npcName));
                                 });
 
-                                //if (conversation.getConversationHistory().size() <= 10){
-                                    //generateRadiantResponses(conversation);
-                                //} else {
-                                    //endRadiantConversation(conversation);
-                                //}
+                                summarizeConversation(conversation.getConversationHistory(), conversation.getNpcNames(), null);
+
+                                endRadiantConversation(conversation);
 
                             } catch (Exception e) {
                                 plugin.getLogger().warning("Error while generating response for NPC: " + npcName);
@@ -329,6 +329,8 @@ public class ConversationManager {
 
             // Summarize the conversation
             summarizeConversation(conversation.getConversationHistory(), conversation.getNpcNames(), player.getName());
+
+            applyEffects(conversation.getConversationHistory(), conversation.getNpcNames(), player.getName());
 
             activeConversations.remove(conversation);
             player.sendMessage(ChatColor.GRAY + "The conversation has ended.");
@@ -436,6 +438,23 @@ public class ConversationManager {
         return conversation != null ? conversation.getNpcNames() : new ArrayList<>();
     }
 
+    public List<String> getAllParticipantsInConversation(Player player) {
+        // get both all npc names and player names in conversation
+        UUID playerUUID = player.getUniqueId();
+        GroupConversation conversation = activeConversations.stream()
+                .filter(convo -> convo.getPlayers().contains(playerUUID))
+                .findFirst().orElse(null);
+        List<String> npcNames = conversation != null ? conversation.getNpcNames() : new ArrayList<>();
+        List<String> playerNames = conversation != null ? conversation.getPlayers().stream()
+                .map(uuid -> {
+                    Player playerIns = Bukkit.getPlayer(uuid);
+                    return playerIns != null ? EssentialsUtils.getNickname(playerIns.getName()) : "";
+                })
+                .collect(Collectors.toList()) : new ArrayList<>();
+        npcNames.addAll(playerNames);
+        return npcNames;
+    }
+
     public GroupConversation getActiveNPCConversation(String npcName) {
         for (GroupConversation conversation : activeConversations) {
             if (conversation.getNpcNames().contains(npcName)) {
@@ -495,6 +514,14 @@ public class ConversationManager {
                                 String npcRole = npcData.getString("role", "Default role");
                                 String existingContext = npcData.getString("context", null);
                                 String location = npcData.getString("location", "Village");
+                                // Get list of relations for the NPC
+                                ConfigurationSection relationsSection = npcData.getConfigurationSection("relations");
+                                Map<String, Integer> relations = new HashMap<>();
+                                if (relationsSection != null) {
+                                    for (String key : relationsSection.getKeys(false)) {
+                                        relations.put(key, relationsSection.getInt(key));
+                                    }
+                                }
 
                                 StoryLocation storyLocation = plugin.locationManager.getLocation(location);
 
@@ -539,17 +566,15 @@ public class ConversationManager {
 
                                 List<ConversationMessage> lastTwentyMessages = npcConversationHistory.subList(
                                         Math.max(npcConversationHistory.size() - 20, 0), npcConversationHistory.size());
+                                tempHistory.add(0, new ConversationMessage("system", "Relations: " + relations.toString()));
+                                tempHistory.add(0, new ConversationMessage("system", "Your responses should reflect your relations with the other characters if applicable. Never print out the relation as dialogue."));
                                 lastTwentyMessages.add(0, npcConversationHistory.get(0));
 
                                 tempHistory.addAll(0, lastTwentyMessages);
 
+
                                 // Request AI response
                                 String aiResponse = plugin.getAIResponse(tempHistory);
-
-                                if (aiResponse == null || aiResponse.isEmpty()) {
-                                    plugin.getLogger().warning("Failed to generate NPC response for " + npcName);
-                                    return;
-                                }
 
                                 DHAPI.removeHologram(plugin.getNPCUUID(npcName).toString());
 
@@ -559,9 +584,16 @@ public class ConversationManager {
                                     hologramTasks.remove(npcName);
                                 }
 
+                                if (aiResponse == null || aiResponse.isEmpty()) {
+                                    plugin.getLogger().warning("Failed to generate NPC response for " + npcName);
+                                    return;
+                                }
+
+
+
                                 // Add NPC response to conversation
                                 conversation.addMessage(new ConversationMessage("assistant", npcName + ": " + aiResponse));
-                                conversation.addMessage(new ConversationMessage("user", EssentialsUtils.getNickname(player.getName()) + " listens"));
+                                conversation.addMessage(new ConversationMessage("user", EssentialsUtils.getNickname(player.getName()) + " *remains silent*"));
 
                                 if (aiResponse.contains("[End]")) {
                                     endConversation(player);
@@ -653,7 +685,7 @@ public class ConversationManager {
 
         // Build the summary prompt
         StringBuilder prompt = new StringBuilder("Summarize this conversation between ");
-        prompt.append(playerName).append(" and NPCs ").append(String.join(", ", npcNames)).append(".\n");
+        prompt.append(playerName).append(" and ").append(String.join(", ", npcNames)).append(".\n");
         for (ConversationMessage msg : history) {
             prompt.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n");
         }
@@ -676,6 +708,52 @@ public class ConversationManager {
                 plugin.getLogger().severe("Error occurred while summarizing the conversation.");
             }
         });
+    }
+
+    private void applyEffects(List<ConversationMessage> history, List<String> npcNames, String playerName){
+        if (history.isEmpty()) return;
+
+        // Build the summary prompt
+        StringBuilder prompt = new StringBuilder("Apply effects of this conversation between ");
+        prompt.append(playerName).append(" and ").append(String.join(", ", npcNames)).append(".\n");
+
+        // instructions on how to give effects
+        prompt.append("To apply effects, output the effects in the following format: \n");
+        prompt.append("Character: <name> possible values: [name of the npc] \n");
+        prompt.append("Effect: <effect name> possible values: [relation] \n");
+        prompt.append("Target: <target name> possible values: ").append(playerName).append("\n");
+        prompt.append("relation: -20, 20 (only change as much needed) \n");
+
+        prompt.append("Example: \n");
+        prompt.append("Conversation summarisation: Player helps NPC greatly, which gains trust. \n");
+        prompt.append("Effect: relation Target: player Value: 10 \n");
+        prompt.append("Here's the conversation, apply effects only if necessary: \n");
+
+        for (ConversationMessage msg : history) {
+            prompt.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n");
+        }
+
+        // Generate summary using AI
+        CompletableFuture.runAsync(() -> {
+            try {
+                for (String npcName : npcNames) {
+                    String effectsOutput = plugin.getAIResponse(Collections.singletonList(
+                            new ConversationMessage("system", prompt.toString())
+                    ));
+                    if (effectsOutput != null && !effectsOutput.isEmpty()) {
+                        effectsOutputParser(npcName, effectsOutput);
+                    } else {
+                        plugin.getLogger().warning("Failed to apply effects of the conversation.");
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                plugin.getLogger().severe("Error occurred while applying effects of the conversation.");
+            }
+        });
+
+
+
     }
 
     private void summarizeForSingleNPC(List<ConversationMessage> history, List<String> npcNames, String playerName, String npcName){
@@ -704,6 +782,43 @@ public class ConversationManager {
                 plugin.getLogger().severe("Error occurred while summarizing the conversation.");
             }
         });
+    }
+
+    private void effectsOutputParser(String npcName, String effectsOutput) {
+        String[] lines = effectsOutput.split("\n");
+        String effect = null;
+        String target = null;
+        String value = null;
+
+        for (String line : lines) {
+            if (line.startsWith("Effect:")) {
+                effect = line.split(":")[1].trim();
+            } else if (line.startsWith("Target:")) {
+                target = line.split(":")[1].trim();
+            } else if (line.startsWith("Value:")) {
+                value = line.split(":")[1].trim();
+            }
+
+            if (effect != null && target != null && value != null) {
+                switch (effect) {
+                    case "relation":
+                       // plugin.broadcastNPCMessage("Relation of " + target + " has changed to " + value, npcName, false, null, null, null, "#599B45");
+                        plugin.saveNPCRelationValue(npcName, target, value);
+                        break;
+                    case "title":
+                        plugin.broadcastNPCMessage("Title of " + target + " has changed to " + value, npcName, false, null, null, null, "#599B45");
+                        break;
+                    case "item":
+                        plugin.broadcastNPCMessage("Item " + value + " has been given to " + target, npcName, false, null, null, null, "#599B45");
+                        break;
+                    default:
+                        break;
+                }
+                effect = null;
+                target = null;
+                value = null;
+            }
+        }
     }
 
     // Check if a player has an active conversation

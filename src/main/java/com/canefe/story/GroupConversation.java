@@ -67,7 +67,7 @@ public class GroupConversation {
         conversationHistory.add(message);
     }
 
-    public Collection<UUID> getPlayers() {
+    public List<UUID> getPlayers() {
         return new ArrayList<>(players);
     }
 }
