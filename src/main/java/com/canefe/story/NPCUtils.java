@@ -1,9 +1,18 @@
 package com.canefe.story;
 
+import me.casperge.realisticseasons.api.SeasonsAPI;
+import me.casperge.realisticseasons.calendar.Date;
+import me.casperge.realisticseasons.season.Season;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
+import org.bukkit.Bukkit;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -54,6 +63,74 @@ public class NPCUtils {
 
             return null; // NPC not found
         });
+    }
+
+    public static class NPCContext {
+        public String npcName;
+        public String npcRole;
+        public String context;
+        public Map<String, Integer> relations;
+        public StoryLocation location;
+        public List<Story.ConversationMessage> conversationHistory;
+
+        public NPCContext(String npcName, String npcRole, String existingContext, Map<String, Integer> relations, StoryLocation storyLocation, List<Story.ConversationMessage> npcConversationHistory) {
+            this.npcName = npcName;
+            this.npcRole = npcRole;
+            this.context = existingContext;
+            this.relations = relations;
+            this.location = storyLocation;
+            this.conversationHistory = npcConversationHistory;
+        }
+    }
+
+    // GetOrCreateContextForNPC
+    public NPCContext getOrCreateContextForNPC(String npcName) {
+        try {
+            // Fetch NPC data dynamically
+            FileConfiguration npcData = plugin.getNPCData(npcName);
+            String npcRole = npcData.getString("role", "Default role");
+            String existingContext = npcData.getString("context", null);
+            String location = npcData.getString("location", "Village");
+            // Get list of relations for the NPC
+            ConfigurationSection relationsSection = npcData.getConfigurationSection("relations");
+            Map<String, Integer> relations = new HashMap<>();
+            if (relationsSection != null) {
+                for (String key : relationsSection.getKeys(false)) {
+                    relations.put(key, relationsSection.getInt(key));
+                }
+            }
+
+            StoryLocation storyLocation = plugin.locationManager.getLocation(location);
+
+            // Add dynamic world context
+            SeasonsAPI seasonsAPI = SeasonsAPI.getInstance();
+            Season season = seasonsAPI.getSeason(Bukkit.getWorld("world")); // Replace "world" with actual world name
+            int hours = seasonsAPI.getHours(Bukkit.getWorld("world"));
+            int minutes = seasonsAPI.getMinutes(Bukkit.getWorld("world"));
+            Date date = seasonsAPI.getDate(Bukkit.getWorld("world"));
+
+            // Update or generate context
+            if (existingContext != null) {
+                existingContext = plugin.conversationManager.npcContextGenerator.updateContext(existingContext, npcName, hours, minutes, season.toString(), date.toString(true));
+            } else {
+                existingContext = plugin.conversationManager.npcContextGenerator.generateDefaultContext(npcName, npcRole, hours, minutes, season.toString(), date.toString(true));
+            }
+
+            // Add context to the conversation history
+            List<Story.ConversationMessage> npcConversationHistory = plugin.getMessages(npcData);
+            if (npcConversationHistory.isEmpty()) {
+                npcConversationHistory.add(new Story.ConversationMessage("system", existingContext));
+            } else if (!Objects.equals(npcConversationHistory.get(0).getContent(), existingContext)) {
+                npcConversationHistory.set(0, new Story.ConversationMessage("system", existingContext));
+            }
+
+            plugin.saveNPCData(npcName, npcRole, existingContext, npcConversationHistory, location);
+            return new NPCContext(npcName, npcRole, existingContext, relations, storyLocation, npcConversationHistory);
+        }
+        catch (Exception e) {
+            Bukkit.getLogger().warning("Error while updating NPC context: " + e.getMessage());
+            return null;
+        }
     }
 
     // Optional: Clear the cache (e.g., on reload)

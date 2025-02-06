@@ -5,6 +5,8 @@ ai:
   defaultContext: ""
   chatFormat: "<gray>%npc_name% <italic>:</italic></gray> <white>%message%</white>"
   emoteFormat: "<yellow><italic>$1</italic></yellow>"
+  radiantRadius: 5
+  chatRadius: 5
   traits:
     - brave
     - cunning

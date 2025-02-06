@@ -31,7 +31,15 @@ public class NPCSpawner {
         // Add traits to the NPC (e.g., text, skin)
         npc.setName(npcName);
         npc.setProtected(true); // Prevent NPC from taking damage
-        plugin.npcManager.eventGoToPlayerAndSay(npcName, player.getName(), message);
 
+        // Add a delay before calling eventGoToPlayerAndSay
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!npc.isSpawned()) {
+                Bukkit.getLogger().warning("NPC '" + npcName + "' failed to spawn!");
+                return;
+            }
+            plugin.npcManager.eventGoToPlayerAndSay(npc, player.getName(), message);
+        }, 5L); // 5 ticks delay (adjust as needed, 1 tick = 50ms)
     }
+
 }

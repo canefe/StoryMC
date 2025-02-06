@@ -1,6 +1,7 @@
 package com.canefe.story;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.jorel.commandapi.CommandAPI;
 import dev.jorel.commandapi.CommandAPIBukkitConfig;
@@ -21,6 +22,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.metadata.MetadataValue;
+import org.json.simple.JSONArray;
 import org.mcmonkey.sentinel.SentinelTrait;
 import net.citizensnpcs.api.CitizensAPI;
 import org.bukkit.Bukkit;
@@ -52,7 +54,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
     private boolean chatEnabled = true;
 
     // Map to store current NPC per player (UUID -> NPC Name)
-    public Map<UUID, String> playerCurrentNPC = new HashMap<>();
+    public Map<UUID, UUID> playerCurrentNPC = new HashMap<>();
 
     // List of players that disabled right-clicking start conversation
     private List<Player> disabledPlayers = new ArrayList<>();
@@ -81,6 +83,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
     private List<String> flawList;
 
     private List<String> toneList;
+
+    private int radiantRadius;
+
+    private int chatRadius;
 
 
     // Gson instance for JSON parsing
@@ -164,8 +170,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                         return;
                     }
                     // get a random player name from the convo
-                    Player randomPlayer = Bukkit.getPlayer(convo.getPlayers().iterator().next());
-                    conversationManager.generateGroupNPCResponses(convo, randomPlayer);
+                    //Player randomPlayer = Bukkit.getPlayer(convo.getPlayers().iterator().next());
+                    conversationManager.generateGroupNPCResponses(convo, null);
                 })
                 .register();
 
@@ -188,14 +194,15 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         new CommandAPICommand("startconv")
                 .withPermission("storymaker.conversation.start")
                 .withArguments(new PlayerArgument("player"))
-                .withArguments(new GreedyStringArgument("npc"))
                 .executesPlayer((player, args) -> {
                     Player target = (Player) args.get("player");
-                    String npcName = (String) args.get("npc");
+                    NPC npc = CitizensAPI.getNPCRegistry().getByUniqueId(
+                            playerCurrentNPC.get(player.getUniqueId()));
                     if (target == null) {
                         player.sendMessage(ChatColor.RED + "Player not found.");
                         return;
                     }
+                    String npcName = npc.getName();
                     if (conversationManager.isNPCInConversation(npcName)) {
                         if (conversationManager.addPlayerToConversation(target, npcName)) {
                             player.sendMessage(ChatColor.GRAY + "Added " + target + " to the conversation with " + npcName);
@@ -204,9 +211,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                         }
                     } else {
                         // Start a new conversation
-                        List<String> npcNames = new ArrayList<>();
-                        npcNames.add(npcName);
-                        conversationManager.startGroupConversation(target, npcNames);
+                        List<NPC> npcs = new ArrayList<>();
+                        npcs.add(npc);
+                        conversationManager.startGroupConversation(target, npcs);
                     }
                 })
                 .register();
@@ -263,7 +270,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                     }
 
                     //Set the player's current NPC to the NPC they are looking at
-                    playerCurrentNPC.put(player.getUniqueId(), npc.getName());
+                    playerCurrentNPC.put(player.getUniqueId(), npc.getUniqueId());
                 })
                 .register();
 
@@ -374,6 +381,51 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                     walkAndInitiateConversation(npc, target, message);
                 })
                 .register();
+        // command /npcply <npc_id:int> <player_name> <message>
+        new CommandAPICommand("npcply")
+                .withPermission("storymaker.npc.talk")
+                .withArguments(new IntegerArgument("npc_id"))
+                .withArguments(new PlayerArgument("player"))
+                .withArguments(new GreedyStringArgument("message"))
+                .executesPlayer((player, args) -> {
+                    int npcId = (int) args.get("npc_id");
+                    Player target = (Player) args.get("player");
+                    String message = (String) args.get("message");
+                    NPC npc = CitizensAPI.getNPCRegistry().getById(npcId);
+                    if (npc == null || target == null) {
+                        player.sendMessage(ChatColor.RED + "NPC not found.");
+                        return;
+                    }
+                    npcManager.eventGoToPlayerAndSay(npc, target.getName(), message);
+                })
+                .register();
+
+        // command /stopallconv
+        new CommandAPICommand("stopallconv")
+                .withPermission("storymaker.conversation.endall")
+                .executesPlayer((player, args) -> {
+                    conversationManager.StopAllConversations();
+                    player.sendMessage(ChatColor.GRAY + "All conversations ended.");
+                })
+                .register();
+
+
+        new CommandAPICommand("npcinit")
+                .withPermission("storymaker.npc.init")
+                .withArguments(new StringArgument("location"))
+                .withArguments(new GreedyStringArgument("npc"))
+                .executesPlayer((player, args) -> {
+                    String npcName = (String) args.get("npc");
+                    String location = (String) args.get("location");
+                    NPCUtils.NPCContext NPCContext = NPCUtils.getInstance(this).getOrCreateContextForNPC(npcName);
+                    String role = NPCContext.npcRole;
+                    String context = NPCContext.context;
+                    saveNPCData(npcName, role, context, NPCContext.conversationHistory, location);
+                    player.sendMessage(ChatColor.GRAY + "NPC data saved for " + npcName);
+                })
+                .register();
+        // command /conv <message> <greedy_npc_name>
+
 
 
 
@@ -410,6 +462,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         motivationList = this.getConfig().getStringList("ai.motivations");
         flawList = this.getConfig().getStringList("ai.flaws");
         toneList = this.getConfig().getStringList("ai.tones");
+
+        radiantRadius = this.getConfig().getInt("ai.radiantRadius", 5);
+        chatRadius = this.getConfig().getInt("ai.chatRadius", 5);
 
 
         if (openAIKey.isEmpty()) {
@@ -494,6 +549,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             flawList = this.getConfig().getStringList("ai.flaws");
             toneList = this.getConfig().getStringList("ai.tones");
 
+            radiantRadius = this.getConfig().getInt("ai.radiantRadius", 5);
+            chatRadius = this.getConfig().getInt("ai.chatRadius", 5);
+
             loadGeneralContexts();
 
 
@@ -550,7 +608,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
             // Perform proximity check within a 10-block range
             Location npcLocation = npc.getEntity().getLocation();
-            if (npcLocation.distance(player.getLocation()) <= 10) {
+            if (npcLocation.distance(player.getLocation()) <= radiantRadius) {
                 if (isOnCooldown(npc)) continue;
                 triggerRadiantConversation(npc, player);
                 updateCooldown(npc);
@@ -586,7 +644,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 continue;
             }
             Location npcLocation = npc.getEntity().getLocation();
-            if (npcLocation.getWorld() == player.getWorld() && npcLocation.distance(player.getLocation()) <= 15) {
+            if (npcLocation.getWorld() == player.getWorld() && npcLocation.distance(player.getLocation()) <= radiantRadius) {
                 nearbyNPCs.add(npc);
             }
         }
@@ -613,10 +671,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     private void startRadiantConversation(NPC npc1, NPC npc2, Player player) {
         // Start a conversation between two NPCs
-        List<String> npcNames = new ArrayList<>();
-        npcNames.add(npc1.getName());
-        npcNames.add(npc2.getName());
-        conversationManager.startRadiantConversation(npcNames);
+        List<NPC> npcs = new ArrayList<>();
+        npcs.add(npc1);
+        npcs.add(npc2);
+        conversationManager.startRadiantConversation(npcs);
     }
 
     public boolean isNPCDisabled(String npcName) {
@@ -679,13 +737,15 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         if (event.getHand() != EquipmentSlot.HAND) {
             return; // Ignore off-hand interactions
         }
+        Player player = event.getPlayer();
+        NPC npc = CitizensAPI.getNPCRegistry().getNPC(event.getRightClicked());
 
-        if (disabledPlayers.contains(event.getPlayer())) {
+        if (disabledPlayers.contains(player)) {
+            playerCurrentNPC.put(player.getUniqueId(), npc.getUniqueId());
             return;
         }
 
-        Player player = event.getPlayer();
-        NPC npc = CitizensAPI.getNPCRegistry().getNPC(event.getRightClicked());
+
 
         if (npc == null) {
             return;
@@ -707,7 +767,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 return;
             }
 
-            conversationManager.addNPCToConversation(player, npcName);
+            conversationManager.addNPCToConversation(player, npc);
 
         } else {
 
@@ -722,11 +782,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 return;
             }
 
-            List<String> npcNames = new ArrayList<>();
-            npcNames.add(npcName);
-            conversationManager.startGroupConversation(player, npcNames);
+            List<NPC> npcs = new ArrayList<>();
+            npcs.add(npc);
+            conversationManager.startGroupConversation(player, npcs);
             // Set current NPC for the player
-            playerCurrentNPC.put(playerUUID, npcName);
+            playerCurrentNPC.put(playerUUID, npc.getUniqueId());
             player.sendMessage(ChatColor.GRAY + "You are now talking to " + npcName + ".");
         }
 
@@ -750,6 +810,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             }
         });
     }
+
+
 
     // getNPCByName async method
     public NPC getNPCByName(String npcName) {
@@ -802,7 +864,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 continue;
             }
             Location npcLocation = npc.getEntity().getLocation();
-            if (npcLocation.getWorld() == player.getWorld() && npcLocation.distance(player.getLocation()) <= 5) {
+            if (npcLocation.getWorld() == player.getWorld() && npcLocation.distance(player.getLocation()) <= chatRadius) {
                 nearbyNPCs.add(npc);
             }
         }
@@ -810,15 +872,14 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
         if (conversationManager.hasActiveConversation(player)) {
 
-            List<String> npcNames = conversationManager.getNPCNamesInConversation(player);
+            List<NPC> currentNPCs = conversationManager.getNPCsInConversation(player);
 
 // Remove NPCs from the conversation that are no longer nearby
-            for (String npcName : npcNames) {
-                boolean isNearby = nearbyNPCs.stream()
-                        .anyMatch(nearbyNPC -> nearbyNPC.getName().equals(npcName));
+            for (NPC npc : currentNPCs) {
+                boolean isNearby = nearbyNPCs.stream().anyMatch(n -> n.getName().equals(npc.getName()));
                 if (!isNearby) {
                     // NPC is no longer nearby, remove it from the conversation
-                    conversationManager.removeNPCFromConversation(player, npcName, !nearbyNPCs.isEmpty());
+                    conversationManager.removeNPCFromConversation(player, npc, !nearbyNPCs.isEmpty());
                 }
             }
 
@@ -827,7 +888,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                 if (!conversationManager.isNPCInConversation(player, nearbyNPC.getName()) && (!disabledNPCs.contains(nearbyNPC.getUniqueId()))) {
                     // NPC is nearby but not yet part of the conversation, add it
-                    conversationManager.addNPCToConversation(player, nearbyNPC.getName());
+                    conversationManager.addNPCToConversation(player, nearbyNPC);
                 }
             }
 
@@ -847,20 +908,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
             // Start a new conversation with the first NPC found
             NPC npc = nearbyNPCs.getFirst();
-            String npcName = npc.getName();
-            List<String> npcNames = new ArrayList<>();
-            npcNames.add(npcName);
-            for (NPC nearbyNPC : nearbyNPCs) {
-                String nearbyNPCName = nearbyNPC.getName();
-                if (!nearbyNPCName.equals(npcName)) {
-                    npcNames.add(nearbyNPCName);
-                }
-            }
-            conversationManager.startGroupConversation(player, npcNames);
-            //conversationManager.addNPCToConversation(player, npcName);
-
-            // loop nearby NPCs and add them to the conversation
-
+            List<NPC> npcs = new ArrayList<>();
+            npcs.add(npc);
+            conversationManager.startGroupConversation(player, npcs);
 
             conversationManager.addPlayerMessage(player, message, chatEnabled);
 
@@ -943,6 +993,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     public List<String> getGeneralContexts() {
         return generalContexts;
+    }
+
+    public int getRadiantRadius() {
+        return radiantRadius;
     }
 
     public void setQuestTitle(String title) {
@@ -1068,6 +1122,18 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             messageObj.addProperty("role", "user");
             messageObj.addProperty("content", buildConversationContext(conversation));
             json.add("messages", gson.toJsonTree(conversation));
+            //    "provider": {
+            //      "order": [
+            //        "OpenAI",
+            //        "Together"
+            //      ]
+            //    }
+            JsonObject provider = new JsonObject();
+            JsonArray order = new JsonArray();
+            order.add("DeepInfra");
+            provider.add("order", order);
+            json.add("provider", provider);
+
 
             String payload = gson.toJson(json);
 
@@ -1079,10 +1145,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
             // Read response
             int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                getLogger().warning("OpenAI API responded with code: " + responseCode);
-                return null;
-            }
+//if (responseCode != 200) {
+                //getLogger().warning("OpenAI API responded with code: " + responseCode);
+               // return null;
+            //}
 
             BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
             StringBuilder responseBuilder = new StringBuilder();

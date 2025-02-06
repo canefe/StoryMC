@@ -58,7 +58,7 @@ public class CommandHandler implements CommandExecutor {
                     return true;
                 }
                 String npcName = args[0];
-                plugin.playerCurrentNPC.put(player.getUniqueId(), npcName);
+
                 player.sendMessage(ChatColor.GRAY + "Current NPC set to: " + npcName);
                 break;
 
@@ -116,8 +116,9 @@ public class CommandHandler implements CommandExecutor {
         }
 
         // Fetch the current NPC for the player
-        String npcName = plugin.playerCurrentNPC.get(player.getUniqueId());
-        if (npcName == null || npcName.isEmpty()) {
+        UUID npcUUID = plugin.playerCurrentNPC.get(player.getUniqueId());
+        NPC npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcUUID);
+        if (npc == null) {
             player.sendMessage(ChatColor.RED + "You are not currently interacting with any NPC. Use /interactnpc first.");
             return;
         }
@@ -126,10 +127,10 @@ public class CommandHandler implements CommandExecutor {
         String systemMessage = String.join(" ", args);
 
         // Fetch NPC conversation history
-        plugin.addSystemMessage(npcName, systemMessage);
+        plugin.addSystemMessage(npc.getName(), systemMessage);
 
         // Notify the player
-        player.sendMessage(ChatColor.GRAY + "Added system message to NPC '" + npcName + "': " + systemMessage);
+        player.sendMessage(ChatColor.GRAY + "Added system message to NPC '" + npc.getName() + "': " + systemMessage);
     }
 
     private void makeNPCSay(Player player, String[] args) {
@@ -138,11 +139,14 @@ public class CommandHandler implements CommandExecutor {
             return;
         }
 
-        String npcName = plugin.playerCurrentNPC.get(player.getUniqueId());
-        if (npcName == null) {
-            player.sendMessage(ChatColor.RED + "You are not currently talking to any NPC.");
+        UUID npcUUID = plugin.playerCurrentNPC.get(player.getUniqueId());
+        NPC npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcUUID);
+        if (npc == null) {
+            player.sendMessage(ChatColor.RED + "You are not currently interacting with any NPC. Use /interactnpc first.");
             return;
         }
+
+        String npcName = npc.getName();
 
         String message = String.join(" ", args);
 
@@ -150,10 +154,9 @@ public class CommandHandler implements CommandExecutor {
         plugin.conversationManager.addNPCMessage(npcName, message);
 
         // Fetch NPC position asynchronously
-        plugin.getNPCPos(npcName).thenAccept(npcPos -> {
-            if ((npcPos != null)) {
-                plugin.conversationManager.showThinkingHolo(npcName);
-            }
+
+                plugin.conversationManager.showThinkingHolo(npc);
+
 
 
 
@@ -168,12 +171,6 @@ public class CommandHandler implements CommandExecutor {
                 // Broadcast the NPC's message
                 plugin.broadcastNPCMessage(message, npcName, false, null, null, null, "#599B45");
             }, 60L); // 3 seconds (60 ticks)
-        }).exceptionally(ex -> {
-            // Handle errors during NPC position retrieval
-            player.sendMessage(ChatColor.RED + "An error occurred while retrieving the NPC's position.");
-            ex.printStackTrace();
-            return null;
-        });
     }
 
 

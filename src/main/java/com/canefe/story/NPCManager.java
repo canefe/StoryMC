@@ -9,16 +9,14 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class NPCManager {
 
     private static NPCManager instance; // Singleton instance
     private final Story plugin;
     private final Map<String, NPCData> npcDataMap = new HashMap<>(); // Centralized NPC storage
+    private final Map<GroupConversation, Integer> scheduledTasks = new HashMap<>();
 
     private NPCManager(Story plugin) {
         // Private constructor to enforce singleton pattern
@@ -33,14 +31,8 @@ public class NPCManager {
         return instance;
     }
 
-    public void eventGoToPlayerAndSay(String npcName, String playerName, String message) {
+    public void eventGoToPlayerAndSay(NPC npc, String playerName, String message) {
         // Asynchronously get the NPC
-        plugin.npcUtils.getNPCByNameAsync(npcName).thenAccept(npc -> {
-            if (npc == null) {
-                Bukkit.getLogger().warning("NPC with name '" + npcName + "' not found!");
-                return;
-            }
-
             // Get the player by name
             Player player = Bukkit.getPlayerExact(playerName);
             if (player == null || !player.isOnline()) {
@@ -57,9 +49,9 @@ public class NPCManager {
                 Navigator navigator = npc.getNavigator();
                 navigator.setTarget(playerLocation); // Set the target location
                 navigator.getDefaultParameters().distanceMargin(2.0); // Stop 2 blocks away
+                Bukkit.getLogger().info("Navigator target set for NPC: " + npc.getName() + " to player: " + player.getName());
 
-                // Register event listener for navigation completion
-                Bukkit.getPluginManager().registerEvents(new Listener() {
+                Listener listener = new Listener() {
                     @EventHandler
                     public void onNavigationComplete(NavigationCompleteEvent event) {
                         if (event.getNPC().equals(npc)) {
@@ -67,22 +59,21 @@ public class NPCManager {
                             NavigationCompleteEvent.getHandlerList().unregister(this);
 
                             // Start the conversation once NPC reaches the player
-                            List<String> npcNames = new ArrayList<>();
-                            npcNames.add(npcName);
-                            GroupConversation conversation = plugin.conversationManager.startGroupConversation(player, npcNames);
+                            List<NPC> npcs = new ArrayList<>();
+                            npcs.add(npc);
+                            GroupConversation conversation = plugin.conversationManager.startGroupConversation(player, npcs);
                             // Send the message to the player
-                            conversation.addMessage(new Story.ConversationMessage("assistant", npcName + ": " + message));
-                            plugin.broadcastNPCMessage(message, npcName, false, npc, player.getUniqueId(), player, "cyan");
+                            conversation.addMessage(new Story.ConversationMessage("assistant", npc.getName() + ": " + message));
+                            plugin.broadcastNPCMessage(message, npc.getName(), false, npc, player.getUniqueId(), player, "#BD2C19");
                         }
                     }
-                }, plugin);
+                };
+                // Register event listener for navigation completion
+                Bukkit.getPluginManager().registerEvents(listener, plugin);
             });
-        }).exceptionally(ex -> {
-            Bukkit.getLogger().warning("An error occurred while fetching NPC '" + npcName + "': " + ex.getMessage());
-            ex.printStackTrace();
-            return null;
-        });
     }
+
+
 
     public void walkToNPC(NPC npc, NPC targetNPC, String firstMessage) {
 
@@ -104,14 +95,19 @@ public class NPCManager {
                         NavigationCompleteEvent.getHandlerList().unregister(this);
 
                         // Start the conversation once NPC reaches the target NPC
-                        List<String> npcNames = new ArrayList<>();
-                        npcNames.add(npc.getName());
-                        npcNames.add(targetNPC.getName());
-                        GroupConversation conversation = plugin.conversationManager.startRadiantConversation(npcNames);
+                        List<NPC> npcs = new ArrayList<>();
+                        npcs.add(npc);
+                        npcs.add(targetNPC);
+                        GroupConversation conversation = plugin.conversationManager.startGroupConversationNoPlayer(npcs);
                         // Send the message to the player
                         conversation.addMessage(new Story.ConversationMessage("system", npc.getName() + ": " + firstMessage));
                         conversation.addMessage(new Story.ConversationMessage("user", targetNPC.getName() + " is listening..."));
+
                         plugin.broadcastNPCMessage(firstMessage, npc.getName(), false, npc, null, null, "#BD2C19");
+
+                        plugin.conversationManager.generateGroupNPCResponses(conversation, null);
+
+
                     }
                 }
             }, plugin);
