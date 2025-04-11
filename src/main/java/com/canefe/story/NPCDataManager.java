@@ -1,5 +1,7 @@
 package com.canefe.story;
 
+import net.citizensnpcs.api.CitizensAPI;
+import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -40,6 +42,27 @@ public class NPCDataManager {
     }
 
 
+    /**
+     * Gets a list of all NPC names by scanning the NPC directory for YAML files.
+     *
+     * @return A list of all NPC names without the .yml extension
+     */
+    public java.util.List<String> getAllNPCNames() {
+        java.util.List<String> npcNames = new java.util.ArrayList<>();
+
+        File[] files = npcDirectory.listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files != null) {
+            for (File file : files) {
+                String fileName = file.getName();
+                // Remove the .yml extension to get the NPC name
+                String npcName = fileName.substring(0, fileName.length() - 4);
+                npcNames.add(npcName);
+            }
+        }
+
+        return npcNames;
+    }
+
     public FileConfiguration loadNPCData(String npcName) {
         File npcFile = new File(getNPCDirectory(), npcName + ".yml");
         if (!npcFile.exists()) {
@@ -58,6 +81,21 @@ public class NPCDataManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public NPC getNPC(String npcName) {
+        File npcFile = new File(npcDirectory, npcName + ".yml");
+        if (!npcFile.exists()) {
+            return null; // Return null if no file exists
+        }
+        FileConfiguration config = YamlConfiguration.loadConfiguration(npcFile);
+        // try to find npc by name citizens registry
+        for (NPC npc : CitizensAPI.getNPCRegistry()) {
+            if (npc.getName().equalsIgnoreCase(npcName)) {
+                return npc;
+            }
+        }
+        return null; // Return null if no NPC with the given name is found
     }
 
     public void deleteNPCFile(String npcName) {

@@ -14,6 +14,9 @@ import net.citizensnpcs.api.npc.NPC;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import okhttp3.*;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -24,8 +27,6 @@ import org.bukkit.metadata.MetadataValue;
 import org.json.simple.JSONArray;
 import org.mcmonkey.sentinel.SentinelTrait;
 import net.citizensnpcs.api.CitizensAPI;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -33,6 +34,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.awt.*;
+import java.awt.Color;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
@@ -43,7 +45,11 @@ import java.net.URL;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -59,7 +65,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
     public Map<UUID, UUID> playerCurrentNPC = new HashMap<>();
 
     // List of players that disabled right-clicking start conversation
-    private List<Player> disabledPlayers = new ArrayList<>();
+    private List<String> disabledPlayers = new ArrayList<>();
 
     private Set<UUID> disabledNPCs = new HashSet<>();
 
@@ -106,6 +112,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     public NPCManager npcManager;
 
+    private NPCScheduleManager scheduleManager;
+
+    private boolean itemsAdderEnabled = false; // Check if ItemsAdder is enabled
+
     // PlaceholderAPI expansion String that supports color codes
 
     public String questTitle = "";
@@ -121,7 +131,6 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         return ChatColor.translateAlternateColorCodes('&', message);
     }
 
-
     @Override
     public void onLoad() {
         CommandAPI.onLoad(new CommandAPIBukkitConfig(this).verboseOutput(true)); // Load with verbose output
@@ -133,7 +142,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         instance = this;
 
         // Plugin startup logic
-        getLogger().info("AIStorymaker has been enableds!");
+        getLogger().info("Story has been enabled!");
 
         // Register events
         getServer().getPluginManager().registerEvents(this, this);
@@ -146,6 +155,15 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         if (Bukkit.getPluginManager().getPlugin("Citizens") == null) {
             getLogger().warning("Citizens plugin not found! NPC interactions will not work.");
         }
+
+        // Check if ItemsAdder is available
+        if (Bukkit.getPluginManager().isPluginEnabled("ItemsAdder")) {
+            itemsAdderEnabled = true;
+            getLogger().info("ItemsAdder detected, avatar features enabled.");
+        } else {
+            getLogger().warning("ItemsAdder not found, avatar features will be disabled.");
+        }
+
         CommandAPI.onEnable();
         // Register commands with the new CommandHandler
         CommandHandler commandHandler = new CommandHandler(this);
@@ -243,21 +261,22 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 .executesPlayer((player, args) -> {
                     Player target = (Player) args.get("target");
                     if (target != null) {
-                        if (disabledPlayers.contains(target)) {
-                            disabledPlayers.remove(target);
+                        if (disabledPlayers.contains(target.getName())) {
+                            disabledPlayers.remove(target.getName());
                             player.sendMessage(ChatColor.GRAY + "Enabled chat for " + target.getName());
                         } else {
-                            disabledPlayers.add(target);
+                            disabledPlayers.add(target.getName());
                             player.sendMessage(ChatColor.GRAY + "Disabled chat for " + target.getName());
                         }
                     } else {
-                        if (disabledPlayers.contains(player)) {
-                            disabledPlayers.remove(player);
+                        if (disabledPlayers.contains(player.getName())) {
+                            disabledPlayers.remove(player.getName());
                             player.sendMessage(ChatColor.GRAY + "Enabled chat for yourself.");
                         } else {
-                            disabledPlayers.add(player);
+                            disabledPlayers.add(player.getName());
                             player.sendMessage(ChatColor.GRAY + "Disabled chat for yourself.");
                         }
+                        saveDataFiles();
                     }
 
                 })
@@ -429,6 +448,52 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 })
                 .register();
 
+
+        // Command to make player's current NPC walk to them
+        new CommandAPICommand("comenfp")
+                .withPermission("storymaker.npc.come")
+                .withOptionalArguments(new FloatArgument("speed", 0.5f, 3.0f))
+                .executesPlayer((player, args) -> {
+                    // Get player's UUID
+                    UUID playerUUID = player.getUniqueId();
+
+                    // Check if player has a current NPC
+                    if (!playerCurrentNPC.containsKey(playerUUID)) {
+                        player.sendMessage(colorize("&cYou don't have a current NPC assigned. Use &f/setcurnpc&c first."));
+                        return;
+                    }
+
+                    // Get the NPC UUID and find the NPC
+                    UUID npcUUID = playerCurrentNPC.get(playerUUID);
+                    NPC npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcUUID);
+
+                    if (npc == null || !npc.isSpawned()) {
+                        player.sendMessage(colorize("&cYour NPC is not available or not spawned."));
+                        return;
+                    }
+
+                    // Get optional speed argument
+                    float speed = (float) args.getOrDefault("speed", 1.0f);
+
+                    // Get player's current location
+                    Location playerLocation = player.getLocation();
+
+                    // Make the NPC walk to the player
+                    int taskId = npcManager.walkToLocation(
+                            npc,
+                            playerLocation,
+                            2.0,  // Stop 2 blocks away
+                            speed,
+                            30,    // 30 second timeout
+                            () -> player.sendMessage(colorize("&a" + npc.getName() + " has arrived.")),
+                            () -> player.sendMessage(colorize("&c" + npc.getName() + " couldn't reach you."))
+                    );
+
+                    if (taskId != -1) {
+                        player.sendMessage(colorize("&a" + npc.getName() + " is coming to you."));
+                    }
+                })
+                .register();
         // command /conv <subcommand> <args>
         new CommandAPICommand("conv")
                 .withPermission("storymaker.conversation")
@@ -471,9 +536,16 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                                                 "<gray>[<red>End</red>]</gray></hover></click>"
                                 );
 
+                                // Force End (no goodbye)
+                                Component forceEndButton = mm.deserialize(
+                                        "<click:run_command:'/conv fend " + id + "'>" +
+                                                "<hover:show_text:'Force End conversation'>" +
+                                                "<gray>[<red>F-End</red>]</gray></hover></click>"
+                                );
+
                                 // Add Button
                                 Component addButton = mm.deserialize(
-                                        "<click:suggest_command:'/conv add " + id + "'>" +
+                                        "<click:suggest_command:'/conv add " + id + " \"'>" +
                                                 "<hover:show_text:'Add NPC to conversation'>" +
                                                 "<gray>[<green>Add</green>]</gray></hover></click>"
                                 );
@@ -511,16 +583,19 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 // Modify the existing code to use fullPrefix instead of prefix when sending the message
 
                                 // Final message = prefix + feedButton
-                                Component finalMessage = fullPrefix.append(feedButton);
-                                finalMessage = finalMessage.append(mm.deserialize("<gray> | </gray>"));
-                                finalMessage = finalMessage.append(talkButton);
-                                finalMessage = finalMessage.append(mm.deserialize("<gray> | </gray>"));
-                                finalMessage = finalMessage.append(addButton);
-                                finalMessage = finalMessage.append(mm.deserialize("<gray> | </gray>"));
-                                finalMessage = finalMessage.append(endButton);
+                                Component commands = feedButton;
+                                commands = commands.append(mm.deserialize("<gray> | </gray>"));
+                                commands = commands.append(talkButton);
+                                commands = commands.append(mm.deserialize("<gray> | </gray>"));
+                                commands = commands.append(addButton);
+                                commands = commands.append(mm.deserialize("<gray> | </gray>"));
+                                commands = commands.append(forceEndButton);
+                                commands = commands.append(mm.deserialize("<gray> | </gray>"));
+                                commands = commands.append(endButton);
 
                                 // Send to player
-                                player.sendMessage(finalMessage);
+                                player.sendMessage(fullPrefix);
+                                player.sendMessage(commands);
 
                             }
                         })
@@ -528,7 +603,15 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                 .withSubcommand(new CommandAPICommand("npc")
                         .withArguments(new IntegerArgument("conversation_id"))
-                        .withArguments(new StringArgument("npc_name"))
+                        .withArguments(new GreedyStringArgument("npc_name")
+                                .replaceSuggestions(ArgumentSuggestions.strings(info -> {
+                                    // Get all NPCs from Citizens and convert to array
+                                    List<String> npcNames = new ArrayList<>();
+                                    for (NPC citizenNPC : CitizensAPI.getNPCRegistry()) {
+                                        npcNames.add(citizenNPC.getName());
+                                    }
+                                    return npcNames.toArray(new String[0]);
+                                })))
                         .executesPlayer((player, args) -> {
                             int id = (int) args.get("conversation_id");
                             String npcName = (String) args.get("npc_name");
@@ -542,13 +625,16 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                             MiniMessage mm = MiniMessage.miniMessage();
 
+                            player.sendMessage("  ");
                             // Build menu title
-                            Component title = mm.deserialize("<gold>==== NPC Controls: " + npcName + " ====</gold>");
+                            Component title = mm.deserialize("<gold>==== NPC Controls: <yellow>" + npcName + "</yellow> ====</gold>");
                             player.sendMessage(title);
 
                             // Menu options
-                            player.sendMessage(mm.deserialize("<click:run_command:'/conv remove " + id + " " + npcName + "'><hover:show_text:'Remove this NPC from the conversation'><red>• Remove from Conversation</red></hover></click>"));
-                            player.sendMessage(mm.deserialize("<click:run_command:'/conv mute " + id + " " + npcName + "'><hover:show_text:'Toggle whether this NPC speaks'><gray>• Toggle Mute</gray></hover></click>"));
+                            player.sendMessage(mm.deserialize("<click:run_command:'/conv remove " + id + " " + npcName + "'><hover:show_text:'Remove this NPC from the conversation'><gray>[<red>Remove</red>]</gray></hover></click>")
+                                    .append(mm.deserialize("<gray> | </gray>"))
+                                    .append(mm.deserialize("<click:run_command:'/conv mute \" + id + \" \" + npcName + \"'><hover:show_text:'Toggle whether this NPC speaks'><gray>[<yellow>Mute</yellow>]</gray></hover></click>"))
+                            );
 
                             // Back button
                             player.sendMessage(mm.deserialize("<click:run_command:'/conv list'><hover:show_text:'Back to conversation list'><gray>« Back to Conversations</gray></hover></click>"));
@@ -581,9 +667,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 )
 
                 // Remove NPC subcommand
+// Remove NPC subcommand
                 .withSubcommand(new CommandAPICommand("remove")
                         .withArguments(new IntegerArgument("conversation_id"))
-                        .withArguments(new StringArgument("npc_name"))
+                        .withArguments(new GreedyStringArgument("npc_name"))
                         .executesPlayer((player, args) -> {
                             int id = (int) args.get("conversation_id");
                             String npcName = (String) args.get("npc_name");
@@ -602,9 +689,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                                 return;
                             }
 
-                            // Remove NPC from conversation
+                            // Remove NPC from conversation first
                             convo.removeNPC(npc);
-                            // if it was the last npc in the conversation, end the conversation
+
+                            // End conversation if no NPCs left
                             if (convo.getNPCs().isEmpty()) {
                                 conversationManager.endConversation(convo);
                                 player.sendMessage(ChatColor.GRAY + "Conversation ended as there are no NPCs left.");
@@ -612,30 +700,14 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                                 player.sendMessage(ChatColor.GRAY + "Removed " + npcName + " from the conversation.");
                             }
 
-                            // Make the NPC walk away
-                            // Calculate a random direction to walk away
-                            Location npcLocation = npc.getEntity().getLocation();
-                            double randomAngle = Math.random() * 2 * Math.PI;
-                            double walkDistance = chatRadius + 15;
-                            double targetX = npcLocation.getX() + Math.cos(randomAngle) * walkDistance;
-                            double targetZ = npcLocation.getZ() + Math.sin(randomAngle) * walkDistance;
-
-                            // Create a target location to walk to
-                            Location targetLocation = new Location(
-                                    npcLocation.getWorld(),
-                                    targetX,
-                                    npcLocation.getWorld().getHighestBlockYAt((int)targetX, (int)targetZ),
-                                    targetZ
-                            );
-
-                            // Use NavigatorParameters to make the NPC walk to the target location
-                            npc.getNavigator().setTarget(targetLocation);
-                            npc.getNavigator().getLocalParameters().speedModifier(1.0f);
-
-                            // Inform player
-                            player.sendMessage(ChatColor.GREEN + npcName + " has been removed from the conversation and is walking away.");
+                            // Make the NPC walk away using the NPCManager
+                            if (npc.isSpawned()) {
+                                npcManager.makeNPCWalkAway(npc, convo);
+                                player.sendMessage(ChatColor.GREEN + npcName + " has been removed from the conversation and is walking away.");
+                            }
                         })
                 )
+
 
                 .withSubcommand(new CommandAPICommand("endall")
                         .executesPlayer((player, args) -> {
@@ -705,6 +777,23 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                         }))
 
 
+                // command /conv fend <id>
+                .withSubcommand(new CommandAPICommand("fend")
+                        .withArguments(new IntegerArgument("conversation_id"))
+                        .executesPlayer((player, args) -> {
+                            int conversationId = (int) args.get("conversation_id");
+                            GroupConversation conversation = conversationManager.getConversationById(conversationId);
+
+                            if (conversation == null) {
+                                player.sendMessage(ChatColor.RED + "Conversation with ID " + conversationId + " not found.");
+                                return;
+                            }
+
+                            // End the conversation immediately without feeding
+                            conversationManager.endConversation(conversation);
+                            player.sendMessage(ChatColor.GRAY + "Force ended conversation with ID: " + conversationId);
+                        })
+                )
                 // command /conv end <id>
                 .withSubcommand(new CommandAPICommand("end")
                         .withArguments(new IntegerArgument("conversation_id"))
@@ -756,6 +845,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
         npcManager = NPCManager.getInstance(this);
 
+        scheduleManager = NPCScheduleManager.getInstance(this);
+
         startProximityTask(this);
 
         loadGeneralContexts();
@@ -806,6 +897,57 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     }
 
+    // getNpcDataManager()
+    public NPCDataManager getNPCDataManager() {
+        return npcDataManager;
+    }
+
+    public LocationManager getLocationManager() {
+        return locationManager;
+    }
+
+    public NPCScheduleManager getNPCScheduleManager() {
+        return scheduleManager;
+    }
+
+    public Location calculateConversationCenter(GroupConversation conversation) {
+        List<Location> locations = new ArrayList<>();
+
+        // Add NPC locations
+        for (NPC npc : conversation.getNPCs()) {
+            if (npc.isSpawned() && npc.getEntity() != null) {
+                locations.add(npc.getEntity().getLocation());
+            }
+        }
+
+        // Add player locations
+        for (UUID playerUUID : conversation.getPlayers()) {
+            Player player = Bukkit.getPlayer(playerUUID);
+            if (player != null && player.isOnline()) {
+                locations.add(player.getLocation());
+            }
+        }
+
+        if (locations.isEmpty()) {
+            return null;
+        }
+
+        // Calculate average position
+        double x = 0, y = 0, z = 0;
+        for (Location loc : locations) {
+            x += loc.getX();
+            y += loc.getY();
+            z += loc.getZ();
+        }
+
+        return new Location(
+                locations.get(0).getWorld(),
+                x / locations.size(),
+                y / locations.size(),
+                z / locations.size()
+        );
+    }
+
     public void saveDataFiles() {
         // save disabled NPCs to disabled-npcs.yml
         FileConfiguration disabledNPCsConfig = new YamlConfiguration();
@@ -820,6 +962,16 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         } catch (Exception e) {
             getLogger().severe("Could not save disabled NPCs to file: " + e.getMessage());
         }
+
+        // save disabled players to disabled-players.yml
+        FileConfiguration disabledPlayersConfig = new YamlConfiguration();
+        disabledPlayersConfig.set("disabled-players", disabledPlayers);
+        try {
+            disabledPlayersConfig.save(new File(getDataFolder(), "disabled-players.yml"));
+        } catch (Exception e) {
+            getLogger().severe("Could not save disabled players to file: " + e.getMessage());
+        }
+
     }
 
     public void enableNPCTalking(String npcName) {
@@ -827,6 +979,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
         saveDataFiles();
 
+    }
+
+    public boolean isPlayerDisabled(Player player) {
+        return disabledPlayers.contains(player.getName());
     }
 
     public void saveNPCData(String npcName, String roleDescription, String context, List<ConversationMessage> conversationHistory, String location) {
@@ -864,6 +1020,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         // Plugin shutdown logic
         getLogger().info("AIStorymaker has been disableds.");
         CommandAPI.onDisable();
+        if (scheduleManager != null) {
+            scheduleManager.shutdown();
+        }
     }
 
     public void reloadPluginConfig(Player player) {
@@ -896,6 +1055,9 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
             loadGeneralContexts();
             loadDataFiles();
+            conversationManager.reloadConfig();
+            scheduleManager.reloadSchedules();
+            locationManager.loadAllLocations();
 
 
         } catch (Exception e) {
@@ -930,7 +1092,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     private void handleProximityCheck(Player player) {
         // Disable if player is disabled
-        if (disabledPlayers.contains(player)) {
+        if (disabledPlayers.contains(player.getName())) {
             return;
         }
 
@@ -997,7 +1159,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         Random random = new Random();
         boolean choosePlayer = random.nextBoolean(); // 50% chance to choose player
 
-        if (choosePlayer && player != null && !isVanished(player) && !disabledPlayers.contains(player)) {
+        if (choosePlayer && player != null && !isVanished(player) && !disabledPlayers.contains(player.getName())) {
             // Target is player - make NPC walk to player
             initiateRadiantPlayerConversation(initiator, player);
         } else {
@@ -1044,7 +1206,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 // Use NPCManager to make initiator walk to player with the greeting
                 Bukkit.getScheduler().runTask(this, () -> {
                     // Make NPC walk to player and start conversation with greeting
-                    npcManager.eventGoToPlayerAndTalk(initiator, player, greeting);
+                    npcManager.eventGoToPlayerAndTalk(initiator, player, greeting, null);
 
                     // Mark NPC as on cooldown
                     updateCooldown(initiator);
@@ -1079,11 +1241,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             try {
                 List<ConversationMessage> prompts = new ArrayList<>();
 
-                // Add system context
-                prompts.add(new ConversationMessage("system",
-                        "You are " + initiatorName + ". You've noticed " + targetNPC.getName() +
-                                " nearby and decided to initiate a conversation. Generate a brief, natural greeting " +
-                                "to start the conversation based on your character."));
+                // Add target NPC context
+                prompts.add(new ConversationMessage("system", npcContext.context));
 
                 // Add general and location contexts
                 getGeneralContexts().forEach(context ->
@@ -1093,6 +1252,26 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                     npcContext.location.getContext().forEach(context ->
                             prompts.add(new ConversationMessage("system", context)));
                 }
+
+                prompts.add(new ConversationMessage("system", "Relations: " + npcContext.relations.toString()));
+
+                // include last 5 messages from the conversation history
+                List<ConversationMessage> history = npcContext.conversationHistory;
+
+                int start = Math.max(0, history.size() - 10);
+                for (int i = start; i < history.size(); i++) {
+                    ConversationMessage message = history.get(i);
+                    prompts.add(new ConversationMessage(message.getRole(), message.getContent()));
+                }
+
+                // Add system context
+                prompts.add(new ConversationMessage("system",
+                        "You are " + initiatorName + ". You've noticed " + targetNPC.getName() +
+                                " nearby and decided to initiate a conversation. Generate a brief, natural greeting " +
+                                "to start the conversation based on your character."));
+
+
+
 
                 // Get AI-generated greeting
                 String greeting = getAIResponse(prompts);
@@ -1232,7 +1411,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         }
 
         // Check if player has disabled interactions
-        if (disabledPlayers.contains(player)) {
+        if (disabledPlayers.contains(player.getName())) {
             playerCurrentNPC.put(player.getUniqueId(), npc.getUniqueId());
             return true;
         }
@@ -1359,7 +1538,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         String message = event.getMessage();
 
         // Check if player is enabled in DisabledPlayers
-        if (disabledPlayers.contains(player)) {
+        if (disabledPlayers.contains(player.getName())) {
             return;
         }
 
@@ -1472,8 +1651,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                     if (distanceSquared <= radiusSquared) {
                         nearby.add(npc);
-                        getLogger().info("Found nearby NPC: " + npc.getName() + " at distance: " +
-                                Math.sqrt(distanceSquared));
+                        //getLogger().info("Found nearby NPC: " + npc.getName() + " at distance: " +
+                                //Math.sqrt(distanceSquared));
                     }
                 }
             } catch (Exception e) {
@@ -1512,8 +1691,8 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                     if (distanceSquared <= radiusSquared) {
                         nearby.add(npc);
-                        getLogger().info("Found nearby NPC: " + npc.getName() + " at distance: " +
-                                Math.sqrt(distanceSquared) + " from " + sourceNPC.getName());
+                        //getLogger().info("Found nearby NPC: " + npc.getName() + " at distance: " +
+                                //Math.sqrt(distanceSquared) + " from " + sourceNPC.getName());
                     }
                 }
             } catch (Exception e) {
@@ -1569,7 +1748,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
             String rawAvatar = "";
             if (!Objects.equals(avatar, "")) {
                 try {
-                    rawAvatar = new FontImageWrapper("npcavatars:" + avatar).getString();
+                    if (itemsAdderEnabled) {
+                        rawAvatar = new FontImageWrapper("npcavatars:" + avatar).getString();
+                    } else {
+                        rawAvatar = "            ";
+                    }
                 } catch (Exception e) {
                     getLogger().warning("Error loading avatar for NPC " + currentNpcName + ": " + e.getMessage());
                     rawAvatar = "            ";
@@ -1767,6 +1950,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         return radiantRadius;
     }
 
+    public int getChatRadius() {
+        return chatRadius;
+}
+
     public void setQuestTitle(String title) {
         // Wait for setQuestObj to be called
         tempQuestTitle = title;
@@ -1812,9 +1999,20 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         FileConfiguration disabledNPCsConfig = YamlConfiguration.loadConfiguration(disabledNPCsFile);
 
         // set disabled npcs to the list convert string to UUID
-        disabledNPCs = new HashSet<>(disabledNPCsConfig.getStringList("disabled-npcs").stream()
-                .map(UUID::fromString)
-                .collect(Collectors.toSet()));
+        disabledNPCs = disabledNPCsConfig.getStringList("disabled-npcs").stream()
+                .map(UUID::fromString).collect(Collectors.toSet());
+
+
+        // disabled-players.yml file
+        File disabledPlayersFile = new File(getDataFolder(), "disabled-players.yml");
+        if (!disabledPlayersFile.exists()) {
+            saveResource("disabled-players.yml", false);
+        }
+        // Load disabled players
+        FileConfiguration disabledPlayersConfig = YamlConfiguration.loadConfiguration(disabledPlayersFile);
+
+        // set disabled players to the list convert string to player name
+        disabledPlayers = new ArrayList<>(disabledPlayersConfig.getStringList("disabled-players"));
 
         return disabledNPCsFile;
     }
@@ -1894,105 +2092,111 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         Player player = event.getPlayer();
         UUID playerUUID = player.getUniqueId();
         playerCurrentNPC.remove(playerUUID);
+        // Remove the player from any active conversations
+        if (conversationManager.hasActiveConversation(player)) {
+            conversationManager.endConversation(player);
+        }
     }
 
-    // Method to interact with OpenAI API and get AI response
+    // Shared HTTP client for better connection pooling
+    private final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build();
+
+    // Semaphore to limit concurrent API calls (adjust based on your API limits)
+    private final Semaphore apiRateLimiter = new Semaphore(5);
+
+    // Request queue tracking
+    private final AtomicInteger pendingRequests = new AtomicInteger(0);
+
+    /**
+     * Gets an AI response from OpenRouter.ai with improved concurrency handling
+     *
+     * @param conversation The conversation history to send
+     * @return The AI response or null if an error occurred
+     */
     public String getAIResponse(List<ConversationMessage> conversation) {
         if (openAIKey.isEmpty()) {
             getLogger().warning("OpenAI API Key is not set!");
             return null;
         }
 
+        // For very high load situations, reject requests if too many pending
+        if (pendingRequests.get() > 20) {
+            getLogger().warning("Too many pending AI requests, rejecting new request");
+            return "Sorry, the AI service is currently overloaded. Please try again later.";
+        }
+
+        pendingRequests.incrementAndGet();
+
         try {
-            URL url = new URL("https://openrouter.ai/api/v1/chat/completions");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + openAIKey);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setDoOutput(true);
-
-            // Build JSON payload
-            JsonObject json = new JsonObject();
-            json.addProperty("model", aiModel);
-            JsonObject messageObj = new JsonObject();
-            messageObj.addProperty("role", "user");
-            messageObj.addProperty("content", buildConversationContext(conversation));
-            json.add("messages", gson.toJsonTree(conversation));
-            //    "provider": {
-            //      "order": [
-            //        "OpenAI",
-            //        "Together"
-            //      ]
-            //    }
-            JsonObject provider = new JsonObject();
-            JsonArray order = new JsonArray();
-            order.add("DeepInfra");
-            provider.add("order", order);
-            json.add("provider", provider);
-
-
-            String payload = gson.toJson(json);
-
-            // Send request
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = payload.getBytes("utf-8");
-                os.write(input, 0, input.length);
+            // Try to acquire a permit with timeout
+            if (!apiRateLimiter.tryAcquire(10, TimeUnit.SECONDS)) {
+                pendingRequests.decrementAndGet();
+                getLogger().warning("API rate limit reached, couldn't acquire permit within timeout");
+                return "Sorry, the AI service is currently busy. Please try again later.";
             }
-
-            // Read response
-            int responseCode = conn.getResponseCode();
-//if (responseCode != 200) {
-                //getLogger().warning("OpenAI API responded with code: " + responseCode);
-               // return null;
-            //}
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
-            StringBuilder responseBuilder = new StringBuilder();
-            String responseLine;
-
-            while ((responseLine = br.readLine()) != null) {
-                responseBuilder.append(responseLine.trim());
-            }
-
-            String response = responseBuilder.toString();
-
-            // Parse JSON response
-            JsonObject responseJson = gson.fromJson(response, JsonObject.class);
-            // only print out message.content
-            String responseContent = responseJson.get("choices").getAsJsonArray().get(0).getAsJsonObject()
-                    .get("message").getAsJsonObject().get("content").getAsString();
-            getLogger().info("[AI Response]: " + responseContent);
 
             try {
-                if (responseJson.has("error")) {
-                    JsonObject errorObject = responseJson.getAsJsonObject("error");
-                    String errorMessage = errorObject.get("message").getAsString();
-                    int errorCode = errorObject.get("code").getAsInt();
-                    getLogger().warning("OpenAI response error: " + errorMessage + " (Code: " + errorCode + ")");
-                    return null;
-                }
+                // Create JSON request
+                JsonObject requestObject = new JsonObject();
+                requestObject.addProperty("model", aiModel);
+                requestObject.addProperty("max_tokens", 500);
 
-                if (responseJson.has("choices")) {
-                    JsonObject choiceObject = responseJson.getAsJsonArray("choices").get(0).getAsJsonObject();
-                    if (choiceObject.has("message")) {
-                        JsonObject messageObject = choiceObject.getAsJsonObject("message");
-                        if (messageObject.has("content")) {
-                            String aiMessage = messageObject.get("content").getAsString().trim();
-                            return aiMessage;
+                JsonArray messagesArray = new JsonArray();
+                for (ConversationMessage message : conversation) {
+                    JsonObject messageObject = new JsonObject();
+                    messageObject.addProperty("role", message.getRole());
+                    messageObject.addProperty("content", message.getContent());
+                    messagesArray.add(messageObject);
+                }
+                requestObject.add("messages", messagesArray);
+
+                // Build request
+                RequestBody body = RequestBody.create(
+                        requestObject.toString(),
+                        MediaType.parse("application/json")
+                );
+
+                Request request = new Request.Builder()
+                        .url("https://openrouter.ai/api/v1/chat/completions")
+                        .addHeader("Authorization", "Bearer " + openAIKey)
+                        .addHeader("Content-Type", "application/json")
+                        .post(body)
+                        .build();
+
+                // Execute request synchronously but from a CompletableFuture context
+                try (Response response = httpClient.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        getLogger().warning("API request failed: " + response.code() + " - " + response.message());
+                        return null;
+                    }
+
+                    // Parse response
+                    String jsonResponse = response.body().string();
+                    JsonObject responseObject = gson.fromJson(jsonResponse, JsonObject.class);
+
+                    if (responseObject.has("choices") && responseObject.getAsJsonArray("choices").size() > 0) {
+                        JsonObject choice = responseObject.getAsJsonArray("choices").get(0).getAsJsonObject();
+                        if (choice.has("message") && choice.getAsJsonObject("message").has("content")) {
+                            return choice.getAsJsonObject("message").get("content").getAsString();
                         }
                     }
+
+                    getLogger().warning("Unexpected API response format: " + jsonResponse);
+                    return null;
                 }
-
-                getLogger().warning("Unexpected OpenAI response format.");
-                return null;
-            } catch (Exception e) {
-                e.printStackTrace();
-                return null;
+            } finally {
+                // Always release the permit
+                apiRateLimiter.release();
             }
-
         } catch (Exception e) {
-            e.printStackTrace();
+            getLogger().log(Level.SEVERE, "Error getting AI response", e);
             return null;
+        } finally {
+            pendingRequests.decrementAndGet();
         }
     }
 

@@ -101,6 +101,11 @@
             <id>matteodev</id>
             <url>https://maven.devs.beer/</url>
         </repository>
+
+        <repository>
+            <id>central</id>
+            <url>https://repo1.maven.apache.org/maven2</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -176,6 +181,12 @@
             <!-- Replace {version} with the latest version -->
             <version>4.0.9</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
         </dependency>
     </dependencies>
 </project>
