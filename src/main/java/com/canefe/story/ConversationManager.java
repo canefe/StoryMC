@@ -3,21 +3,16 @@ package com.canefe.story;
 import com.google.gson.Gson;
 import eu.decentsoftware.holograms.api.DHAPI;
 import eu.decentsoftware.holograms.api.holograms.Hologram;
-import java.util.concurrent.atomic.AtomicLong;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import net.citizensnpcs.api.ai.Navigator;
 import net.citizensnpcs.api.ai.event.NavigationCompleteEvent;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.trait.LookClose;
 import net.citizensnpcs.trait.RotationTrait;
-import net.citizensnpcs.util.NMS;
-import net.citizensnpcs.util.Util;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -54,7 +49,7 @@ public class ConversationManager {
 
     private final Map<GroupConversation, Integer> scheduledTasks = new HashMap<>();
 
-    private ConversationManager(Story plugin) {
+    public ConversationManager(Story plugin) {
         this.plugin = plugin;
         this.npcContextGenerator = NPCContextGenerator.getInstance(plugin);
         this.loreBookManager = LoreBookManager.getInstance(plugin);
@@ -117,11 +112,20 @@ public class ConversationManager {
         UUID playerUUID = player.getUniqueId();
 
         // End any existing conversation GroupConversation.players (list of UUIDs)
-        GroupConversation existingConversation = activeConversations.values().stream()
-                .filter(conversation -> conversation.getPlayers().contains(playerUUID))
-                .findFirst().orElse(null);
-        if (existingConversation != null && existingConversation.isActive()) {
-            endConversation(player);
+        // Check if player is in ANY active conversation first
+        for (GroupConversation conversation : activeConversations.values()) {
+            if (conversation.isActive() && conversation.getPlayers().contains(playerUUID)) {
+                // Remove player from this conversation before starting a new one
+                conversation.removePlayer(playerUUID);
+
+                // If the conversation is now empty, clean it up
+                if (conversation.getPlayers().isEmpty()) {
+                    endConversation(conversation);
+                }
+
+                // No need to continue the loop, one player can only be in one conversation
+                break;
+            }
         }
 
         // Initialize a new conversation with the provided NPCs
@@ -325,18 +329,24 @@ public class ConversationManager {
         }
 
         if (conversation.getNpcNames().size() != 1 && conversation.removeNPC(npc)) {
+            // Clean up the NPC's hologram and facing behavior
+            cleanupNPCHologram(npc);
+
             player.sendMessage(ChatColor.GRAY + npcName + " has left the conversation.");
 
             // If only one npc leaves, summarize the conversation for them
             conversation.addMessage(new ConversationMessage("system", npcName + " has left the conversation."));
             summarizeForSingleNPC(conversation.getConversationHistory(), conversation.getNpcNames(), player.getName(), npcName);
-
-
-
         }
         else if (conversation.getNpcNames().size() == 1 && !anyNearbyNPC) {
+            // Clean up the NPC's hologram and facing behavior
+            cleanupNPCHologram(npc);
+
             endConversation(player);
         } else if (conversation.getNpcNames().size() == 1 && anyNearbyNPC) {
+            // Clean up the NPC's hologram and facing behavior
+            cleanupNPCHologram(npc);
+
             player.sendMessage(ChatColor.GRAY + npcName + " has left the conversation.");
             conversation.addMessage(new ConversationMessage("system", npcName + " has left the conversation."));
             summarizeForSingleNPC(conversation.getConversationHistory(), conversation.getNpcNames(), player.getName(), npcName);
@@ -350,6 +360,11 @@ public class ConversationManager {
     public void endConversation(GroupConversation conversation) {
         if (conversation != null && conversation.isActive()) {
             conversation.setActive(false);
+
+            // Clean up all NPCs in the conversation
+            for (NPC npc : conversation.getNPCs()) {
+                cleanupNPCHologram(npc);
+            }
 
             // Get location name
             String locationName = "Village"; // Default location
@@ -813,6 +828,11 @@ public class ConversationManager {
         if (conversation != null && conversation.isActive()) {
             conversation.setActive(false);
 
+            // Clean up all NPCs in the conversation
+            for (NPC npc : conversation.getNPCs()) {
+                cleanupNPCHologram(npc);
+            }
+
             // Get location name
             String locationName = "Village"; // Default location
             List<NPC> npcs = conversation.getNPCs();
@@ -916,7 +936,7 @@ public class ConversationManager {
         // Join the player to another player's conversation
         for (GroupConversation conversation : activeConversations.values()) {
             if (conversation.getNpcNames().contains(npcName)) {
-                if (conversation.addPlayerToConversation(player)) {
+                if (conversation.addPlayer(player)) {
                     player.sendMessage(ChatColor.GRAY + "You joined the conversation with " + npcName);
                     return true;
                 } else {
@@ -1233,122 +1253,154 @@ public class ConversationManager {
 
         if (!npc.isSpawned() || npc.getEntity() == null) return;
 
-        Location npcPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
-        String npcUUID = npc.getUniqueId().toString();
 
-        Hologram holo = DHAPI.getHologram(npcUUID);
-        if (holo != null) DHAPI.removeHologram(npcUUID);
+        // Only attempt to remove holograms if DecentHolograms is available
+        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
+            try {
+                Location npcPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
+                String npcUUID = npc.getUniqueId().toString();
 
-        holo = DHAPI.createHologram(npcUUID, npcPos);
+                // Remove any existing hologram for this NPC
+                Hologram holo = DHAPI.getHologram(npcUUID);
+                if (holo != null) DHAPI.removeHologram(npcUUID);
 
-        String[] listeningStates = {"&7&olistening...", "&7&owatching...", "&7&onodding..."};
-        String chosenState = listeningStates[new Random().nextInt(listeningStates.length)];
+                // Create a new hologram
+                holo = DHAPI.createHologram(npcUUID, npcPos);
 
-        DHAPI.addHologramLine(holo, 0, chosenState);
-        DHAPI.updateHologram(npcUUID);
+                String[] listeningStates = {"&7&olistening...", "&7&owatching...", "&7&onodding..."};
+                String chosenState = listeningStates[new Random().nextInt(listeningStates.length)];
 
-        Hologram finalHolo = holo;
-        Random random = new Random();
+                DHAPI.addHologramLine(holo, 0, chosenState);
+                DHAPI.updateHologram(npcUUID);
 
-        // Find the conversation this NPC is in
-        GroupConversation conversation = null;
-        for (GroupConversation conv : activeConversations.values()) {
-            if (conv.getNpcNames().contains(npcName)) {
-                conversation = conv;
-                break;
-            }
-        }
+                Hologram finalHolo = holo;
+                Random random = new Random();
 
-        // Store the final reference for lambdas
-        final GroupConversation finalConversation = conversation;
+                // Find the conversation this NPC is in
+                GroupConversation conversation = null;
+                for (GroupConversation conv : activeConversations.values()) {
+                    if (conv.getNpcNames().contains(npcName)) {
+                        conversation = conv;
+                        break;
+                    }
+                }
 
-        // Create a class-level map to store the last look time per NPC if it doesn't exist
-        if (npcLastLookTimes == null) {
-            npcLastLookTimes = new HashMap<>();
-        }
+                // If NPC is not in any conversation, don't create the hologram task
+                if (conversation == null) {
+                    DHAPI.removeHologram(npcUUID);
+                    return;
+                }
 
-        // Set initial look time and interval if not already set
-        Long lastLookTime = npcLastLookTimes.get(npcName);
-        if (lastLookTime == null) {
-            lastLookTime = System.currentTimeMillis();
-            npcLastLookTimes.put(npcName, lastLookTime);
-        }
+                // Store the final reference for lambdas
+                final GroupConversation finalConversation = conversation;
 
-        // Store next look interval in a map if not already set
-        if (npcLookIntervals == null) {
-            npcLookIntervals = new HashMap<>();
-        }
+                // Create a class-level map to store the last look time per NPC if it doesn't exist
+                if (npcLastLookTimes == null) {
+                    npcLastLookTimes = new HashMap<>();
+                }
 
-        Integer lookInterval = npcLookIntervals.get(npcName);
-        if (lookInterval == null) {
-            lookInterval = random.nextInt(3000) + 2000; // 2-5 seconds
-            npcLookIntervals.put(npcName, lookInterval);
-        }
+                // Set initial look time and interval if not already set
+                Long lastLookTime = npcLastLookTimes.get(npcName);
+                if (lastLookTime == null) {
+                    lastLookTime = System.currentTimeMillis();
+                    npcLastLookTimes.put(npcName, lastLookTime);
+                }
 
-        int taskId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!npc.isSpawned() || npc.getEntity() == null) {
-                // Remove the hologram if the NPC is gone
-                DHAPI.removeHologram(npc.getUniqueId().toString());
+                // Store next look interval in a map if not already set
+                if (npcLookIntervals == null) {
+                    npcLookIntervals = new HashMap<>();
+                }
 
-                // Check if the task ID exists in the map before canceling
-                Integer taskToCancel = hologramTasks.get(npcName);
-                if (taskToCancel != null) {
-                    Bukkit.getScheduler().cancelTask(taskToCancel);
+                Integer lookInterval = npcLookIntervals.get(npcName);
+                if (lookInterval == null) {
+                    lookInterval = random.nextInt(3000) + 2000; // 2-5 seconds
+                    npcLookIntervals.put(npcName, lookInterval);
+                }
+
+                // Cancel any existing task for this NPC
+                Integer existingTaskId = hologramTasks.get(npcName);
+                if (existingTaskId != null) {
+                    Bukkit.getScheduler().cancelTask(existingTaskId);
                     hologramTasks.remove(npcName);
                 }
-                return;
+
+                int taskId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                    // Check if NPC is still spawned and in a conversation
+                    if (!npc.isSpawned() || npc.getEntity() == null || !isNPCInConversation(npcName)) {
+                        // Remove the hologram
+                        DHAPI.removeHologram(npcUUID);
+
+                        // Cancel this task
+                        Integer taskToCancel = hologramTasks.get(npcName);
+                        if (taskToCancel != null) {
+                            Bukkit.getScheduler().cancelTask(taskToCancel);
+                            hologramTasks.remove(npcName);
+                        }
+
+                        // Reset look traits if applicable
+                        if (npc.isSpawned() && npc.hasTrait(LookClose.class)) {
+                            LookClose lookTrait = npc.getTraitNullable(LookClose.class);
+                            if (lookTrait != null) {
+                                lookTrait.lookClose(false);
+                            }
+                        }
+                        return;
+                    }
+
+                    // Update hologram position
+                    Location updatedPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
+                    DHAPI.moveHologram(finalHolo, updatedPos);
+
+                    // Check if it's time to look at someone else using our persistent maps
+                    long currentTime = System.currentTimeMillis();
+                    Long storedLastLook = npcLastLookTimes.get(npcName);
+                    Integer storedInterval = npcLookIntervals.get(npcName);
+
+                    if (storedLastLook != null && storedInterval != null &&
+                            currentTime - storedLastLook > storedInterval && finalConversation != null) {
+
+                        // Reset the timer and set a new random interval
+                        npcLastLookTimes.put(npcName, currentTime);
+                        int newInterval = random.nextInt(3000) + 2000; // 2-5 seconds
+                        npcLookIntervals.put(npcName, newInterval);
+
+                        // Choose someone to look at
+                        List<Object> targets = new ArrayList<>();
+
+                        // Add only NPCs that are still in the conversation
+                        for (NPC otherNpc : finalConversation.getNPCs()) {
+                            if (otherNpc.isSpawned() && !otherNpc.equals(npc) &&
+                                    finalConversation.getNpcNames().contains(otherNpc.getName())) {
+                                targets.add(otherNpc.getEntity());
+                            }
+                        }
+
+                        // Add only Players that are still in the conversation
+                        for (UUID playerUUID : finalConversation.getPlayers()) {
+                            Player player = Bukkit.getPlayer(playerUUID);
+                            if (player != null && player.isOnline()) {
+                                targets.add(player);
+                            }
+                        }
+
+                        // Look at a random target if any are available
+                        if (!targets.isEmpty() && random.nextInt(10) < 8) { // 70% chance to look at someone
+                            Object target = targets.get(random.nextInt(targets.size()));
+                            if (target instanceof Entity) {
+                                // Set a slower head rotation speed for more natural movement
+                                npc.getNavigator().getDefaultParameters().speedModifier(1f);
+                                RotationTrait rot = npc.getOrAddTrait(RotationTrait.class);
+                                rot.getPhysicalSession().rotateToFace((Entity) target);
+                            }
+                        }
+                    }
+                }, 0L, 5L).getTaskId();
+
+                hologramTasks.put(npcName, taskId);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error while showing listening hologram: " + e.getMessage());
             }
-
-            // Update hologram position
-            Location updatedPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
-            DHAPI.moveHologram(finalHolo, updatedPos);
-
-            // Check if it's time to look at someone else using our persistent maps
-            long currentTime = System.currentTimeMillis();
-            Long storedLastLook = npcLastLookTimes.get(npcName);
-            Integer storedInterval = npcLookIntervals.get(npcName);
-
-            if (storedLastLook != null && storedInterval != null &&
-                    currentTime - storedLastLook > storedInterval && finalConversation != null) {
-
-                // Reset the timer and set a new random interval
-                npcLastLookTimes.put(npcName, currentTime);
-                int newInterval = random.nextInt(3000) + 2000; // 2-5 seconds
-                npcLookIntervals.put(npcName, newInterval);
-
-                // Choose someone to look at
-                List<Object> targets = new ArrayList<>();
-
-                // Add NPCs from the conversation
-                for (NPC otherNpc : finalConversation.getNPCs()) {
-                    if (!otherNpc.getName().equals(npcName) && otherNpc.isSpawned()) {
-                        targets.add(otherNpc.getEntity());
-                    }
-                }
-
-                // Add Players from the conversation
-                for (UUID playerUUID : finalConversation.getPlayers()) {
-                    Player player = Bukkit.getPlayer(playerUUID);
-                    if (player != null && player.isOnline()) {
-                        targets.add(player);
-                    }
-                }
-
-                // Look at a random target if any are available
-                if (!targets.isEmpty()) {
-                    Object target = targets.get(random.nextInt(targets.size()));
-                    if (target instanceof Entity) {
-                        // Set a slower head rotation speed for more natural movement
-                        npc.getNavigator().getDefaultParameters().speedModifier(1f);
-                        //npc.faceLocation(((Entity) target).getLocation());
-                        RotationTrait rot = npc.getOrAddTrait(RotationTrait.class);
-                        rot.getPhysicalSession().rotateToFace((Entity) target);
-                    }
-                }
-            }
-        }, 0L, 5L).getTaskId();
-
-        hologramTasks.put(npcName, taskId);
+        }
     }
 
 
@@ -1358,37 +1410,89 @@ public class ConversationManager {
 
         if (!npc.isSpawned() || npc.getEntity() == null) return;
 
-        Location npcPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
+        // Only attempt to remove holograms if DecentHolograms is available
+        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
+
+            try {
+
+                Location npcPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
+                String npcUUID = npc.getUniqueId().toString();
+
+                Hologram holo = DHAPI.getHologram(npcUUID);
+                if (holo != null) DHAPI.removeHologram(npcUUID);
+
+                holo = DHAPI.createHologram(npcUUID, npcPos);
+                DHAPI.addHologramLine(holo, 0, "&9&othinking...");
+                DHAPI.updateHologram(npcUUID);
+
+                Hologram finalHolo = holo;
+
+                int taskId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                    if (!npc.isSpawned() || npc.getEntity() == null) {
+                        // Remove the hologram if the NPC is gone
+                        DHAPI.removeHologram(npc.getUniqueId().toString());
+
+                        // Check if the task ID exists in the map before canceling
+                        Integer taskToCancel = hologramTasks.get(npcName);
+                        if (taskToCancel != null) {
+                            Bukkit.getScheduler().cancelTask(taskToCancel);
+                            hologramTasks.remove(npcName);
+                        }
+                        return;
+                    }
+
+                    Location updatedPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
+                    DHAPI.moveHologram(finalHolo, updatedPos);
+                }, 0L, 5L).getTaskId();
+
+                hologramTasks.put(npcName, taskId);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error while showing thinking hologram: " + e.getMessage());
+            }
+        }
+    }
+
+    public void cleanupNPCHologram(NPC npc) {
+        if (npc == null) return;
+
+        String npcName = npc.getName();
         String npcUUID = npc.getUniqueId().toString();
 
-        Hologram holo = DHAPI.getHologram(npcUUID);
-        if (holo != null) DHAPI.removeHologram(npcUUID);
 
-        holo = DHAPI.createHologram(npcUUID, npcPos);
-        DHAPI.addHologramLine(holo, 0, "&9&othinking...");
-        DHAPI.updateHologram(npcUUID);
+        // Only attempt to remove holograms if DecentHolograms is available
+        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
 
-        Hologram finalHolo = holo;
+            try {
+                // Remove the hologram
+                Hologram holo = DHAPI.getHologram(npcUUID);
+                if (holo != null) {
+                    DHAPI.removeHologram(npcUUID);
+                }
 
-        int taskId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!npc.isSpawned() || npc.getEntity() == null) {
-                // Remove the hologram if the NPC is gone
-                DHAPI.removeHologram(npc.getUniqueId().toString());
-
-                // Check if the task ID exists in the map before canceling
-                Integer taskToCancel = hologramTasks.get(npcName);
-                if (taskToCancel != null) {
-                    Bukkit.getScheduler().cancelTask(taskToCancel);
+                // Cancel the task
+                Integer taskId = hologramTasks.get(npcName);
+                if (taskId != null) {
+                    Bukkit.getScheduler().cancelTask(taskId);
                     hologramTasks.remove(npcName);
                 }
-                return;
+
+                // Reset NPC look traits
+                if (npc.isSpawned()) {
+                    if (npc.hasTrait(LookClose.class)) {
+                        LookClose lookTrait = npc.getTraitNullable(LookClose.class);
+                        if (lookTrait != null) {
+                            lookTrait.lookClose(false);
+                        }
+                    }
+                }
+
+                // Clear tracking data
+                npcLastLookTimes.remove(npcName);
+                npcLookIntervals.remove(npcName);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error while cleaning up NPC hologram: " + e.getMessage());
             }
-
-            Location updatedPos = npc.getEntity().getLocation().clone().add(0, 2.10, 0);
-            DHAPI.moveHologram(finalHolo, updatedPos);
-        }, 0L, 5L).getTaskId();
-
-        hologramTasks.put(npcName, taskId);
+        }
     }
 
 
@@ -1558,7 +1662,9 @@ public class ConversationManager {
         for (String line : lines) {
             // Check for a new character block
             if (line.startsWith("Character:")) {
-                npcName = line.split(":")[1].trim();
+                // Parse the character name(s)
+                String characterEntry = line.split(":")[1].trim();
+                npcName = characterEntry;
             } else if (line.startsWith("Effect:")) {
                 effect = line.split(":")[1].trim();
             } else if (line.startsWith("Target:")) {
@@ -1569,21 +1675,28 @@ public class ConversationManager {
 
             // When all necessary variables are set, process the effect
             if (npcName != null && effect != null && target != null && value != null) {
-                switch (effect) {
-                    case "relation":
-                        plugin.saveNPCRelationValue(npcName, target, value);
-                        break;
-                    case "title":
-                        //plugin.broadcastNPCMessage("Title of " + target + " has changed to " + value, npcName, false, null, null, null, "#599B45");
-                        break;
-                    case "item":
-                        //plugin.broadcastNPCMessage("Item " + value + " has been given to " + target, npcName, false, null, null, null, "#599B45");
-                        break;
-                    default:
-                        System.out.println("Unknown effect: " + effect);
-                        break;
+                // Split the NPC name by commas and process each one individually
+                String[] npcNames = npcName.split(",\\s*");
+
+                for (String singleNpcName : npcNames) {
+                    switch (effect) {
+                        case "relation":
+                            plugin.saveNPCRelationValue(singleNpcName.trim(), target, value);
+                            break;
+                        case "title":
+                            //plugin.broadcastNPCMessage("Title of " + target + " has changed to " + value, singleNpcName, false, null, null, null, "#599B45");
+                            break;
+                        case "item":
+                            // Handle item effects
+                            break;
+                        default:
+                            // Handle other effects
+                            break;
+                    }
                 }
-                // Reset effect-specific variables for the next effect
+
+                // Reset variables for the next effect
+                npcName = null;
                 effect = null;
                 target = null;
                 value = null;

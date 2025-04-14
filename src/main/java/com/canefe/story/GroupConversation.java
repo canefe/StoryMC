@@ -74,13 +74,22 @@ public class GroupConversation {
         return false;
     }
 
-    public boolean addPlayerToConversation(Player player) {
+    public boolean addPlayer(Player player) {
         // Join the player to another player's conversation
         if (!players.contains(player.getUniqueId())) {
             players.add(player.getUniqueId());
             return true;
         }
 
+        return false;
+    }
+
+    public boolean removePlayer(UUID playerUUID) {
+        // Leave the conversation
+        if (players.contains(playerUUID)) {
+            players.remove(playerUUID);
+            return true;
+        }
         return false;
     }
 

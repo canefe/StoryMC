@@ -55,7 +55,7 @@ public class LocationManager {
             return null; // Return null if no file exists
         }
         FileConfiguration config = YamlConfiguration.loadConfiguration(locationFile);
-        StoryLocation storyLocation = new StoryLocation(locationName, config.getStringList("npcNames"), config.getStringList("context"));
+        StoryLocation storyLocation = new StoryLocation(locationName, config.getStringList("context"));
 
         locations.put(locationName, storyLocation);
 
@@ -65,6 +65,27 @@ public class LocationManager {
     // Add a location
     public void addLocation(StoryLocation storyLocation) {
         locations.put(storyLocation.getName(), storyLocation);
+    }
+
+    // Create location location_name and Location
+    public boolean createLocation(String name, Location bukkitLocation) {
+        try {
+            // check if same name exists
+            if (locations.containsKey(name)) {
+                plugin.getLogger().warning("Location with name " + name + " already exists.");
+                return false;
+            }
+
+
+            StoryLocation location = new StoryLocation(name, new ArrayList<String>(), bukkitLocation);
+            locations.put(name, location);
+            saveLocation(location);
+            return true;
+        } catch (Exception e) {
+            plugin.getLogger().severe("Failed to create location: " + name);
+            e.printStackTrace();
+            return false;
+        }
     }
 
     // Get a location by name
@@ -91,12 +112,6 @@ public class LocationManager {
     // Replace your existing getLocationGlobalContexts method
     public List<String> getLocationGlobalContexts(String locationName) {
         return getAllContextForLocation(locationName);
-    }
-
-    // Check if an NPC is part of a location
-    public boolean isNPCInLocation(String npcName, String locationName) {
-        StoryLocation storyLocation = locations.get(locationName);
-        return storyLocation != null && storyLocation.getNpcNames().contains(npcName);
     }
 
 // In your LocationManager class:
@@ -127,7 +142,7 @@ public class LocationManager {
                 String explicitParent = config.getString("parent", null);
                 String effectiveParent = explicitParent != null ? explicitParent : parentPath;
 
-                StoryLocation location = new StoryLocation(fullPath, npcNames, context, effectiveParent);
+                StoryLocation location = new StoryLocation(fullPath, context, effectiveParent);
 
                 // Load Bukkit location if exists
                 if (config.contains("world")) {
@@ -183,7 +198,6 @@ public class LocationManager {
 
         // Load it and add to cache
         FileConfiguration config = YamlConfiguration.loadConfiguration(locationFile);
-        List<String> npcNames = config.getStringList("npcs");
         List<String> context = config.getStringList("context");
         String parentName = config.getString("parent", null);
 
@@ -192,7 +206,7 @@ public class LocationManager {
             parentName = name.substring(0, name.lastIndexOf("/"));
         }
 
-        location = new StoryLocation(name, npcNames, context, parentName);
+        location = new StoryLocation(name, context, parentName);
 
         // Load Bukkit location
         if (config.contains("world")) {
@@ -220,7 +234,6 @@ public class LocationManager {
 
         // Save basic properties
         config.set("name", location.getName());
-        config.set("npcs", location.getNpcNames());
         config.set("context", location.getContext());
 
         // Save parent location if it exists

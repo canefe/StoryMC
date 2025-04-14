@@ -6,6 +6,7 @@ import net.citizensnpcs.api.ai.PathStrategy;
 import net.citizensnpcs.api.ai.event.NavigationCompleteEvent;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.npc.ai.AStarNavigationStrategy;
+import net.citizensnpcs.trait.RotationTrait;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
@@ -129,6 +130,10 @@ public class NPCManager {
             // Create a task ID holder
             final int[] taskId = {-1};
 
+            // Track time spent chasing
+            final int[] ticksElapsed = {0};
+            final int timeoutTicks = 20 * 15;
+
             // Register event listener for navigation completion
             Listener navigationListener = new Listener() {
                 @EventHandler
@@ -190,6 +195,17 @@ public class NPCManager {
                     // Cancel task and unregister listener if player or NPC is no longer valid
                     Bukkit.getScheduler().cancelTask(taskId[0]);
                     NavigationCompleteEvent.getHandlerList().unregister(navigationListener);
+                    return;
+                }
+
+                // Increment time tracking
+                ticksElapsed[0] += 20; // 1 second
+
+                if (ticksElapsed[0] >= timeoutTicks) {
+                    // Cancel task if timeout reached
+                    Bukkit.getScheduler().cancelTask(taskId[0]);
+                    NavigationCompleteEvent.getHandlerList().unregister(navigationListener);
+                    navigator.cancelNavigation();
                     return;
                 }
 
@@ -442,6 +458,8 @@ public class NPCManager {
             if (distanceToTarget <= distanceMargin * 2) {
                 Bukkit.getScheduler().cancelTask(taskId[0]);
                 navigator.cancelNavigation();
+                RotationTrait rot = npc.getOrAddTrait(RotationTrait.class);
+                rot.getPhysicalSession().rotateToFace(targetLocation);
                 if (onArrival != null) onArrival.run();
                 return;
             }
@@ -606,7 +624,7 @@ public class NPCManager {
 
                         plugin.broadcastNPCMessage(firstMessage, npc.getName(), false, npc, null, null, npcContext.avatar, colorCode);
 
-                        plugin.conversationManager.generateRadiantResponses(conversation);
+                        plugin.conversationManager.generateGroupNPCResponses(conversation, null);
 
 
                     }

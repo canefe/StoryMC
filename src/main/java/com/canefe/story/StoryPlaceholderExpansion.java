@@ -1,6 +1,7 @@
 package com.canefe.story;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 public class StoryPlaceholderExpansion extends PlaceholderExpansion {
@@ -13,34 +14,44 @@ public class StoryPlaceholderExpansion extends PlaceholderExpansion {
 
     @Override
     public String getAuthor() {
-        return "Author"; //
+        return "canefe";
     }
 
     @Override
     public String getIdentifier() {
-        return "story"; //
+        return "story";
     }
 
     @Override
     public String getVersion() {
-        return "1.0.0"; //
+        return "1.0.0";
     }
 
     @Override
     public boolean persist() {
-        return true; //
+        return true;
     }
 
     @Override
     public String onRequest(OfflinePlayer player, @NotNull String params) {
-        if (params.equalsIgnoreCase("quest_obj")) {
-            return plugin.questObj;
+        if (player == null) {
+            return "";
         }
 
         if (params.equalsIgnoreCase("quest_title")) {
-            return plugin.questTitle;
+            if (player.isOnline()) {
+                return plugin.getQuestTitle(player.getPlayer());
+            }
+            return "";
         }
 
-        return null; //
+        if (params.equalsIgnoreCase("quest_objective")) {
+            if (player.isOnline()) {
+                return plugin.getQuestObj(player.getPlayer());
+            }
+            return "> No quests active.";
+        }
+
+        return null;
     }
 }

@@ -88,16 +88,43 @@ public class RumorManager {
 
             // Process based on type
             if ("PERSONAL".equalsIgnoreCase(type)) {
-                // Personal knowledge for a specific NPC
-                addPersonalKnowledge(target, information, importance);
+                // Split target by comma to handle multiple NPCs
+                String[] targetNpcs = target.split(",\\s*");
+
+                for (String singleTarget : targetNpcs) {
+                    // Only add personal knowledge if target is a valid NPC name
+                    if (npcNames.contains(singleTarget.trim())) {
+                        addPersonalKnowledge(singleTarget.trim(), information, importance);
+                    } else {
+                        plugin.getLogger().warning("Ignoring personal knowledge for unknown NPC: " + singleTarget);
+                    }
+                }
             } else if ("RUMOR".equalsIgnoreCase(type)) {
                 // Rumor to spread in location
                 if ("location".equalsIgnoreCase(target)) {
                     addLocationRumor(locationName, information, importance);
                 } else {
-                    // Specific NPC knows a rumor they might spread
-                    addPersonalKnowledge(target, information, importance);
-                    addLocationRumor(locationName, "Rumor: " + information, importance);
+                    // Split target by comma to handle multiple NPCs
+                    String[] targetNpcs = target.split(",\\s*");
+                    boolean validTargetFound = false;
+
+                    for (String singleTarget : targetNpcs) {
+                        singleTarget = singleTarget.trim();
+                        // Only if target is a valid NPC name
+                        if (npcNames.contains(singleTarget)) {
+                            addPersonalKnowledge(singleTarget, information, importance);
+                            validTargetFound = true;
+                        }
+                    }
+
+                    // Add location rumor only once, if at least one valid NPC was found
+                    if (validTargetFound) {
+                        addLocationRumor(locationName, "Rumor: " + information, importance);
+                    } else {
+                        // If no valid targets, just add it as location rumor
+                        plugin.getLogger().warning("No valid NPCs found in target: " + target + ", treating as location rumor");
+                        addLocationRumor(locationName, information, importance);
+                    }
                 }
             }
         }

@@ -175,9 +175,11 @@ public class NPCScheduleManager {
             executeAction(npcEntity, entry.getAction());
         }
 
+        NPCUtils.NPCContext npcContext = plugin.npcUtils.getOrCreateContextForNPC(npc.getName());
+        String colorCode = plugin.randomColor(npcName);
         // Handle dialogue (announcement)
         if (entry.getDialogue() != null) {
-            plugin.broadcastNPCMessage(entry.getDialogue(), npcName, false, npc, null, null, null, "#599B45");
+            plugin.broadcastNPCMessage(entry.getDialogue(), npcName, false, npc, null, null, npcContext.avatar, colorCode);
         }
     }
 
@@ -190,7 +192,7 @@ public class NPCScheduleManager {
             return;
         }
         plugin.getLogger().info("Moving NPC to " + bukkit_location);
-        plugin.npcManager.walkToLocation(npc, bukkit_location, 1, 1f, 30, null, null);
+        plugin.npcManager.walkToLocation(npc, bukkit_location, 0.1, 1f, 30, null, null);
     }
 
     private void executeAction(Entity npc, String action) {

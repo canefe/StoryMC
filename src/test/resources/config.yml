@@ -1,0 +1,116 @@
+openai:
+  apikey: "your-api-key-here"
+  aiModel: "gryphe/mythomax-l2-13b:extended"
+ai:
+  defaultContext: ""
+  chatFormat: "<gray>%npc_name% <italic>:</italic></gray> <white>%message%</white>"
+  emoteFormat: "<yellow><italic>$1</italic></yellow>"
+  radiantRadius: 5
+  chatRadius: 5
+  traits:
+    - brave
+    - cunning
+    - cowardly
+    - loyal
+    - deceitful
+    - kind
+    - selfish
+    - compassionate
+    - apathetic
+    - hot-tempered
+    - calculating
+    - stubborn
+    - ambitious
+    - charismatic
+    - reserved
+    - resourceful
+    - daring
+    - pessimistic
+    - idealistic
+    - practical
+    - scheming
+    - patient
+    - impulsive
+    - optimistic
+  motivations:
+    - revenge
+    - greed
+    - self-preservation
+    - honor
+    - power
+    - freedom
+    - love
+    - curiosity
+    - survival
+    - recognition
+    - adventure
+    - family loyalty
+    - faith or religious duty
+    - justice
+    - chaos for chaos’s sake
+    - personal redemption
+    - knowledge
+    - glory in battle
+    - protecting their home
+    - escaping their past
+    - overcoming a curse or prophecy
+    - building a legacy
+    - fear of being forgotten
+  flaws:
+    - arrogance
+    - naivety
+    - paranoia
+    - laziness
+    - recklessness
+    - jealousy
+    - short-tempered
+    - greedy
+    - self-doubt
+    - overly trusting
+    - easily manipulated
+    - fearful
+    - stubborn to a fault
+    - vengeful
+    - prone to lying
+    - overly competitive
+    - prideful
+    - obsessive
+    - emotionally distant
+    - impulsive
+    - cruel under pressure
+    - haughty
+    - cowardly in danger
+    - judgmental
+  tones:
+    - sarcastic
+    - blunt
+    - formal
+    - playful
+    - serious
+    - melancholic
+    - cheerful
+    - apathetic
+    - arrogant
+    - cautious
+    - dismissive
+    - flirtatious
+    - mischievous
+    - pessimistic
+    - optimistic
+    - passionate
+    - calm
+    - distant
+    - mocking
+    - cryptic
+    - eager
+    - conflicted
+    - suspicious
+    - humorous
+    - desperate
+  quirks:
+    - always carries a lucky charm
+    - has a fear of heights
+    - speaks in rhyme
+    - has a habit of humming to themselves
+
+

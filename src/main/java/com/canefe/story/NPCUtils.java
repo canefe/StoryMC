@@ -83,6 +83,34 @@ public class NPCUtils {
             this.avatar = avatar;
             this.conversationHistory = npcConversationHistory;
         }
+
+        public String getNpcName() {
+            return npcName;
+        }
+
+        public String getNpcRole() {
+            return npcRole;
+        }
+
+        public String getContext() {
+            return context;
+        }
+
+        public Map<String, Integer> getRelations() {
+            return relations;
+        }
+
+        public StoryLocation getLocation() {
+            return location;
+        }
+
+        public String getAvatar() {
+            return avatar;
+        }
+
+        public List<Story.ConversationMessage> getConversationHistory() {
+            return conversationHistory;
+        }
     }
 
     // GetOrCreateContextForNPC

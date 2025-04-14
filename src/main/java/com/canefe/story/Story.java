@@ -19,6 +19,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.player.*;
@@ -118,9 +119,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     // PlaceholderAPI expansion String that supports color codes
 
-    public String questTitle = "";
-    public String questObj = "> No quests active.";
-    private String tempQuestTitle;
+    // Add these fields to the Story class
+    private Map<UUID, String> playerQuestTitles = new HashMap<>();
+    private Map<UUID, String> playerQuestObjectives = new HashMap<>();
+    private Map<String, Set<UUID>> teams = new HashMap<>(); // Team name -> Set of player UUIDs
 
 
     private final Map<NPC, Long> npcCooldowns = new HashMap<>();
@@ -176,7 +178,98 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
         // Command to hide the health bar "vanish"
         //BetterHealthBar.inst().playerManager().player("").uninject();
+        loadTeamsAndQuests();
 
+        // a command called /story with subcommand location create
+        new CommandAPICommand("story")
+                .withPermission("storymaker.story")
+                .withSubcommand(new CommandAPICommand("location")
+                        .withSubcommand(new CommandAPICommand("create")
+                                .withArguments(new StringArgument("location_name"))
+                                .executesPlayer((player, args) -> {
+                                    String locationName = (String) args.get("location_name");
+                                    Location playerLocation = player.getLocation();
+                                    if (locationManager.createLocation(locationName, playerLocation)) {
+                                        player.sendMessage(ChatColor.GREEN + "Location " + locationName + " created.");
+                                    } else {
+                                        player.sendMessage(ChatColor.RED + "Location " + locationName + " already exists.");
+                                    }
+                                })
+                        )
+                )
+                // Add this to your existing command chain after .withSubcommand(new CommandAPICommand("location")...)
+                .withSubcommand(new CommandAPICommand("quest")
+                        .withPermission("storymaker.quest")
+                        .withSubcommand(new CommandAPICommand("set")
+                                .withArguments(new PlayerArgument("player"))
+                                .withArguments(new GreedyStringArgument("prompt"))
+                                .executesPlayer((player, args) -> {
+                                    Player target = (Player) args.get("player");
+                                    String prompt = (String) args.get("prompt");
+
+                                    // Generate quest using AI
+                                    generateQuestForPlayer(target, prompt, player);
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("clear")
+                                .withArguments(new PlayerArgument("player"))
+                                .executesPlayer((player, args) -> {
+                                    Player target = (Player) args.get("player");
+                                    clearPlayerQuest(target);
+                                    player.sendMessage(ChatColor.GREEN + "Cleared quest for " + target.getName());
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("view")
+                                .withOptionalArguments(new PlayerArgument("player"))
+                                .executesPlayer((player, args) -> {
+                                    Player target = (Player) args.getOrDefault("player", player);
+                                    showPlayerQuest(player, target);
+                                })
+                        )
+                )
+                .withSubcommand(new CommandAPICommand("team")
+                        .withPermission("storymaker.team")
+                        .withSubcommand(new CommandAPICommand("create")
+                                .withArguments(new StringArgument("team_name"))
+                                .executesPlayer((player, args) -> {
+                                    String teamName = (String) args.get("team_name");
+                                    createTeam(teamName, player);
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("add")
+                                .withArguments(new StringArgument("team_name"))
+                                .withArguments(new PlayerArgument("player"))
+                                .executesPlayer((player, args) -> {
+                                    String teamName = (String) args.get("team_name");
+                                    Player target = (Player) args.get("player");
+                                    addPlayerToTeam(teamName, target, player);
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("remove")
+                                .withArguments(new StringArgument("team_name"))
+                                .withArguments(new PlayerArgument("player"))
+                                .executesPlayer((player, args) -> {
+                                    String teamName = (String) args.get("team_name");
+                                    Player target = (Player) args.get("player");
+                                    removePlayerFromTeam(teamName, target, player);
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("list")
+                                .withOptionalArguments(new StringArgument("team_name"))
+                                .executesPlayer((player, args) -> {
+                                    String teamName = (String) args.getOrDefault("team_name", "");
+                                    listTeams(player, teamName);
+                                })
+                        )
+                        .withSubcommand(new CommandAPICommand("delete")
+                                .withArguments(new StringArgument("team_name"))
+                                .executesPlayer((player, args) -> {
+                                    String teamName = (String) args.get("team_name");
+                                    deleteTeam(teamName, player);
+                                })
+                        )
+                )
+                .register();
 
         new CommandAPICommand("maketalk")
                 .withPermission("storymaker.chat.toggle")
@@ -297,27 +390,6 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 })
                 .register();
 
-
-        new CommandAPICommand("storyqtitle")
-                .withPermission("storymaker.quest.set")
-                .withArguments(new GreedyStringArgument("title"))
-                .executesPlayer((player, args) -> {
-                    String title = (String) args.args()[0];
-                    setQuestTitle(title);
-                    player.sendMessage(ChatColor.GRAY + "Quest title set to: " + title);
-                })
-                .register();
-
-        new CommandAPICommand("storyqobj")
-                .withPermission("storymaker.quest.set")
-                .withArguments(new GreedyStringArgument("objective"))
-                .executesPlayer((player, args) -> {
-                    String objective = (String) args.args()[0];
-                    setQuestObj(objective);
-                    player.sendMessage(ChatColor.GRAY + "Quest objective set to: " + objective);
-                })
-                .register();
-
         // /convadd <player> <npc> // add player to existing conv on with npc
         new CommandAPICommand("convadd")
                 .withPermission("storymaker.conversation.add")
@@ -336,17 +408,6 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                     } else {
                         player.sendMessage(ChatColor.RED + npcName + " is not in an active conversation.");
                     }
-                })
-                .register();
-
-
-        // New command to reset quest title and objective
-        new CommandAPICommand("resetquest")
-                .withPermission("storymaker.quest.reset")
-                .executesPlayer((player, args) -> {
-                    setQuestTitle("");
-                    setQuestObj("> No quests active.");
-                    player.sendMessage(ChatColor.GRAY + "Quest title and objective reset.");
                 })
                 .register();
 
@@ -436,15 +497,90 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         new CommandAPICommand("npcinit")
                 .withPermission("storymaker.npc.init")
                 .withArguments(new StringArgument("location"))
-                .withArguments(new GreedyStringArgument("npc"))
+                .withArguments(new TextArgument("npc"))
+                .withOptionalArguments(new GreedyStringArgument("prompt"))
                 .executesPlayer((player, args) -> {
                     String npcName = (String) args.get("npc");
                     String location = (String) args.get("location");
-                    NPCUtils.NPCContext NPCContext = NPCUtils.getInstance(this).getOrCreateContextForNPC(npcName);
-                    String role = NPCContext.npcRole;
-                    String context = NPCContext.context;
-                    saveNPCData(npcName, role, context, NPCContext.conversationHistory, location);
-                    player.sendMessage(ChatColor.GRAY + "NPC data saved for " + npcName);
+                    String prompt = (String) args.getOrDefault("prompt", "");
+
+                    NPCUtils.NPCContext npcContext = NPCUtils.getInstance(this).getOrCreateContextForNPC(npcName);
+
+                    if (prompt != null && !prompt.isEmpty()) {
+                        // Inform player we're generating context
+                        player.sendMessage(ChatColor.GRAY + "Generating AI context for NPC " +
+                                ChatColor.YELLOW + npcName + ChatColor.GRAY + " based on: " +
+                                ChatColor.ITALIC + prompt);
+
+                        // Create a system message to instruct the AI
+                        List<ConversationMessage> messages = new ArrayList<>();
+                        messages.add(new ConversationMessage("system",
+                                "Generate a detailed NPC profile for a character named " + npcName +
+                                        " in the location " + location + ". Include: personality traits, " +
+                                        "background story, appearance, unique quirks, and role in society. " +
+                                        "Be creative, detailed, and make the character feel alive. " +
+                                        "Format the response as 'ROLE: [brief role description]' followed by " +
+                                        "a detailed paragraph about the character."));
+
+                        // Add the user prompt
+                        messages.add(new ConversationMessage("user", prompt));
+
+                        // Generate AI response
+                        CompletableFuture.supplyAsync(() -> getAIResponse(messages))
+                                .thenAccept(response -> {
+                                    if (response != null) {
+                                        // Parse response to extract role and context
+                                        String role;
+                                        String context;
+
+                                        // Try to extract the ROLE section
+                                        if (response.contains("ROLE:")) {
+                                            String[] parts = response.split("ROLE:", 2);
+                                            if (parts.length > 1) {
+                                                String[] roleParts = parts[1].split("\n", 2);
+                                                role = roleParts[0].trim();
+                                                context = roleParts.length > 1 ? roleParts[1].trim() : parts[1].trim();
+                                            } else {
+                                                role = "";
+                                                context = response;
+                                            }
+                                        } else {
+                                            role = "";
+                                            context = response;
+                                        }
+
+                                        // Update NPC context
+                                        npcContext.npcRole = role;
+                                        npcContext.context = context;
+
+                                        // Save the NPC data
+                                        saveNPCData(npcName, role, context, npcContext.conversationHistory, location);
+
+                                        // Inform player of success
+                                        Bukkit.getScheduler().runTask(this, () -> {
+                                            player.sendMessage(ChatColor.GREEN + "AI-generated profile for " +
+                                                    ChatColor.YELLOW + npcName + ChatColor.GREEN + " created!");
+                                            player.sendMessage(ChatColor.AQUA + "Role: " + ChatColor.WHITE + role);
+                                            player.sendMessage(ChatColor.AQUA + "Context summary: " +
+                                                    ChatColor.WHITE + (context.length() > 50 ?
+                                                    context.substring(0, 50) + "..." : context));
+                                        });
+                                    } else {
+                                        // Handle failed response
+                                        Bukkit.getScheduler().runTask(this, () -> {
+                                            player.sendMessage(ChatColor.RED + "Failed to generate AI context. Using default values.");
+                                            saveNPCData(npcName, npcContext.npcRole, npcContext.context,
+                                                    npcContext.conversationHistory, location);
+                                            player.sendMessage(ChatColor.GRAY + "Basic NPC data saved for " + npcName);
+                                        });
+                                    }
+                                });
+                    } else {
+                        // No prompt, just save existing context
+                        saveNPCData(npcName, npcContext.npcRole, npcContext.context,
+                                npcContext.conversationHistory, location);
+                        player.sendMessage(ChatColor.GRAY + "NPC data saved for " + npcName);
+                    }
                 })
                 .register();
 
@@ -521,9 +657,12 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                                 // Build Talk button
                                 // get a random npc name from the list
+// Build Talk button
                                 String randomNPCName = convo.getNpcNames().get(new Random().nextInt(convo.getNpcNames().size()));
+// Escape apostrophes and other special characters for command use
+                                String escapedNPCName = randomNPCName.replace("'", "\\'").replace("\"", "\\\"");
                                 Component talkButton = mm.deserialize(
-                                        "<click:run_command:'/maketalk " + randomNPCName + "'>" +
+                                        "<click:run_command:'/maketalk " + escapedNPCName + "'>" +
                                                 "<hover:show_text:'Make Conversation Continue'>" +
                                                 "<gray>[<green>Talk</green>]</gray></hover></click>"
                                 );
@@ -555,9 +694,10 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                                 boolean first = true;
 
                                 for (String npcName : convo.getNpcNames()) {
+                                    String escapedName = npcName.replace("'", "\\'").replace("\"", "\\\"");
                                     Component npcComponent = mm.deserialize(
-                                            "<click:run_command:'/conv npc " + id + " " + npcName + "'>" +
-                                                    "<hover:show_text:'Control " + npcName + "'>" +
+                                            "<click:run_command:'/conv npc " + id + " " + escapedName + "'>" +
+                                                    "<hover:show_text:'Control " + escapedName + "'>" +
                                                     "<aqua>" + npcName + "</aqua></hover></click>"
                                     );
 
@@ -616,6 +756,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                             int id = (int) args.get("conversation_id");
                             String npcName = (String) args.get("npc_name");
 
+                            if (npcName == null || npcName.isEmpty()) {
+                                player.sendMessage(ChatColor.RED + "Invalid NPC name.");
+                                return;
+                            }
+
                             // Verify conversation and NPC exist
                             GroupConversation convo = conversationManager.getConversationById(id);
                             if (convo == null || !convo.getNpcNames().contains(npcName)) {
@@ -629,15 +774,16 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                             // Build menu title
                             Component title = mm.deserialize("<gold>==== NPC Controls: <yellow>" + npcName + "</yellow> ====</gold>");
                             player.sendMessage(title);
+                            player.sendMessage("  ");
 
                             // Menu options
-                            player.sendMessage(mm.deserialize("<click:run_command:'/conv remove " + id + " " + npcName + "'><hover:show_text:'Remove this NPC from the conversation'><gray>[<red>Remove</red>]</gray></hover></click>")
+                            String escapedNPCName = npcName.replace("'", "\\'").replace("\"", "\\\"");
+                            player.sendMessage(mm.deserialize("<click:run_command:'/conv remove " + id + " " + escapedNPCName + "'><hover:show_text:'Remove this NPC from the conversation'><gray>[<red>Remove</red>]</gray></hover></click>")
                                     .append(mm.deserialize("<gray> | </gray>"))
                                     .append(mm.deserialize("<click:run_command:'/conv mute \" + id + \" \" + npcName + \"'><hover:show_text:'Toggle whether this NPC speaks'><gray>[<yellow>Mute</yellow>]</gray></hover></click>"))
+                                    .append(mm.deserialize("<gray> | </gray>"))
+                                    .append(mm.deserialize("<click:run_command:'/conv list'><hover:show_text:'Back to conversation list'><gray>[<green>Back</green>]</gray></hover></click>"))
                             );
-
-                            // Back button
-                            player.sendMessage(mm.deserialize("<click:run_command:'/conv list'><hover:show_text:'Back to conversation list'><gray>« Back to Conversations</gray></hover></click>"));
                         })
                 )
 
@@ -687,6 +833,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                             if (npc == null || !npc.isSpawned()) {
                                 player.sendMessage(ChatColor.RED + "NPC not found or not spawned.");
                                 return;
+                            }
+
+                            // Clean up all NPCs in the conversation
+                            for (NPC convoNpc : convo.getNPCs()) {
+                                conversationManager.cleanupNPCHologram(convoNpc);
                             }
 
                             // Remove NPC from conversation first
@@ -1023,6 +1174,100 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         if (scheduleManager != null) {
             scheduleManager.shutdown();
         }
+
+        saveTeamsAndQuests();
+    }
+
+    private void saveTeamsAndQuests() {
+        try {
+            // Save teams
+            File teamsFile = new File(getDataFolder(), "teams.yml");
+            FileConfiguration teamsConfig = new YamlConfiguration();
+
+            for (Map.Entry<String, Set<UUID>> entry : teams.entrySet()) {
+                List<String> memberUUIDs = entry.getValue().stream()
+                        .map(UUID::toString)
+                        .collect(Collectors.toList());
+
+                teamsConfig.set("teams." + entry.getKey(), memberUUIDs);
+            }
+
+            teamsConfig.save(teamsFile);
+
+            // Save player quests
+            File questsFile = new File(getDataFolder(), "player-quests.yml");
+            FileConfiguration questsConfig = new YamlConfiguration();
+
+            for (UUID playerUUID : playerQuestTitles.keySet()) {
+                String uuidString = playerUUID.toString();
+                questsConfig.set("quests." + uuidString + ".title", playerQuestTitles.get(playerUUID));
+                questsConfig.set("quests." + uuidString + ".objective", playerQuestObjectives.get(playerUUID));
+            }
+
+            questsConfig.save(questsFile);
+
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "Failed to save teams and quests data", e);
+        }
+    }
+
+    // Load teams and player quests from config
+    private void loadTeamsAndQuests() {
+        try {
+            // Load teams
+            File teamsFile = new File(getDataFolder(), "teams.yml");
+            if (teamsFile.exists()) {
+                FileConfiguration teamsConfig = YamlConfiguration.loadConfiguration(teamsFile);
+                ConfigurationSection teamsSection = teamsConfig.getConfigurationSection("teams");
+
+                if (teamsSection != null) {
+                    for (String teamName : teamsSection.getKeys(false)) {
+                        List<String> memberUUIDs = teamsConfig.getStringList("teams." + teamName);
+                        Set<UUID> members = new HashSet<>();
+
+                        for (String uuidString : memberUUIDs) {
+                            try {
+                                members.add(UUID.fromString(uuidString));
+                            } catch (IllegalArgumentException e) {
+                                getLogger().warning("Invalid UUID in teams file: " + uuidString);
+                            }
+                        }
+
+                        teams.put(teamName, members);
+                    }
+                }
+            }
+
+            // Load player quests
+            File questsFile = new File(getDataFolder(), "player-quests.yml");
+            if (questsFile.exists()) {
+                FileConfiguration questsConfig = YamlConfiguration.loadConfiguration(questsFile);
+                ConfigurationSection questsSection = questsConfig.getConfigurationSection("quests");
+
+                if (questsSection != null) {
+                    for (String uuidString : questsSection.getKeys(false)) {
+                        try {
+                            UUID playerUUID = UUID.fromString(uuidString);
+                            String title = questsConfig.getString("quests." + uuidString + ".title", "");
+                            String objective = questsConfig.getString("quests." + uuidString + ".objective", "");
+
+                            if (!title.isEmpty()) {
+                                playerQuestTitles.put(playerUUID, title);
+                            }
+
+                            if (!objective.isEmpty()) {
+                                playerQuestObjectives.put(playerUUID, objective);
+                            }
+                        } catch (IllegalArgumentException e) {
+                            getLogger().warning("Invalid UUID in quests file: " + uuidString);
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "Failed to load teams and quests data", e);
+        }
     }
 
     public void reloadPluginConfig(Player player) {
@@ -1055,6 +1300,7 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
             loadGeneralContexts();
             loadDataFiles();
+            loadTeamsAndQuests();
             conversationManager.reloadConfig();
             scheduleManager.reloadSchedules();
             locationManager.loadAllLocations();
@@ -1182,11 +1428,6 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                     playerName = EssentialsUtils.getNickname(playerName);
                 }
 
-                // Add system context
-                prompts.add(new ConversationMessage("system",
-                        "You are " + initiatorName + ". You've just noticed " + playerName +
-                                " and decided to initiate a conversation. Generate a brief, natural greeting " +
-                                "to start the conversation based on your character, relations, and context."));
 
                 // Add general and location contexts
                 getGeneralContexts().forEach(context ->
@@ -1199,6 +1440,25 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
                 // Add Relations
                 prompts.add(new ConversationMessage("system", "Relations: " + npcContext.relations.toString()));
+
+                // add last 5 messages from the conversation history
+                List<ConversationMessage> history = npcContext.conversationHistory;
+                int start = Math.max(0, history.size() - 10);
+                for (int i = start; i < history.size(); i++) {
+                    ConversationMessage message = history.get(i);
+                    prompts.add(new ConversationMessage(message.getRole(), message.getContent()));
+                }
+
+                prompts.add(new ConversationMessage("system",
+                        npcContext.context));
+
+                // Add system context
+                prompts.add(new ConversationMessage("system",
+                        "You are " + initiatorName + ". You've just noticed " + playerName +
+                                " and decided to initiate a conversation. Generate a brief, natural greeting " +
+                                "to start the conversation based on your character, relations, and context."));
+
+
 
                 // Get AI-generated greeting
                 String greeting = getAIResponse(prompts);
@@ -1816,6 +2076,11 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
                 }
             }
 
+            // send for console
+            for (Component message : parsedMessages) {
+                Bukkit.getConsoleSender().sendMessage(message);
+            }
+
             // Handle follow logic for the last NPC message
             if (shouldFollow && finalNpc != null && finalNpc.hasTrait(SentinelTrait.class) &&
                     playerUUID != null && player != null) {
@@ -1954,14 +2219,203 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
         return chatRadius;
 }
 
-    public void setQuestTitle(String title) {
-        // Wait for setQuestObj to be called
-        tempQuestTitle = title;
+
+    private void generateQuestForPlayer(Player target, String prompt, Player sender) {
+        // Generate quest using AI
+        CompletableFuture.runAsync(() -> {
+            try {
+                // Create AI prompt
+                List<ConversationMessage> messages = new ArrayList<>();
+                messages.add(new ConversationMessage("system",
+                        "You are a quest designer. Create a short, engaging quest title and objective based on the prompt. " +
+                                "Format your response exactly like: TITLE: [Short title max 20 chars]\nOBJECTIVE: [Brief objective max 30 chars]"));
+                messages.add(new ConversationMessage("user", prompt));
+
+                // Get AI response
+                String aiResponse = getAIResponse(messages);
+
+                if (aiResponse != null && !aiResponse.isEmpty()) {
+                    // Parse title and objective
+                    String title = "";
+                    String objective = "";
+
+                    // Extract title and objective using regex
+                    Pattern titlePattern = Pattern.compile("TITLE:\\s*(.+?)(?=\\n|$)");
+                    Pattern objectivePattern = Pattern.compile("OBJECTIVE:\\s*(.+?)(?=\\n|$)");
+
+                    Matcher titleMatcher = titlePattern.matcher(aiResponse);
+                    if (titleMatcher.find()) {
+                        title = titleMatcher.group(1).trim();
+                    }
+
+                    Matcher objectiveMatcher = objectivePattern.matcher(aiResponse);
+                    if (objectiveMatcher.find()) {
+                        objective = objectiveMatcher.group(1).trim();
+                    }
+
+                    // Apply quest to player and team
+                    final String finalTitle = title;
+                    final String finalObjective = objective;
+
+                    Bukkit.getScheduler().runTask(this, () -> {
+                        // Set for target player
+                        setPlayerQuest(target, finalTitle, finalObjective);
+
+                        // Apply to team members if player is in a team
+                        String playerTeam = getPlayerTeam(target.getUniqueId());
+                        if (playerTeam != null) {
+                            Set<UUID> teamMembers = teams.get(playerTeam);
+                            if (teamMembers != null) {
+                                for (UUID memberUUID : teamMembers) {
+                                    Player member = Bukkit.getPlayer(memberUUID);
+                                    if (member != null && !member.equals(target)) {
+                                        setPlayerQuest(member, finalTitle, finalObjective);
+                                    }
+                                }
+                                sender.sendMessage(ChatColor.GREEN + "Set quest for " + target.getName() +
+                                        " and their team " + playerTeam + "!");
+                            }
+                        } else {
+                            sender.sendMessage(ChatColor.GREEN + "Set quest for " + target.getName() + "!");
+                            // send console the quest
+                            getLogger().info("Quest for " + target.getName() + ": " + finalTitle + " - " + finalObjective);
+                        }
+                    });
+                } else {
+                    sender.sendMessage(ChatColor.RED + "Failed to generate quest. Please try again.");
+                }
+            } catch (Exception e) {
+                getLogger().log(Level.WARNING, "Error generating quest", e);
+                sender.sendMessage(ChatColor.RED + "Error generating quest: " + e.getMessage());
+            }
+        });
     }
 
-    public void setQuestObj(String obj) {
-        questObj = obj;
-        questTitle = tempQuestTitle;
+    private void setPlayerQuest(Player player, String title, String objective) {
+        UUID playerUUID = player.getUniqueId();
+        playerQuestTitles.put(playerUUID, title);
+        playerQuestObjectives.put(playerUUID, objective);
+
+        // Notify player
+        player.sendMessage(ChatColor.GREEN + "New quest received: " + ChatColor.GOLD + title);
+        player.sendMessage(ChatColor.GRAY + "Objective: " + ChatColor.WHITE + objective);
+    }
+
+    private void clearPlayerQuest(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        playerQuestTitles.remove(playerUUID);
+        playerQuestObjectives.remove(playerUUID);
+        player.sendMessage(ChatColor.GRAY + "Your quest has been cleared.");
+    }
+
+    private void showPlayerQuest(Player viewer, Player target) {
+        UUID targetUUID = target.getUniqueId();
+        String title = playerQuestTitles.getOrDefault(targetUUID, "");
+        String objective = playerQuestObjectives.getOrDefault(targetUUID, "");
+
+        if (title.isEmpty() || objective.isEmpty()) {
+            viewer.sendMessage(ChatColor.GRAY + target.getName() + " has no active quest.");
+        } else {
+            viewer.sendMessage(ChatColor.GOLD + target.getName() + "'s Quest: " + title);
+            viewer.sendMessage(ChatColor.GRAY + "Objective: " + ChatColor.WHITE + objective);
+        }
+    }
+
+    private void createTeam(String teamName, Player sender) {
+        if (teams.containsKey(teamName)) {
+            sender.sendMessage(ChatColor.RED + "Team '" + teamName + "' already exists!");
+            return;
+        }
+
+        teams.put(teamName, new HashSet<>());
+        sender.sendMessage(ChatColor.GREEN + "Created team: " + teamName);
+    }
+
+    private void addPlayerToTeam(String teamName, Player target, Player sender) {
+        if (!teams.containsKey(teamName)) {
+            sender.sendMessage(ChatColor.RED + "Team '" + teamName + "' does not exist!");
+            return;
+        }
+
+        // Remove player from any other teams first
+        String currentTeam = getPlayerTeam(target.getUniqueId());
+        if (currentTeam != null && !currentTeam.equals(teamName)) {
+            teams.get(currentTeam).remove(target.getUniqueId());
+        }
+
+        // Add to new team
+        teams.get(teamName).add(target.getUniqueId());
+        sender.sendMessage(ChatColor.GREEN + "Added " + target.getName() + " to team: " + teamName);
+        target.sendMessage(ChatColor.GREEN + "You have been added to team: " + teamName);
+    }
+
+    private void removePlayerFromTeam(String teamName, Player target, Player sender) {
+        if (!teams.containsKey(teamName)) {
+            sender.sendMessage(ChatColor.RED + "Team '" + teamName + "' does not exist!");
+            return;
+        }
+
+        Set<UUID> teamMembers = teams.get(teamName);
+        if (teamMembers.remove(target.getUniqueId())) {
+            sender.sendMessage(ChatColor.GREEN + "Removed " + target.getName() + " from team: " + teamName);
+            target.sendMessage(ChatColor.YELLOW + "You have been removed from team: " + teamName);
+        } else {
+            sender.sendMessage(ChatColor.RED + target.getName() + " is not a member of team: " + teamName);
+        }
+    }
+
+    private void listTeams(Player player, String teamName) {
+        if (teamName != null) {
+            // List specific team
+            if (!teams.containsKey(teamName)) {
+                player.sendMessage(ChatColor.RED + "Team '" + teamName + "' does not exist!");
+                return;
+            }
+
+            Set<UUID> members = teams.get(teamName);
+            player.sendMessage(ChatColor.GOLD + "Team " + teamName + " (" + members.size() + " members):");
+
+            for (UUID memberUUID : members) {
+                String memberName = Bukkit.getOfflinePlayer(memberUUID).getName();
+                player.sendMessage(ChatColor.GRAY + "- " + memberName);
+            }
+        } else {
+            // List all teams
+            player.sendMessage(ChatColor.GOLD + "Teams (" + teams.size() + "):");
+            for (Map.Entry<String, Set<UUID>> entry : teams.entrySet()) {
+                player.sendMessage(ChatColor.GRAY + "- " + entry.getKey() + " (" + entry.getValue().size() + " members)");
+            }
+        }
+    }
+
+    private void deleteTeam(String teamName, Player sender) {
+        if (!teams.containsKey(teamName)) {
+            sender.sendMessage(ChatColor.RED + "Team '" + teamName + "' does not exist!");
+            return;
+        }
+
+        teams.remove(teamName);
+        sender.sendMessage(ChatColor.GREEN + "Deleted team: " + teamName);
+    }
+
+    private String getPlayerTeam(UUID playerUUID) {
+        for (Map.Entry<String, Set<UUID>> entry : teams.entrySet()) {
+            if (entry.getValue().contains(playerUUID)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    // Override the existing PlaceholderAPI expansion methods to support player-specific quests
+    public String getQuestTitle(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        return playerQuestTitles.getOrDefault(playerUUID, "");
+    }
+
+    public String getQuestObj(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        return playerQuestObjectives.getOrDefault(playerUUID, "> No quests active.");
     }
 
     private void loadGeneralContexts() {
@@ -2227,6 +2681,17 @@ public final class Story extends JavaPlugin implements Listener, CommandExecutor
 
     public List<String> getToneList() {
         return toneList;
+    }
+
+    public boolean isPlayerInRangeOfNPC(Player player, NPC npc) {
+        if (npc == null || !npc.isSpawned() || npc.getEntity() == null) {
+            return false; // NPC is not valid
+        }
+        Location playerLocation = player.getLocation();
+        Location npcLocation = npc.getEntity().getLocation();
+        double distanceSquared = playerLocation.distanceSquared(npcLocation);
+        double radiusSquared = chatRadius * chatRadius;
+        return distanceSquared <= radiusSquared;
     }
 
     // Inner class to represent conversation messages
