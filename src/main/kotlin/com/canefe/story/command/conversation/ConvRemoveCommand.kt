@@ -29,7 +29,7 @@ class ConvRemoveCommand(
                 }
 
                 // Clean up all NPCs in the conversation
-                val npcs = convo.getNPCs()
+                val npcs = convo.npcs
 
                 for (convoNpc in npcs) {
                     commandUtils.conversationManager.cleanupNPCHologram(convoNpc)

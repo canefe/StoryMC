@@ -16,13 +16,15 @@ class CreateLocationCommand(
         return CommandAPICommand("create")
             .withArguments(GreedyStringArgument("location_name"))
             .executesPlayer(PlayerCommandExecutor { player, args ->
-                val locationName = args["location_name"] as String?
+                val locationName = args["location_name"] as String
                 val playerLocation: Location = player.location
-                if (commandUtils.locationManager.createLocation(locationName, playerLocation)) {
-                    player.sendSuccess("Location '$locationName' created successfully at your current location.")
-                } else {
-                    player.sendError("Location with this name already exists.")
+
+                val location = commandUtils.locationManager.createLocation(locationName, playerLocation) ?: run {
+                    player.sendError("Failed to create location. The location name may already exist.")
+                    return@PlayerCommandExecutor
                 }
+
+                commandUtils.locationManager.saveLocation(location)
             })
     }
 }

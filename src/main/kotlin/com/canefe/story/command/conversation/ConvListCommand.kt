@@ -45,17 +45,17 @@ class ConvListCommand(
             return
         }
 
-        activeConversations.forEach { (id, convo) ->
+        activeConversations.forEach { convo ->
             val npcNames = convo.npcNames
             val playerNames = convo.players
                 .mapNotNull { Bukkit.getPlayer(it)?.name ?: "Unknown" }
                 .joinToString(", ")
 
             // Create prefix with conversation ID and participants
-            val prefix = createConversationPrefix(id, npcNames, playerNames)
+            val prefix = createConversationPrefix(convo.id, npcNames, playerNames)
 
             // Create action buttons
-            val commands = createActionButtons(id, npcNames)
+            val commands = createActionButtons(convo.id, npcNames)
 
             // Send to player
             player.sendMessage(prefix)

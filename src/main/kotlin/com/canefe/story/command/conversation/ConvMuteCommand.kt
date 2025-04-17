@@ -39,15 +39,20 @@ class ConvMuteCommand(
                     return@CommandExecutor
                 }
 
+                val npc = commandUtils.story.npcUtils.getNPCByNameAsync(npcName).get() ?: run {
+                    sender.sendError("NPC not found.")
+                    return@CommandExecutor
+                }
+
                 // Toggle mute status for the NPC
-                val isMuted = commandUtils.story.isNPCDisabled(npcName)
+                val isMuted = commandUtils.story.npcManager.isNPCDisabled(npc)
                 if (isMuted) {
                     // Unmute the NPC
-                    commandUtils.story.enableNPCTalking(npcName)
+                    commandUtils.story.npcManager.toggleNPC(npc, sender)
                     sender.sendSuccess("NPC $npcName is now unmuted.")
                 } else {
                     // Mute the NPC
-                    commandUtils.story.disableNPCTalking(npcName)
+                    commandUtils.story.npcManager.toggleNPC(npc, sender)
                     sender.sendInfo("NPC $npcName is now muted.")
                 }
 

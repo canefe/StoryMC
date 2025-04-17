@@ -1,10 +1,10 @@
 package com.canefe.story.command.conversation
 
-import com.canefe.story.ConversationManager
-import com.canefe.story.GroupConversation
-import com.canefe.story.NPCManager
+import ConversationManager
+import com.canefe.story.conversation.Conversation
 import com.canefe.story.Story
 import com.canefe.story.command.base.CommandComponentUtils
+import com.canefe.story.player.NPCManager
 import com.canefe.story.util.Msg.sendError
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
@@ -17,7 +17,7 @@ class ConvCommandUtils {
     val npcManager: NPCManager get() = Story.instance.npcManager
 
     // Return the GroupConversation if it exists, null otherwise
-    fun getConversation(conversationId: Int, sender: CommandSender): GroupConversation? {
+    fun getConversation(conversationId: Int, sender: CommandSender): Conversation? {
         val conversation = story.conversationManager.getConversationById(conversationId)
 
         if (conversation == null) {

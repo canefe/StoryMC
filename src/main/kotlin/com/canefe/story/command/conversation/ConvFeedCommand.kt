@@ -21,7 +21,7 @@ class ConvFeedCommand(
                     return@CommandExecutor
 
 
-                commandUtils.conversationManager.addSystemMessage(conversation, message)
+                conversation.addSystemMessage(message)
                 val successMessage = "<green>Added system message: <gray><italic>'$message'</italic></gray> to conversation ID $id.</green>"
                 sender.sendInfo(successMessage)
 

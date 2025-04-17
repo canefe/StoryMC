@@ -21,7 +21,7 @@ class ConvEndCommand(
 
 
                 // Add System Message
-                commandUtils.conversationManager.addSystemMessage(convo, "Each NPC should now deliver a final line or action that reflects their current feelings and intentions. Let them exit the scene naturally — avoid stating that the conversation is ending.")
+                convo.addSystemMessage("Each NPC should now deliver a final line or action that reflects their current feelings and intentions. Let them exit the scene naturally — avoid stating that the conversation is ending.")
 
                 commandUtils.conversationManager.generateGroupNPCResponses(convo, null, null).thenRun {
                     // End conversation
