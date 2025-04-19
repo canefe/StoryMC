@@ -14,7 +14,7 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 class NPCScheduleManager private constructor(private val plugin: Story) {
-    private val schedules = ConcurrentHashMap<String, NPCSchedule>()
+    val schedules = ConcurrentHashMap<String, NPCSchedule>()
     private val scheduleFolder: File = File(plugin.dataFolder, "schedules").apply {
         if (!exists()) {
             mkdirs()
@@ -109,6 +109,15 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
         }
     }
 
+    fun getEmptyScheduleTemplate(npcName: String): NPCSchedule {
+        val schedule = NPCSchedule(npcName)
+        // From 6-23 hours
+        for (hour in 6..23) {
+            schedule.addEntry(ScheduleEntry(hour, "", "idle", ""))
+        }
+        return schedule
+    }
+
     fun getSchedule(npcName: String): NPCSchedule? {
         return schedules[npcName.lowercase()]
     }
@@ -145,8 +154,9 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
         val npcEntity = npc.entity ?: return
 
         // Handle location movement
-        if (entry.locationName != null) {
-            val location = plugin.locationManager.getLocation(entry.locationName)
+        val locationName = entry.locationName
+        if (locationName != null) {
+            val location = plugin.locationManager.getLocation(locationName)
             if (location != null) {
                 // Use your existing NPC movement system or teleport
                 moveNPCToLocation(npc, location)
@@ -238,7 +248,7 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 
     class ScheduleEntry(
         val time: Int, // Hour (0-23)
-        val locationName: String?,
+        var locationName: String?,
         val action: String?,
         val dialogue: String?
     )

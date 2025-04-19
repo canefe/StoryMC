@@ -12,7 +12,6 @@ data class NPCData(
 ) {
     var memory: MutableList<Memory> = mutableListOf()
     var avatar: String = ""
-    var relations: Map<String, Int> = hashMapOf()
     var knowledgeCategories: List<String> = listOf()
 
 
@@ -21,12 +20,6 @@ data class NPCData(
         val memory = Memory(content = content, power = power)
         this.memory.add(memory)
         return memory
-    }
-
-    // Helper method to get memories sorted by strength
-    fun getMemoriesByStrength(limit: Int? = null): List<Memory> {
-        val sortedMemories = memory.sortedByDescending { it.getCurrentStrength() }
-        return limit?.let { sortedMemories.take(it) } ?: sortedMemories
     }
 
 

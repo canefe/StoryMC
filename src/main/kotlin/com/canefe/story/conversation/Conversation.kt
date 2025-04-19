@@ -82,6 +82,14 @@ class Conversation(
         return false
     }
 
+    fun removePlayer(player: Player): Boolean {
+        if (_players.contains(player.uniqueId)) {
+            _players.remove(player.uniqueId)
+            return true
+        }
+        return false
+    }
+
     fun addPlayerMessage(player: Player, message: String) {
         // Get nickname
         val playerName = EssentialsUtils.getNickname(player.name)
@@ -115,7 +123,7 @@ class Conversation(
         _history.add(systemMessage)
     }
 
-    fun addUserMessage(message: String) {
+    private fun addUserMessage(message: String) {
         val userMessage = ConversationMessage(
             "user",
             message,
@@ -123,7 +131,7 @@ class Conversation(
         _history.add(userMessage)
     }
 
-    fun addAssistantMessage(message: String) {
+    private fun addAssistantMessage(message: String) {
         val assistantMessage = ConversationMessage(
             "assistant",
             message,

@@ -3,7 +3,6 @@ package com.canefe.story.lore
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import org.bukkit.Bukkit
-import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import java.util.*
@@ -42,20 +41,42 @@ class LoreBookManager private constructor(private val plugin: Story) {
         }
     }
 
-    // Method to load NPC knowledge categories
+    // Method to load NPC knowledge categories - now just clears the cache
     fun loadNPCKnowledgeCategories() {
+        // Clear the cache but don't preload anything
         npcKnowledgeCategories.clear()
+    }
 
-        // Default everyone knows "common" knowledge
-        for (npcName in plugin.npcDataManager.getAllNPCNames()) {
+    // Helper method to get categories for an NPC when needed
+    private fun getNPCKnowledgeCategories(npcName: String): Set<String> {
+        return npcKnowledgeCategories.getOrPut(npcName.lowercase()) {
             val categories = mutableSetOf("common")
-
-            val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
-            val configCategories = npcData.knowledgeCategories
-            categories.addAll(configCategories)
-
-            npcKnowledgeCategories[npcName.lowercase()] = categories
+            val npcData = plugin.npcDataManager.getNPCData(npcName)
+            if (npcData != null) {
+                categories.addAll(npcData.knowledgeCategories)
+            }
+            categories
         }
+    }
+
+    // Add this method to LoreBookManager class
+    fun findLoresByKeywords(text: String): List<LoreContext> {
+        val relevantContexts = mutableListOf<LoreContext>()
+        val textLower = text.lowercase()
+        val addedLoreNames = HashSet<String>() // Track lorebooks added in this call
+
+        for (loreBook in loreBooks.values) {
+            for (keyword in loreBook.keywords) {
+                if (textLower.contains(keyword.lowercase())) {
+                    if (addedLoreNames.add(loreBook.name)) { // Only add if not already added
+                        relevantContexts.add(LoreContext(loreBook.name, loreBook.context))
+                    }
+                    break // Only add each lorebook once even if multiple keywords match
+                }
+            }
+        }
+
+        return relevantContexts
     }
 
     fun loadAllLoreBooks() {
@@ -98,9 +119,7 @@ class LoreBookManager private constructor(private val plugin: Story) {
         val conversationKnowledgeCategories = mutableSetOf("common") // Everyone knows common knowledge
 
         for (npcName in conversation.npcNames) {
-            npcKnowledgeCategories[npcName.lowercase()]?.let { npcCategories ->
-                conversationKnowledgeCategories.addAll(npcCategories)
-            }
+            conversationKnowledgeCategories.addAll(getNPCKnowledgeCategories(npcName))
         }
 
         for (loreBook in loreBooks.values) {

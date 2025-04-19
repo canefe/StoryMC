@@ -5,13 +5,15 @@ import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
 import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
+import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import org.checkerframework.checker.units.qual.C
 import java.util.concurrent.CompletableFuture
+import kotlin.random.Random
 
 
 class ConversationManager private constructor(
@@ -22,6 +24,12 @@ class ConversationManager private constructor(
 ) {
     private val repository = ConversationRepository()
     private val hologramManager = ConversationHologramManager(plugin)
+
+    // Map to store scheduled tasks by conversation
+    private val scheduledTasks = mutableMapOf<Conversation, Int>()
+
+    // Getter for scheduled tasks
+    fun getScheduledTasks(): MutableMap<Conversation, Int> = scheduledTasks
 
     val activeConversations: List<Conversation>
         get() = repository.getAllActiveConversations()
@@ -41,8 +49,15 @@ class ConversationManager private constructor(
             initialNPCs = npcs
         )
 
+        // If chat is not enabled, allow manual conversation
+        if (!plugin.config.chatEnabled)
+            conversation.chatEnabled = false
+
         // Add to repository
         repository.addConversation(conversation)
+
+        // Schedule proximity check for this conversation
+        scheduleProximityCheck(conversation)
 
         // Notify player
         val npcNames = npcs.joinToString(", ") { it.name }
@@ -52,6 +67,12 @@ class ConversationManager private constructor(
     }
 
     fun endConversation(conversation: Conversation) {
+        // Clean up scheduled proximity check task if it exists
+        val taskId = scheduledTasks[conversation]
+        if (taskId != null) {
+            Bukkit.getScheduler().cancelTask(taskId)
+            scheduledTasks.remove(conversation)
+        }
 
         // Only process conversation data if significant
         if (conversation.history.size > 2) {
@@ -94,6 +115,78 @@ class ConversationManager private constructor(
         repository.removeConversation(conversation)
     }
 
+    // Method to schedule proximity check for a conversation
+    private fun scheduleProximityCheck(conversation: Conversation) {
+        val checkDelay = 10 // Check every 10 seconds
+        val maxDistance = plugin.config.chatRadius
+
+        val taskId = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
+            // Skip if conversation is no longer active
+            if (!conversation.isActive) {
+                return@Runnable
+            }
+
+            // Check each player's proximity to NPCs in the conversation
+            val playersToRemove = mutableListOf<Player>()
+
+            for (playerId in conversation.players) {
+                val player = Bukkit.getPlayer(playerId) ?: continue
+
+                // Check if player is still near any NPC in the conversation
+                var isNearAnyNPC = false
+
+                for (npc in conversation.npcs) {
+                    if (!npc.isSpawned) continue
+
+                    val npcLoc = npc.entity.location
+                    val playerLoc = player.location
+
+                    // Check if player and NPC are in the same world and within range
+                    if (playerLoc.world == npcLoc.world &&
+                        playerLoc.distance(npcLoc) <= maxDistance) {
+                        isNearAnyNPC = true
+                        break
+                    }
+                }
+
+                // If player is not near any NPC, mark for removal
+                if (!isNearAnyNPC) {
+                    playersToRemove.add(player)
+                }
+            }
+
+            // Handle players who moved away
+            for (player in playersToRemove) {
+                player.sendInfo("<gray>You've moved away from the conversation.")
+                conversation.removePlayer(player)
+            }
+
+            // End conversation if no players left
+            if (conversation.players.isEmpty()) {
+                endConversation(conversation)
+
+                // If there was a MythicMob involved, remove it
+                for (npc in conversation.npcs) {
+                    if (npc is MythicMobConversationIntegration.MythicMobNPCAdapter) {
+                        plugin.mythicMobConversation.endConversation(npc)
+                    }
+                }
+
+                // Cancel this task
+                val currentTaskId = scheduledTasks[conversation]
+                if (currentTaskId != null) {
+                    Bukkit.getScheduler().cancelTask(currentTaskId)
+                    scheduledTasks.remove(conversation)
+                }
+            }
+        }, checkDelay * 20L, checkDelay * 20L).taskId
+
+        // Store the task ID
+        scheduledTasks[conversation] = taskId
+    }
+
+
+
     // Helper method to calculate conversation significance
     private fun calculateConversationSignificance(conversation: Conversation): Int {
         // Basic heuristic: longer conversations are more significant
@@ -116,41 +209,84 @@ class ConversationManager private constructor(
         }
     }
 
-    fun addPlayerToConversation(player: Player, conversation: Conversation) {
-        // Implementation
+    /**
+     * Fallback method for calculating impact when AI analysis fails
+     */
+    private fun fallbackImpactCalculation(conversation: Conversation): Double {
+        // Count messages with positive/negative sentiment
+        var positiveCount = 0
+        var negativeCount = 0
+
+        // Simple sentiment analysis using keywords
+        val positiveWords = listOf("happy", "thanks", "good", "great", "love", "appreciate", "friend", "help")
+        val negativeWords = listOf("angry", "hate", "bad", "terrible", "awful", "dislike", "enemy")
+
+        for (message in conversation.history) {
+            val content = message.content.lowercase()
+
+            when {
+                positiveWords.any { content.contains(it) } -> positiveCount++
+                negativeWords.any { content.contains(it) } -> negativeCount++
+            }
+        }
+
+        // Calculate impact based on positive vs negative balance
+        val totalSentiment = positiveCount - negativeCount
+        val conversationLength = conversation.history.size.toDouble()
+
+        // Scale impact based on conversation length and sentiment
+        val impact = (totalSentiment / conversationLength).coerceIn(-0.8, 0.8)
+
+        // Conversations with more messages have stronger impact
+        val lengthMultiplier = when {
+            conversationLength > 20 -> 1.2
+            conversationLength > 10 -> 1.0
+            conversationLength > 5 -> 0.8
+            else -> 0.6
+        }
+
+        return (impact * lengthMultiplier).coerceIn(-1.0, 1.0)
     }
 
     //* Triggers NPC Response
     fun addPlayerMessage(player: Player, conversation: Conversation, message: String) {
         // first add the message
         conversation.addPlayerMessage(player, message)
+        handleHolograms(conversation, player.name)
         // then trigger the NPC response if the conversation is active
         if (!conversation.isActive) {
             return
         }
-        val npc = npcResponseService.determineNextSpeaker(conversation, player)
-        npc.thenAccept { nextSpeaker ->
-            if (nextSpeaker != null) {
-                val npcEntity = conversation.getNPCByName(nextSpeaker) ?: return@thenAccept
 
-                // Show holograms for the NPCs
-                handleHolograms(conversation, nextSpeaker)
+        // Generate NPC responses
+        generateResponses(conversation).thenAccept {
+            // Handle any post-response actions if needed
+        }
 
-                var responseContext = conversation.history
-                    .map { it.content }
-                    .toList()
-
-                // add one more string to the context
-                responseContext = responseContext + "You are ${nextSpeaker}. You are in a conversation. Generate a natural response."
-
-                val response = npcResponseService.generateNPCResponse(npcEntity, responseContext)
-                response.thenAccept { npcResponse ->
-                    conversation.addNPCMessage(npcEntity, npcResponse)
-
-                    // Hologram cleanup
-                    cleanupHolograms(conversation)
-                }
+    }
+    //* Remove NPC from a conversation
+    fun removeNPC(npc: NPC, conversation: Conversation) {
+        // Remove the NPC from the conversation
+        if (conversation.removeNPC(npc)) {
+            // Notify players in the conversation
+            for (playerId in conversation.players) {
+                val player = Bukkit.getPlayer(playerId)
+                player?.sendInfo("<gold>${npc.name}</gold> has left the conversation.")
             }
+
+            // Summarise the conversation for left NPC. (Only if there is still npcs)
+            if (conversation.npcs.isNotEmpty()) {
+                npcResponseService.summarizeConversationForSingleNPC(
+                    conversation.history,
+                    npc.name
+                )
+            } else {
+                // If no NPCs left, end the conversation
+                endConversation(conversation)
+            }
+
+            // Cleanup holograms
+            cleanupHolograms(conversation)
         }
     }
 
@@ -253,19 +389,49 @@ class ConversationManager private constructor(
         // Implementation
     }
 
-    // Player message handling
-    fun handlePlayerMessage(player: Player, message: String) {
-        // Implementation
-    }
-
     // NPC conversation coordination
-    fun generateGroupNPCResponses(conversation: Conversation, player: Player?, speakerName: String?): CompletableFuture<List<String>> {
-        // Implementation
-        return CompletableFuture.completedFuture(emptyList())
+    fun generateResponses(conversation: Conversation, forceSpeaker: String? = null): CompletableFuture<Unit> {
+
+        // Determine the next speaker
+        val speakerFuture = if (forceSpeaker != null) {
+            CompletableFuture.completedFuture(forceSpeaker)
+        } else {
+            npcResponseService.determineNextSpeaker(conversation)
+        }
+
+        // Generate the response for the next speaker, handle holograms, and cleanup
+        speakerFuture.thenAccept { nextSpeaker ->
+            if (nextSpeaker != null) {
+                val npcEntity = conversation.getNPCByName(nextSpeaker) ?: return@thenAccept
+
+                // Show holograms for the NPCs
+                handleHolograms(conversation, nextSpeaker)
+
+                var responseContext = conversation.history
+                    .map { it.content }
+                    .toList()
+
+                // add one more string to the context
+                responseContext = responseContext + "You are ${nextSpeaker}. You are in a conversation. Generate a natural response."
+
+                val response = npcResponseService.generateNPCResponse(npcEntity, responseContext)
+                response.thenAccept { npcResponse ->
+                    conversation.addNPCMessage(npcEntity, npcResponse)
+
+                    // Hologram cleanup
+                    cleanupHolograms(conversation)
+                }
+            }
+        }
+
+        return CompletableFuture.completedFuture(Unit)
     }
 
     fun cancelScheduledTasks() {
-        // Implementation
+        for (taskId in scheduledTasks.values) {
+            Bukkit.getScheduler().cancelTask(taskId)
+        }
+        scheduledTasks.clear()
     }
 
     fun startRadiantConversation(npcs: ArrayList<NPC>): CompletableFuture<Conversation> {

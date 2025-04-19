@@ -48,10 +48,9 @@ class WorldInformationManager(private val plugin: Story) {
         val prompts = createAnalysisPrompt(messages, npcNames, conversationLocation, relevantLocations)
 
         // Send to AI for analysis
-        CompletableFuture.runAsync {
+        plugin.getAIResponse(prompts).thenAccept { analysisResult ->
             try {
-                val analysisResult = plugin.getAIResponse(prompts) ?: return@runAsync
-                if (analysisResult.isNotEmpty() && !analysisResult.contains("Nothing significant")) {
+                if (!analysisResult.isNullOrEmpty() && !analysisResult.contains("Nothing significant")) {
                     processSignificanceResults(analysisResult, npcNames, conversationLocation, relevantLocations.keys.toList())
                 }
             } catch (e: Exception) {

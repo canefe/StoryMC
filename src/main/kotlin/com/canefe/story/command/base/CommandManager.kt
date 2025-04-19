@@ -98,7 +98,7 @@ class CommandManager(private val plugin: Story) {
                 val successMessage = plugin.miniMessage.deserialize("<green>NPC '$npc' is now talking.</green>")
                 sender.sendMessage(successMessage)
                 // Generate NPC responses
-                plugin.conversationManager.generateGroupNPCResponses(conversation, null, npc);
+                plugin.conversationManager.generateResponses(conversation);
             })
             .register()
 
@@ -196,6 +196,15 @@ class CommandManager(private val plugin: Story) {
 
                     // Create a system message to instruct the AI
                     val messages: MutableList<ConversationMessage> = ArrayList()
+
+                    // Add General Context and Location context
+                    messages.add(
+                        ConversationMessage(
+                            "system",
+                            storyLocation.getContextForPrompt(plugin.locationManager)
+                        )
+                    )
+
                     messages.add(
                         ConversationMessage(
                             "system",
@@ -211,54 +220,55 @@ class CommandManager(private val plugin: Story) {
                     // Add the user prompt
                     messages.add(ConversationMessage("user", prompt))
 
-                    // Generate AI response
-                    val response = plugin.getAIResponse(messages)
-                    if (response?.contains("ROLE:") == true) { // Ensure response is not null
-                        val parts = response.split("ROLE:", ignoreCase = false, limit = 2).toTypedArray()
-                        val role: String
-                        val context: String?
-
-                        if (parts.size > 1) {
-                            val roleParts = parts[1].split("\n", limit = 2).toTypedArray()
-                            role = roleParts[0].trim()
-                            context = if (roleParts.size > 1) roleParts[1].trim() else parts[1].trim()
-                        } else {
-                            role = ""
-                            context = response
-                        }
-
-                        val npcData = NPCData(
-                            npcName,
-                            role,
-                            storyLocation,
-                            context,
-                        )
-
-                        plugin.npcDataManager.saveNPCData(npcName, npcData)
-
+                    // Use CompletableFuture API instead of manual task scheduling
+                    plugin.getAIResponse(messages).thenAccept { response ->
+                        // Return to the main thread to access Bukkit API
                         Bukkit.getScheduler().runTask(plugin, Runnable {
-                            player.sendSuccess("AI-generated profile for <yellow>$npcName</yellow> created!")
-                            player.sendInfo("Role: <yellow>$role</yellow>")
-                            player.sendInfo("Context summary: <yellow>${if (context.length > 50) context.substring(0, 50) + "..." else context}</yellow>")
-                        })
-                    } else {
-                        Bukkit.getScheduler().runTask(plugin, Runnable {
-                            player.sendError("Failed to generate AI context. Using default values.")
+                            if (response?.contains("ROLE:") == true) { // Ensure response is not null
+                                val parts = response.split("ROLE:", ignoreCase = false, limit = 2).toTypedArray()
+                                val role: String
+                                val context: String?
 
-                            val npcData = NPCData(
-                                npcName,
-                                npcContext.role,
-                                storyLocation,
-                                plugin.config.defaultContext,
-                            )
-                            plugin.npcDataManager.saveNPCData(npcName, npcData)
+                                if (parts.size > 1) {
+                                    val roleParts = parts[1].split("\n", limit = 2).toTypedArray()
+                                    role = roleParts[0].trim()
+                                    context = if (roleParts.size > 1) roleParts[1].trim() else parts[1].trim()
+                                } else {
+                                    role = ""
+                                    context = response
+                                }
 
-                            player.sendInfo("Basic NPC data saved for <yellow>$npcName</yellow>.")
+                                val npcData = NPCData(
+                                    npcName,
+                                    role,
+                                    storyLocation,
+                                    context,
+                                )
+
+                                plugin.npcDataManager.saveNPCData(npcName, npcData)
+                                player.sendSuccess("AI-generated profile for <yellow>$npcName</yellow> created!")
+                                player.sendInfo("Role: <yellow>$role</yellow>")
+                                player.sendInfo("Context summary: <yellow>${if (context.length > 50) context.substring(0, 50) + "..." else context}</yellow>")
+                            } else {
+                                player.sendError("Failed to generate AI context. Using default values.")
+
+                                val npcData = NPCData(
+                                    npcName,
+                                    npcContext.role,
+                                    storyLocation,
+                                    plugin.config.defaultContext,
+                                )
+                                plugin.npcDataManager.saveNPCData(npcName, npcData)
+
+                                player.sendInfo("Basic NPC data saved for <yellow>$npcName</yellow>.")
+                            }
                         })
                     }
                 }
             })
             .register()
+
+
         // g command
         CommandAPICommand("g")
             .withPermission("storymaker.chat.toggle")
@@ -291,7 +301,7 @@ class CommandManager(private val plugin: Story) {
                     // add other players
                     for (p in players) {
                         if (p != randomPlayer) {
-                            plugin.conversationManager.addPlayerToConversation(p, newConversation)
+                            newConversation.addPlayer(p)
                         }
                     }
 

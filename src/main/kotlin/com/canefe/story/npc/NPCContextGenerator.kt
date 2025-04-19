@@ -51,71 +51,49 @@ class NPCContextGenerator(private val plugin: Story) {
 
     fun getOrCreateContextForNPC(npcName: String): NPCContext? {
         try {
-            // Fetch NPC data dynamically
-            val npcDataFile: FileConfiguration = plugin.npcDataManager.loadNPCData(npcName)
-            val npcRole = npcDataFile.getString("role", "Default role")!!
-            var existingContext = npcDataFile.getString("context", null)
-            val location = npcDataFile.getString("location", "Village")!!
-            val avatar = npcDataFile.getString("avatar", "")!!
-            // Get list of relations for the NPC
-            val relationsSection = npcDataFile.getConfigurationSection("relations")
-            val relations: MutableMap<String, Int> = HashMap()
-            if (relationsSection != null) {
-                for (key in relationsSection.getKeys(false)) {
-                    relations[key] = relationsSection.getInt(key)
-                }
-            }
+            // Use TimeService instead of directly calling SeasonsAPI
+            val hours = plugin.timeService.getHours()
+            val minutes = plugin.timeService.getMinutes()
+            val season = plugin.timeService.getSeason()
+            val date = plugin.timeService.getFormattedDate()
 
-            val storyLocation = plugin.locationManager.getLocation(location)
-                ?: plugin.locationManager.createLocation(location, null) ?: return null
-
-            // Add dynamic world context
-            val seasonsAPI = SeasonsAPI.getInstance()
-            val season = seasonsAPI.getSeason(Bukkit.getWorld("world")) // Replace "world" with actual world name
-            val hours = seasonsAPI.getHours(Bukkit.getWorld("world"))
-            val minutes = seasonsAPI.getMinutes(Bukkit.getWorld("world"))
-            val date = seasonsAPI.getDate(Bukkit.getWorld("world"))
-
-            // Update or generate context
-            existingContext = if (existingContext != null) {
-                updateContext(
-                    existingContext,
-                    npcName!!, hours, minutes, season.toString(), date.toString(true)
-                )
-            } else {
-                generateDefaultContext(
-                    npcName!!,
-                    npcRole,
+            // Load existing NPC data including all data and memories
+            val npcData = plugin.npcDataManager.getNPCData(npcName) ?: NPCData(
+                npcName,
+                "Default role",
+                plugin.locationManager.getLocation("Village")
+                    ?: plugin.locationManager.createLocation("Village", null)
+                    ?: return null,
+                context = generateDefaultContext(
+                    npcName,
+                    "Default role",
                     hours,
                     minutes,
-                    season.toString(),
-                    date.toString(true)
-                )
-            }
-
-            // Add context to the conversation history
-            val memories: MutableList<Memory> = plugin.npcDataManager.loadNPCMemory(npcName)
-
-            val npcData = NPCData(
-                npcName,
-                npcRole,
-                storyLocation,
-                existingContext
+                    season,
+                    date
+                ),
             )
-            npcData.memory = memories
 
+            // Update or generate context
+            npcData.context = updateContext(
+                npcData.context,
+                npcName, hours, minutes, season, date
+            )
+
+            // Save updated NPC data with existing memories preserved
             plugin.npcDataManager.saveNPCData(npcName, npcData)
+
             return NPCContext(
                 npcName,
-                npcRole,
-                existingContext,
-                relations,
-                storyLocation,
-                avatar,
-                memories
+                npcData.role,
+                npcData.context,
+                npcData.storyLocation!!,
+                npcData.avatar ?: "",
+                npcData.memory
             )
         } catch (e: Exception) {
-            Bukkit.getLogger().warning("Error while updating NPC context: " + e.message)
+            plugin.logger.warning("Error while updating NPC context: ${e.message}")
+            e.printStackTrace()
             return null
         }
     }

@@ -60,7 +60,7 @@ class RadiantConversationService(private val plugin: Story) {
     /**
      * Triggers a radiant conversation with an NPC and a player or another NPC
      */
-    fun triggerRadiantConversation(initiator: NPC, player: Player) {
+    private fun triggerRadiantConversation(initiator: NPC, player: Player) {
         if (plugin.conversationManager.isInConversation(initiator)) {
             return
         }
@@ -73,6 +73,16 @@ class RadiantConversationService(private val plugin: Story) {
         val choosePlayer = random.nextBoolean() // 50% chance to choose player
 
         if (choosePlayer && !isPlayerInvalidTarget(player)) {
+
+            val playerName = EssentialsUtils.getNickname(player.name)
+
+            // Check if the relationship is strong enough
+            val relationship = plugin.relationshipManager.getRelationship(initiator.name, playerName)
+
+            if (relationship.score < 0.1) {
+                return
+            }
+
             // Target is player
             initiatePlayerConversation(initiator, player)
         } else {
@@ -85,7 +95,8 @@ class RadiantConversationService(private val plugin: Story) {
      * Check if a player is an invalid target for conversation
      */
     private fun isPlayerInvalidTarget(player: Player): Boolean {
-        return isVanished(player) || plugin.playerManager.isPlayerDisabled(player)
+        return isVanished(player) || plugin.playerManager.isPlayerDisabled(player) ||
+                plugin.conversationManager.isInConversation(player)
     }
 
     /**
@@ -117,6 +128,11 @@ class RadiantConversationService(private val plugin: Story) {
                 // Check if greeting is empty
                 if (greeting == "") {
                     plugin.logger.warning("Empty greeting generated for NPC $initiatorName")
+                    return@runAsync
+                }
+
+                // Check one more time if the player is in conversation
+                if (plugin.conversationManager.isInConversation(player)) {
                     return@runAsync
                 }
 

@@ -31,9 +31,7 @@ class ConvRemoveCommand(
                 // Clean up all NPCs in the conversation
                 val npcs = convo.npcs
 
-                for (convoNpc in npcs) {
-                    commandUtils.conversationManager.cleanupNPCHologram(convoNpc)
-                }
+               commandUtils.conversationManager.cleanupHolograms(convo)
 
                 // Find the NPC by name
                 val npc = npcs.find { it.name == npcName }
@@ -43,11 +41,10 @@ class ConvRemoveCommand(
                     }
 
                 // Remove NPC from conversation first
-                convo.removeNPC(npc)
+                commandUtils.conversationManager.removeNPC(npc, convo)
 
                 // End conversation if no NPCs left
                 if (npcs.isEmpty()) {
-                    commandUtils.conversationManager.endConversation(convo)
                     sender.sendInfo("Conversation ended as there are no NPCs left.")
                 } else {
                     sender.sendInfo("NPC '$npcName' removed from conversation.")

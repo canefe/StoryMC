@@ -13,7 +13,10 @@ import java.io.IOException
 import java.time.Instant
 
 class NPCDataManager private constructor(private val plugin: Story) {
-    private val npcDataMap: MutableMap<String, NPCData> = HashMap()
+    private val npcDataCache: MutableMap<String, NPCData> = HashMap()
+    private val npcDataMigrator = NPCDataMigrator(plugin)
+
+
     val npcDirectory: File = File(plugin.dataFolder, "npcs").apply {
         if (!exists()) {
             mkdirs() // Create the directory if it doesn't exist
@@ -49,63 +52,141 @@ class NPCDataManager private constructor(private val plugin: Story) {
     }
 
     fun getNPCData(npcName: String): NPCData? {
-        val npcFile = File(npcDirectory, "$npcName.yml")
-        if (!npcFile.exists()) {
-            return null // Return null if no file exists
+        // Check if NPC data is already cached
+        if (npcDataCache.containsKey(npcName)) {
+            return npcDataCache[npcName]
         }
 
-        val config = YamlConfiguration.loadConfiguration(npcFile)
-        val name = config.getString("name") ?: return null
-        val role = config.getString("role") ?: return null
-        val location = config.getString("location") ?: return null
-        val context = config.getString("context") ?: return null
-        val avatar = config.getString("avatar") ?: ""
-        val relations = config.getConfigurationSection("relations")?.getValues(false) ?: emptyMap<String, Int>()
-        val knowledgeCategories = config.getStringList("knowledgeCategories").map { it.toString() }
+        try {
+            val npcFile = File(npcDirectory, "$npcName.yml")
+            if (!npcFile.exists()) {
+                return null // Return null if no file exists
+            }
 
-        val storyLocation = plugin.locationManager.getLocation(location) ?: plugin.locationManager.createLocation(location, null)
+            val config = YamlConfiguration.loadConfiguration(npcFile)
+            val name = config.getString("name") ?: npcName
+            val role = config.getString("role") ?: ""
+            val location = config.getString("location") ?: "Village"
+            val context = config.getString("context") ?: ""
+            val avatar = config.getString("avatar") ?: ""
+            val knowledgeCategories = config.getStringList("knowledgeCategories").map { it.toString() }
 
-        val npcData = NPCData(
-            name = name,
-            role = role,
-            storyLocation = storyLocation,
-            context = context
+            val storyLocation =
+                plugin.locationManager.getLocation(location) ?: plugin.locationManager.createLocation(location, null)
+
+            val npcData = NPCData(
+                name = name,
+                role = role,
+                storyLocation = storyLocation,
+                context = context
+            )
+
+            // Use loadNPCMemory to get the memory objects
+            npcData.memory = loadNPCMemory(npcName)
+            npcData.avatar = avatar
+            npcData.knowledgeCategories = knowledgeCategories
+
+            // Check if the NPC data is in old format and needs migration
+            if (npcDataMigrator.isOldFormat(npcData)) {
+                plugin.logger.info("Old data format detected for NPC $npcName, starting migration...")
+
+                // Migration is asynchronous, but we need to return data now
+                // So we cache the initial data and start the migration
+                npcDataCache[npcName] = npcData
+
+                // Start migration asynchronously
+                npcDataMigrator.migrateToNewFormat(npcName, npcData).thenAccept { migratedData ->
+                    // Update the cache with the migrated data
+                    npcDataCache[npcName] = migratedData
+
+                    // Save the migrated data back to file
+                    saveNPCData(npcName, migratedData)
+
+                    plugin.logger.info("Migration completed for NPC $npcName")
+                }
+
+                return npcData
+            }
+
+            // Normal case - no migration needed
+            npcDataCache[npcName] = npcData
+            return npcData
+
+        } catch (e: Exception) {
+            plugin.logger.severe("Failed to load NPC data for $npcName: ${e.message}")
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    fun createMemoryForNPC(npcName: String, content: String, significance: Double = 1.0) {
+        val npcData = getNPCData(npcName) ?: return
+
+        val memory = Memory(
+            content = content,
+            gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+            lastAccessed = plugin.timeService.getCurrentGameTime(),
+            power = 1.0,
+            _significance = significance
         )
 
-        // Use loadNPCMemory to get the memory objects
-        npcData.memory = loadNPCMemory(npcName)
-        npcData.avatar = avatar
-        npcData.relations = relations.mapValues { it.value as Int }
-        npcData.knowledgeCategories = knowledgeCategories
-
-        return npcData
+        npcData.memory.add(memory)
+        saveNPCData(npcName, npcData)
     }
 
     fun loadNPCMemory(npcName: String): MutableList<Memory> {
         val npcFile = File(npcDirectory, "$npcName.yml")
         if (!npcFile.exists()) {
-            return mutableListOf() // Return an empty list if no file exists
+            plugin.logger.info("No NPC file exists for $npcName, returning empty memory list")
+            return mutableListOf()
         }
 
         val config = YamlConfiguration.loadConfiguration(npcFile)
-        val memoriesSection = config.getConfigurationSection("memories") ?: return mutableListOf()
+        val memoriesSection = config.getConfigurationSection("memories")
+        if (memoriesSection == null) {
+            plugin.logger.info("No memories section found for NPC $npcName")
+            return mutableListOf()
+        }
 
         val memories = mutableListOf<Memory>()
+        val currentGameTime = plugin.timeService.getCurrentGameTime()
+
         for (id in memoriesSection.getKeys(false)) {
             val memorySection = memoriesSection.getConfigurationSection(id) ?: continue
 
             val content = memorySection.getString("content") ?: continue
-            val createdAtStr = memorySection.getString("createdAt") ?: continue
             val power = memorySection.getDouble("power", 1.0)
-            val lastAccessedStr = memorySection.getString("lastAccessed") ?: continue
 
-            // Parse times
-            val createdAt = Instant.parse(createdAtStr)
-            val lastAccessed = Instant.parse(lastAccessedStr)
+            // Handle real created time
+            val realCreatedAt = try {
+                val createdAtStr = memorySection.getString("realCreatedAt")
+                if (createdAtStr != null) Instant.parse(createdAtStr) else Instant.now()
+            } catch (e: Exception) {
+                plugin.logger.warning("Invalid realCreatedAt for memory $id of NPC $npcName: ${e.message}")
+                Instant.now()
+            }
 
-            memories.add(Memory(id, content, createdAt, power, lastAccessed))
+            // Handle game created time with better defaults
+            val gameCreatedAt = memorySection.getLong("gameCreatedAt", currentGameTime)
+
+            // Handle last accessed with better defaults
+            val lastAccessed = memorySection.getLong("lastAccessed", currentGameTime)
+
+            // And add this to the loadNPCMemory method when creating memories
+            val significance = memorySection.getDouble("significance", 1.0)
+
+            memories.add(Memory(
+                id = id,
+                content = content,
+                realCreatedAt = realCreatedAt,
+                gameCreatedAt = gameCreatedAt,
+                power = power,
+                lastAccessed = lastAccessed,
+                _significance = significance
+            ))
         }
 
+        plugin.logger.info("Loaded ${memories.size} memories for NPC $npcName")
         return memories
     }
 
@@ -113,30 +194,49 @@ class NPCDataManager private constructor(private val plugin: Story) {
         val npcFile = File(npcDirectory, "$npcName.yml")
         val config = YamlConfiguration()
 
-        // Save NPC data to the configuration
+        // Save basic NPC data
         config.set("name", npcData.name)
         config.set("role", npcData.role)
         config.set("location", npcData.storyLocation?.name)
         config.set("context", npcData.context)
 
         // Save memories in structured format
-        val memoriesSection = config.createSection("memories")
-        for (memory in npcData.memory) {
-            val memorySection = memoriesSection.createSection(memory.id)
-            memorySection.set("content", memory.content)
-            memorySection.set("createdAt", memory.createdAt.toString())
-            memorySection.set("power", memory.power)
-            memorySection.set("lastAccessed", memory.lastAccessed.toString())
+        if (npcData.memory.isNotEmpty()) {
+            val memoriesSection = config.createSection("memories")
+            for (memory in npcData.memory) {
+                // Make sure memory has a valid ID
+                if (memory.id.isBlank()) {
+                    plugin.logger.warning("Memory has blank ID for NPC $npcName: ${memory.content}")
+                    continue
+                }
+
+                try {
+                    val memorySection = memoriesSection.createSection(memory.id)
+                    memorySection.set("content", memory.content)
+                    memorySection.set("realCreatedAt", memory.realCreatedAt.toString())
+                    memorySection.set("gameCreatedAt", memory.gameCreatedAt)
+                    memorySection.set("power", memory.power)
+                    memorySection.set("lastAccessed", memory.lastAccessed)
+                    memorySection.set("significance", memory.significance)
+                    plugin.logger.info("Saved memory ${memory.id} for NPC $npcName")
+                } catch (e: Exception) {
+                    plugin.logger.severe("Failed to save memory for NPC $npcName: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            config.set("memories", emptyMap<String, Any>())
         }
 
         // Other properties
         config.set("avatar", npcData.avatar)
-        config.set("relations", npcData.relations)
         config.set("knowledgeCategories", npcData.knowledgeCategories)
 
         try {
             config.save(npcFile)
+            plugin.logger.info("Saved NPC data for $npcName with ${npcData.memory.size} memories")
         } catch (e: IOException) {
+            plugin.logger.severe("Failed to save NPC file for $npcName: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -165,6 +265,12 @@ class NPCDataManager private constructor(private val plugin: Story) {
         if (npcFile.exists()) {
             npcFile.delete()
         }
+    }
+
+    // Reset the NPC data cache
+    fun loadConfig() {
+        npcDataCache.clear()
+        plugin.logger.info("NPC data cache cleared")
     }
 
     companion object {

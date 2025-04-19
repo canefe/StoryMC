@@ -4,4 +4,4 @@ main: com.canefe.story.Story
 api-version: '1.21'
 depend:
   - BetterHealthBar
-softdepend: ["PlaceholderAPI", "DecentHolograms", "ItemsAdder"]
+softdepend: ["PlaceholderAPI", "DecentHolograms", "ItemsAdder", "RealisticSeasons"]

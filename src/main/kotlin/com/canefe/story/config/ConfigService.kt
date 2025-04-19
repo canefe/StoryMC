@@ -46,6 +46,8 @@ class ConfigService(private val plugin: Story) {
         try{
             plugin.npcContextGenerator.loadConfig()
             plugin.lorebookManager.loadConfig()
+            plugin.scheduleManager.reloadSchedules()
+            plugin.npcDataManager.loadConfig()
         } catch (e: Exception) {
             // We can ignore this exception
         }

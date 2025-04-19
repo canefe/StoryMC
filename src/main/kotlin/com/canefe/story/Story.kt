@@ -11,7 +11,11 @@ import com.canefe.story.event.EventManager
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCContextGenerator
+import com.canefe.story.npc.behavior.NPCBehaviorManager
 import com.canefe.story.npc.data.NPCDataManager
+import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
+import com.canefe.story.npc.relationship.RelationshipManager
+import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.util.NPCUtils
@@ -19,6 +23,7 @@ import com.canefe.story.player.NPCManager
 import com.canefe.story.player.PlayerManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.util.PluginUtils
+import com.canefe.story.util.TimeService
 import dev.jorel.commandapi.CommandAPI
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
@@ -35,11 +40,18 @@ class Story : JavaPlugin(), Listener {
     }
 
     // Plugin configuration
-    private val configService = ConfigService(this)
+    val configService = ConfigService(this)
+
+    // gson
+    val gson = com.google.gson.Gson()
 
     // Services and managers
     lateinit var npcDataManager: NPCDataManager
         private set
+
+    lateinit var npcBehaviorManager: NPCBehaviorManager
+        private set
+
     lateinit var conversationManager: ConversationManager
         private set
     lateinit var locationManager: LocationManager
@@ -54,10 +66,15 @@ class Story : JavaPlugin(), Listener {
         private set
     lateinit var radiantConversationService: RadiantConversationService
         private set
+
+    lateinit var timeService: TimeService
+
     lateinit var npcResponseService: NPCResponseService
     lateinit var worldInformationManager: WorldInformationManager
 
-    private lateinit var scheduleManager: NPCScheduleManager
+    lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
+
+    lateinit var scheduleManager: NPCScheduleManager
     lateinit var npcContextGenerator: NPCContextGenerator
     lateinit var lorebookManager: LoreBookManager
 
@@ -67,6 +84,10 @@ class Story : JavaPlugin(), Listener {
 
     private lateinit var aiResponseService: AIResponseService
 
+    lateinit var relationshipManager: RelationshipManager
+
+    lateinit var mythicMobConversation: MythicMobConversationIntegration
+
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
     var itemsAdderEnabled = false
@@ -75,9 +96,6 @@ class Story : JavaPlugin(), Listener {
     // Config Reference
     val configFile get() = super.getConfig()
     val config get() = configService
-
-    // Contexts
-    val generalContexts = mutableListOf<String>()
 
     override fun onLoad() {
         commandManager = CommandManager(this)
@@ -132,6 +150,9 @@ class Story : JavaPlugin(), Listener {
     }
 
     private fun initializeManagers() {
+        // Initialize the time service
+        timeService = TimeService(this)
+
         // Initialize in order of dependencies
         npcContextGenerator = NPCContextGenerator(this)
         npcDataManager = NPCDataManager.getInstance(this)
@@ -140,14 +161,17 @@ class Story : JavaPlugin(), Listener {
         npcManager = NPCManager.getInstance(this)
         scheduleManager = NPCScheduleManager.getInstance(this)
         playerManager = PlayerManager.getInstance(this)
-
         // Initialize services that depend on managers
         npcMessageService = NPCMessageService.getInstance(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
         worldInformationManager = WorldInformationManager(this)
 
+        npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
+
         lorebookManager = LoreBookManager.getInstance(this)
+
+        npcBehaviorManager = NPCBehaviorManager(this)
 
         conversationManager = ConversationManager.getInstance(
             this,
@@ -160,6 +184,10 @@ class Story : JavaPlugin(), Listener {
         eventManager.registerEvents()
 
         aiResponseService = AIResponseService(this)
+
+        relationshipManager = RelationshipManager(this)
+
+        mythicMobConversation = MythicMobConversationIntegration(this)
 
 
     }
@@ -207,9 +235,8 @@ class Story : JavaPlugin(), Listener {
     }
 
     // AI response methods should be moved to an AI service
-    fun getAIResponse(prompts: List<ConversationMessage>): String? {
-        val response = aiResponseService.getAIResponseAsync(prompts).get()
-        return response
+    fun getAIResponse(prompts: List<ConversationMessage>): CompletableFuture<String?> {
+        return aiResponseService.getAIResponseAsync(prompts)
     }
 
     // NPC data methods should be in NPCDataManager

@@ -25,6 +25,7 @@ repositories {
     maven("https://repo.extendedclip.com/releases/")
     maven("https://maven.devs.beer/")
     maven(url = "https://repo.codemc.org/repository/maven-public/")
+    maven(url = "https://mvn.lumine.io/repository/maven-public/")
 }
 
 dependencies {
@@ -39,6 +40,7 @@ dependencies {
     compileOnly("LibsDisguises:LibsDisguises:10.0.44")
     compileOnly("me.clip:placeholderapi:2.11.6")
     compileOnly("dev.lone:api-itemsadder:4.0.9")
+    compileOnly("io.lumine:Mythic-Dist:5.6.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 

@@ -92,7 +92,7 @@ class NPCInteractionListener(private val plugin: Story) : Listener {
 
                 // Remove NPCs that are no longer nearby
                 for (npcToRemove in npcsToRemove) {
-                    conversation.removeNPC(npcToRemove)
+                    plugin.conversationManager.removeNPC(npcToRemove, conversation)
                 }
 
                 plugin.conversationManager.addPlayerMessage(player, conversation, message)
