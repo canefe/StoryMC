@@ -36,16 +36,15 @@ class NPCResponseService(private val plugin: Story) {
 		val npcContext = contextService.getOrCreateContextForNPC(npc.name)
 
 		// Add location context
-		val locationContexts = npcContext?.location?.context
-		if (locationContexts != null) {
-			for (context in locationContexts) {
-				prompts.add(
-					ConversationMessage(
-						"system",
-						context,
-					),
-				)
-			}
+		val location = npcContext?.location
+
+		if (location != null) {
+			prompts.add(
+				ConversationMessage(
+					"system",
+					location.getContextForPrompt(plugin.locationManager),
+				),
+			)
 		}
 
 		// Lorebook context (the knowledge this NPC has)

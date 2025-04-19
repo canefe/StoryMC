@@ -119,9 +119,6 @@ class Story :
 		// Check required plugins
 		checkRequiredPlugins()
 
-		// Load configuration
-		configService.reload()
-
 		// Initialize managers and services
 		initializeManagers()
 
@@ -130,6 +127,9 @@ class Story :
 
 		// Start radiant conversation service
 		radiantConversationService.startProximityTask()
+
+		// Load configuration
+		configService.reload()
 	}
 
 	private fun checkRequiredPlugins() {
