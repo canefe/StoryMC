@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.min
 
-class NPCResponseService(private val plugin: Story) {
+class NPCResponseService(
+	private val plugin: Story,
+) {
 	// generate get() reference to plugin.npcContextGenerator
 	private val contextService = plugin.npcContextGenerator
 
@@ -139,15 +141,14 @@ class NPCResponseService(private val plugin: Story) {
 			ConversationMessage(
 				"system",
 				"""
-            Based on the conversation history below, determine which character should speak next. Consider: who was addressed in the last message, who has relevant information, and who hasn't spoken recently. Available characters: ${
+				Based on the conversation history below, determine which character should speak next. Consider: who was addressed in the last message, who has relevant information, and who hasn't spoken recently. Available characters: ${
 					java.lang.String.join(
 						", ",
 						conversation.npcNames,
 					)
 				}
-            
-            Respond with ONLY the name of who should speak next. No explanation or additional text.
-            """.trimIndent(),
+				Respond with ONLY the name of who should speak next. No explanation or additional text.
+				""".trimIndent(),
 			),
 		)
 
@@ -161,18 +162,21 @@ class NPCResponseService(private val plugin: Story) {
 		}
 
 		// Run this asynchronously to avoid blocking
-		plugin.getAIResponse(speakerSelectionPrompt).thenApply { response ->
-			val speakerSelection = response?.trim() ?: ""
-			if (speakerSelection.isNotEmpty() && conversation.npcNames.contains(speakerSelection)) {
-				speakerSelection
-			} else {
-				conversation.npcNames[0]
+		plugin
+			.getAIResponse(speakerSelectionPrompt)
+			.thenApply { response ->
+				val speakerSelection = response?.trim() ?: ""
+				if (speakerSelection.isNotEmpty() && conversation.npcNames.contains(speakerSelection)) {
+					speakerSelection
+				} else {
+					conversation.npcNames[0]
+				}
+			}.thenAccept { future.complete(it) }
+			.exceptionally { e ->
+				plugin.logger.warning("Error determining next speaker: ${e.message}")
+				future.complete(conversation.npcNames[0])
+				null
 			}
-		}.thenAccept { future.complete(it) }.exceptionally { e ->
-			plugin.logger.warning("Error determining next speaker: ${e.message}")
-			future.complete(conversation.npcNames[0])
-			null
-		}
 
 		return future
 	}
@@ -218,82 +222,85 @@ class NPCResponseService(private val plugin: Story) {
 			),
 		)
 
-		plugin.getAIResponse(messages).thenAccept { summaryResponse ->
-			if (summaryResponse.isNullOrEmpty()) {
-				plugin.logger.warning("Failed to get summary response for conversation")
-				future.complete(null)
-				return@thenAccept
-			}
+		plugin
+			.getAIResponse(messages)
+			.thenAccept { summaryResponse ->
+				if (summaryResponse.isNullOrEmpty()) {
+					plugin.logger.warning("Failed to get summary response for conversation")
+					future.complete(null)
+					return@thenAccept
+				}
 
-			val pendingNPCs = npcNames.size
-			val completedNPCs = AtomicInteger(0)
+				val pendingNPCs = npcNames.size
+				val completedNPCs = AtomicInteger(0)
 
-			for (npcName in npcNames) {
-				val npcSummaryMatch =
-					Regex("(?m)^$npcName:\\s*(.*?)(?=^\\w+:|\$)", RegexOption.DOT_MATCHES_ALL)
-						.find(summaryResponse)
-						?.groupValues
-						?.getOrNull(1)
-						?.trim()
+				for (npcName in npcNames) {
+					val npcSummaryMatch =
+						Regex("(?m)^$npcName:\\s*(.*?)(?=^\\w+:|\$)", RegexOption.DOT_MATCHES_ALL)
+							.find(summaryResponse)
+							?.groupValues
+							?.getOrNull(1)
+							?.trim()
 
-				if (!npcSummaryMatch.isNullOrEmpty()) {
-					val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
+					if (!npcSummaryMatch.isNullOrEmpty()) {
+						val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
 
-					evaluateMemorySignificance(npcSummaryMatch).thenAccept { significance ->
-						val memory =
-							Memory(
-								id = "conversation_summary_${System.currentTimeMillis()}_$npcName",
-								content = npcSummaryMatch,
-								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-								lastAccessed = plugin.timeService.getCurrentGameTime(),
-								power = 0.85,
-								_significance = significance,
-							)
+						evaluateMemorySignificance(npcSummaryMatch)
+							.thenAccept { significance ->
+								val memory =
+									Memory(
+										id = "conversation_summary_${System.currentTimeMillis()}_$npcName",
+										content = npcSummaryMatch,
+										gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+										lastAccessed = plugin.timeService.getCurrentGameTime(),
+										power = 0.85,
+										_significance = significance,
+									)
 
-						npcData.memory.add(memory)
-						plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
-						plugin.npcDataManager.saveNPCData(npcName, npcData)
+								npcData.memory.add(memory)
+								plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
+								plugin.npcDataManager.saveNPCData(npcName, npcData)
 
+								if (completedNPCs.incrementAndGet() >= pendingNPCs) {
+									future.complete(null)
+								}
+							}.exceptionally { ex ->
+								plugin.logger.warning("Error evaluating memory significance for $npcName: ${ex.message}")
+								val memory =
+									Memory(
+										id = "conversation_summary_${System.currentTimeMillis()}_$npcName",
+										content = npcSummaryMatch,
+										gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+										lastAccessed = plugin.timeService.getCurrentGameTime(),
+										power = 0.85,
+										_significance = 1.0,
+									)
+
+								npcData.memory.add(memory)
+								plugin.npcDataManager.saveNPCData(npcName, npcData)
+
+								if (completedNPCs.incrementAndGet() >= pendingNPCs) {
+									future.complete(null)
+								}
+
+								null
+							}
+					} else {
+						plugin.logger.warning("No summary match found for $npcName in response")
 						if (completedNPCs.incrementAndGet() >= pendingNPCs) {
 							future.complete(null)
 						}
-					}.exceptionally { ex ->
-						plugin.logger.warning("Error evaluating memory significance for $npcName: ${ex.message}")
-						val memory =
-							Memory(
-								id = "conversation_summary_${System.currentTimeMillis()}_$npcName",
-								content = npcSummaryMatch,
-								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-								lastAccessed = plugin.timeService.getCurrentGameTime(),
-								power = 0.85,
-								_significance = 1.0,
-							)
-
-						npcData.memory.add(memory)
-						plugin.npcDataManager.saveNPCData(npcName, npcData)
-
-						if (completedNPCs.incrementAndGet() >= pendingNPCs) {
-							future.complete(null)
-						}
-
-						null
-					}
-				} else {
-					plugin.logger.warning("No summary match found for $npcName in response")
-					if (completedNPCs.incrementAndGet() >= pendingNPCs) {
-						future.complete(null)
 					}
 				}
-			}
 
-			if (npcNames.isEmpty()) {
-				future.complete(null)
+				if (npcNames.isEmpty()) {
+					future.complete(null)
+				}
+			}.exceptionally { e ->
+				plugin.logger.warning("Error summarizing conversation: ${e.message}")
+				future.completeExceptionally(e)
+				null
 			}
-		}.exceptionally { e ->
-			plugin.logger.warning("Error summarizing conversation: ${e.message}")
-			future.completeExceptionally(e)
-			null
-		}
 
 		return future
 	}
@@ -334,64 +341,67 @@ class NPCResponseService(private val plugin: Story) {
 			),
 		)
 
-		plugin.getAIResponse(messages).thenAccept { summaryResponse ->
-			if (summaryResponse.isNullOrEmpty()) {
-				plugin.logger.warning("Failed to get summary response for $npcName")
-				future.complete(null)
-				return@thenAccept
-			}
+		plugin
+			.getAIResponse(messages)
+			.thenAccept { summaryResponse ->
+				if (summaryResponse.isNullOrEmpty()) {
+					plugin.logger.warning("Failed to get summary response for $npcName")
+					future.complete(null)
+					return@thenAccept
+				}
 
-			val npcData = plugin.npcDataManager.getNPCData(npcName)
-			if (npcData == null) {
-				plugin.logger.warning("No NPC data found for $npcName")
-				future.complete(null)
-				return@thenAccept
-			}
+				val npcData = plugin.npcDataManager.getNPCData(npcName)
+				if (npcData == null) {
+					plugin.logger.warning("No NPC data found for $npcName")
+					future.complete(null)
+					return@thenAccept
+				}
 
-			// Clean up the summary if needed
-			val cleanSummary = summaryResponse.trim()
+				// Clean up the summary if needed
+				val cleanSummary = summaryResponse.trim()
 
-			evaluateMemorySignificance(cleanSummary).thenAccept { significance ->
-				val memory =
-					Memory(
-						id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
-						content = cleanSummary,
-						gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-						lastAccessed = plugin.timeService.getCurrentGameTime(),
-						power = 0.85,
-						_significance = significance,
-					)
+				evaluateMemorySignificance(cleanSummary)
+					.thenAccept { significance ->
+						val memory =
+							Memory(
+								id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
+								content = cleanSummary,
+								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+								lastAccessed = plugin.timeService.getCurrentGameTime(),
+								power = 0.85,
+								_significance = significance,
+							)
 
-				npcData.memory.add(memory)
-				plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
-				plugin.npcDataManager.saveNPCData(npcName, npcData)
+						npcData.memory.add(memory)
+						plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
+						plugin.npcDataManager.saveNPCData(npcName, npcData)
 
-				future.complete(null)
-			}.exceptionally { ex ->
-				plugin.logger.warning("Error evaluating memory significance for $npcName: ${ex.message}")
+						future.complete(null)
+					}.exceptionally { ex ->
+						plugin.logger.warning("Error evaluating memory significance for $npcName: ${ex.message}")
 
-				// Create memory with default significance on error
-				val memory =
-					Memory(
-						id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
-						content = cleanSummary,
-						gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-						lastAccessed = plugin.timeService.getCurrentGameTime(),
-						power = 0.85,
-						_significance = 1.0,
-					)
+						// Create memory with default significance on error
+						val memory =
+							Memory(
+								id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
+								content = cleanSummary,
+								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+								lastAccessed = plugin.timeService.getCurrentGameTime(),
+								power = 0.85,
+								_significance = 1.0,
+							)
 
-				npcData.memory.add(memory)
-				plugin.npcDataManager.saveNPCData(npcName, npcData)
+						npcData.memory.add(memory)
+						plugin.npcDataManager.saveNPCData(npcName, npcData)
 
-				future.complete(null)
+						future.complete(null)
+						null
+					}
+			}.exceptionally { e ->
+				plugin.logger.warning("Error summarizing conversation for $npcName: ${e.message}")
+				future.completeExceptionally(e)
 				null
 			}
-		}.exceptionally { e ->
-			plugin.logger.warning("Error summarizing conversation for $npcName: ${e.message}")
-			future.completeExceptionally(e)
-			null
-		}
 
 		return future
 	}
@@ -404,13 +414,13 @@ class NPCResponseService(private val plugin: Story) {
 				"system",
 				"""
         Evaluate the emotional significance of this memory on a scale from 1.0 (ordinary, mundane) to 5.0 (deeply emotional, traumatic, or life-changing).
-        
+
         Consider these factors:
         - Emotional intensity (anger, joy, sorrow, etc.)
         - Long-term impact on relationships
         - Contains betrayal, heartbreak, or pivotal information
         - Personal importance to the character
-        
+
         Respond ONLY with a number between 1.0 and 5.0.
         """,
 			),

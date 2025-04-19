@@ -23,7 +23,9 @@ import org.bukkit.entity.Player
 /**
  * Centralized command manager that registers and manages all plugin commands.
  */
-class CommandManager(private val plugin: Story) {
+class CommandManager(
+	private val plugin: Story,
+) {
 	private val commandExecutors = mutableMapOf<String, CommandExecutor>()
 
 	/**
@@ -64,27 +66,27 @@ class CommandManager(private val plugin: Story) {
 		// Register simple commands using CommandAPI
 		CommandAPICommand("togglechat")
 			.withPermission("storymaker.chat.toggle")
-			.withOptionalArguments(dev.jorel.commandapi.arguments.PlayerArgument("target"))
+			.withOptionalArguments(PlayerArgument("target"))
 			.executesPlayer(
 				PlayerCommandExecutor { player, args ->
 					val target = args.getOptional("target").orElse(player) as? Player
 
 					plugin.playerManager.togglePlayerInteractions(player, target)
 				},
-			)
-			.executes(
+			).executes(
 				dev.jorel.commandapi.executors.CommandExecutor { _, args ->
 					val target = args.get("target") as? Player
 
 					plugin.playerManager.togglePlayerInteractions(null, target)
 				},
-			)
-			.register()
+			).register()
 
 		CommandAPICommand("maketalk")
 			.withPermission("storymaker.chat.toggle")
-			.withArguments(dev.jorel.commandapi.arguments.GreedyStringArgument("npc"))
-			.executes(
+			.withArguments(
+				dev.jorel.commandapi.arguments
+					.GreedyStringArgument("npc"),
+			).executes(
 				dev.jorel.commandapi.executors.CommandExecutor { sender, args ->
 					val npc = args.get("npc") as String
 
@@ -104,8 +106,7 @@ class CommandManager(private val plugin: Story) {
 					// Generate NPC responses
 					plugin.conversationManager.generateResponses(conversation)
 				},
-			)
-			.register()
+			).register()
 
 		// togglegpt
 		CommandAPICommand("togglegpt")
@@ -120,8 +121,7 @@ class CommandManager(private val plugin: Story) {
 					}
 					plugin.config.save()
 				},
-			)
-			.register()
+			).register()
 
 		// toggleradiant
 		CommandAPICommand("toggleradiant")
@@ -136,8 +136,7 @@ class CommandManager(private val plugin: Story) {
 					}
 					plugin.config.save()
 				},
-			)
-			.register()
+			).register()
 
 		// npctalk
 		CommandAPICommand("npctalk")
@@ -158,8 +157,7 @@ class CommandManager(private val plugin: Story) {
 					}
 					plugin.npcManager.walkToNPC(npc, target, message)
 				},
-			)
-			.register()
+			).register()
 
 		// npcply
 		CommandAPICommand("npcply")
@@ -179,8 +177,7 @@ class CommandManager(private val plugin: Story) {
 					}
 					plugin.npcManager.eventGoToPlayerAndTalk(npc, target, message, null)
 				},
-			)
-			.register()
+			).register()
 
 		// npcinit
 		CommandAPICommand("npcinit")
@@ -219,7 +216,23 @@ class CommandManager(private val plugin: Story) {
 						messages.add(
 							ConversationMessage(
 								"system",
+								plugin.npcContextGenerator
+									.getGeneralContexts()
+									.joinToString("\n"),
+							),
+						)
+
+						messages.add(
+							ConversationMessage(
+								"system",
 								storyLocation.getContextForPrompt(plugin.locationManager),
+							),
+						)
+
+						messages.add(
+							ConversationMessage(
+								"system",
+								npcContext.context,
 							),
 						)
 
@@ -270,7 +283,14 @@ class CommandManager(private val plugin: Story) {
 										player.sendSuccess("AI-generated profile for <yellow>$npcName</yellow> created!")
 										player.sendInfo("Role: <yellow>$role</yellow>")
 										player.sendInfo(
-											"Context summary: <yellow>${if (context.length > 50) context.substring(0, 50) + "..." else context}</yellow>",
+											"Context summary: <yellow>${if (context.length > 50) {
+												context.substring(
+													0,
+													50,
+												) + "..."
+											} else {
+												context
+											}}</yellow>",
 										)
 									} else {
 										player.sendError("Failed to generate AI context. Using default values.")
@@ -291,14 +311,15 @@ class CommandManager(private val plugin: Story) {
 						}
 					}
 				},
-			)
-			.register()
+			).register()
 
 		// g command
 		CommandAPICommand("g")
 			.withPermission("storymaker.chat.toggle")
-			.withArguments(dev.jorel.commandapi.arguments.GreedyStringArgument("message"))
-			.executesPlayer(
+			.withArguments(
+				dev.jorel.commandapi.arguments
+					.GreedyStringArgument("message"),
+			).executesPlayer(
 				PlayerCommandExecutor { player, args ->
 					val message = args.get("message") as String
 					// Get Current NPC
@@ -349,15 +370,18 @@ class CommandManager(private val plugin: Story) {
 						60L,
 					) // 20 ticks = 1 second
 				},
-			)
-			.register()
+			).register()
 
 		// setcurnpc
 		CommandAPICommand("setcurnpc")
 			.withPermission("storymaker.chat.toggle")
-			.withArguments(dev.jorel.commandapi.arguments.TextArgument("npc"))
-			.withOptionalArguments(dev.jorel.commandapi.arguments.IntegerArgument("npc_id"))
-			.executesPlayer(
+			.withArguments(
+				dev.jorel.commandapi.arguments
+					.TextArgument("npc"),
+			).withOptionalArguments(
+				dev.jorel.commandapi.arguments
+					.IntegerArgument("npc_id"),
+			).executesPlayer(
 				PlayerCommandExecutor { player, args ->
 					val npc = args.get("npc") as String
 					// integer
@@ -396,7 +420,6 @@ class CommandManager(private val plugin: Story) {
 						}
 					}
 				},
-			)
-			.register()
+			).register()
 	}
 }

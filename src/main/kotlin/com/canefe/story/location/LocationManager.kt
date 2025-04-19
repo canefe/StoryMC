@@ -9,7 +9,9 @@ import java.io.File
 import java.io.IOException
 import java.util.logging.Level
 
-class LocationManager private constructor(private val plugin: Story) {
+class LocationManager private constructor(
+	private val plugin: Story,
+) {
 	private val locations: MutableMap<String, StoryLocation> = HashMap()
 	val locationDirectory: File =
 		File(plugin.dataFolder, "locations").apply {
@@ -237,10 +239,9 @@ class LocationManager private constructor(private val plugin: Story) {
 		private var instance: LocationManager? = null
 
 		@JvmStatic
-		fun getInstance(plugin: Story): LocationManager {
-			return instance ?: synchronized(this) {
+		fun getInstance(plugin: Story): LocationManager =
+			instance ?: synchronized(this) {
 				instance ?: LocationManager(plugin).also { instance = it }
 			}
-		}
 	}
 }

@@ -3,7 +3,9 @@ package com.canefe.story.config
 import com.canefe.story.Story
 import org.bukkit.configuration.file.FileConfiguration
 
-class ConfigService(private val plugin: Story) {
+class ConfigService(
+	private val plugin: Story,
+) {
 	private val config: FileConfiguration get() = plugin.configFile
 
 	// OpenAI API settings
@@ -55,9 +57,16 @@ class ConfigService(private val plugin: Story) {
 
 	private fun loadConfigValues() {
 		openAIKey = config.getString("openai.apikey", "") ?: ""
-		aiModel = config.getString("openai.aiModel", "meta-llama/llama-3.1-70b-instruct") ?: "meta-llama/llama-3.1-70b-instruct"
-		chatFormat = config.getString("ai.chatFormat", "\\n<%color%>%npc_name%</%color%> <gray><italic>:</italic></gray> <white>%message%</white>\\n") ?: "\\n<%color%>%npc_name%</%color%> <gray><italic>:</italic></gray> <white>%message%</white>\\n"
-		emoteFormat = config.getString("ai.emoteFormat", "<gray><italic>\$1</italic></gray>") ?: "<gray><italic>\$1</italic></gray>"
+		aiModel =
+			config.getString("openai.aiModel", "meta-llama/llama-3.1-70b-instruct") ?: "meta-llama/llama-3.1-70b-instruct"
+		chatFormat =
+			config.getString(
+				"ai.chatFormat",
+				"\\n<%color%>%npc_name%</%color%> <gray><italic>:</italic></gray> <white>%message%</white>\\n",
+			)
+				?: "\\n<%color%>%npc_name%</%color%> <gray><italic>:</italic></gray> <white>%message%</white>\\n"
+		emoteFormat =
+			config.getString("ai.emoteFormat", "<gray><italic>\$1</italic></gray>") ?: "<gray><italic>\$1</italic></gray>"
 
 		traitList = config.getStringList("ai.traits")
 		quirkList = config.getStringList("ai.quirks")

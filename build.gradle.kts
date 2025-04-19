@@ -62,6 +62,16 @@ java {
 kotlin {
 	jvmToolchain(targetJavaVersion)
 }
+
+ktlint {
+	android.set(false)
+	outputColorName.set("RED")
+	ignoreFailures.set(true)
+	reporters {
+		reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
+	}
+}
+
 tasks.withType<KotlinJvmCompile>().configureEach {
 	compilerOptions {
 		jvmTarget.set(JvmTarget.JVM_21)
