@@ -45,9 +45,14 @@ class AudioManager(
 			soundId = "$soundNamespace.${gender}_$voiceNumber"
 		} while (soundId == lastPlayed && maxVoiceFiles > 1)
 
-		location.world?.playSound(location, soundId, SoundCategory.VOICE, volume, pitch)
-
-		result.complete(soundId)
+		// Run sound playback on the main server thread
+		plugin.server.scheduler.runTask(
+			plugin,
+			Runnable {
+				location.world?.playSound(location, soundId, SoundCategory.VOICE, volume, pitch)
+				result.complete(soundId)
+			},
+		)
 
 		// Return the played sound ID so it can be stored as lastPlayed for next time
 		return result
@@ -70,7 +75,12 @@ class AudioManager(
 		val voiceNumber = Random.nextInt(1, maxVoiceFiles + 1).toString().padStart(2, '0')
 		val soundId = "$soundNamespace.${gender}_$voiceNumber"
 
-		player.playSound(player.location, soundId, SoundCategory.VOICE, volume, pitch)
+		plugin.server.scheduler.runTask(
+			plugin,
+			Runnable {
+				player.playSound(player.location, soundId, SoundCategory.VOICE, volume, pitch)
+			},
+		)
 	}
 
 	/**
@@ -88,7 +98,12 @@ class AudioManager(
 		pitch: Float = 1.0f,
 	) {
 		val soundId = "$soundNamespace.$soundName"
-		location.world?.playSound(location, soundId, SoundCategory.VOICE, volume, pitch)
+		plugin.server.scheduler.runTask(
+			plugin,
+			Runnable {
+				location.world?.playSound(location, soundId, SoundCategory.VOICE, volume, pitch)
+			},
+		)
 	}
 
 	/**
