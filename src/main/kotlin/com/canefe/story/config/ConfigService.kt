@@ -27,6 +27,7 @@ class ConfigService(
 	var chatRadius: Double = 5.0
 	var responseDelay: Double = 2.0
 	var mythicMobsEnabled: Boolean = true
+	var streamMessages: Boolean = true
 
 	// NPC Behavior settings
 	var headRotationDelay: Int = 2
@@ -78,6 +79,7 @@ class ConfigService(
 		responseDelay = config.getDouble("conversation.responseDelay", 2.0)
 		mythicMobsEnabled =
 			config.getBoolean("conversation.mythicMobsEnabled", true) // MythicMobs integration enabled
+		streamMessages = config.getBoolean("conversation.streamMessages", true) // Stream messages to players
 
 		// NPC Behavior Settings
 		headRotationDelay = config.getInt("npc.headRotationDelay", 2)
@@ -110,6 +112,7 @@ class ConfigService(
 		config.set("conversation.chatRadius", chatRadius)
 		config.set("conversation.responseDelay", responseDelay)
 		config.set("conversation.mythicMobsEnabled", mythicMobsEnabled)
+		config.set("conversation.streamMessages", streamMessages)
 
 		// NPC Behavior settings
 		config.set("npc.headRotationDelay", headRotationDelay)

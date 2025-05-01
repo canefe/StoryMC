@@ -29,7 +29,8 @@ class NPCInteractionListener(
 	fun onPlayerChat(event: AsyncChatEvent) {
 		val player = event.player
 		val message = PlainTextComponentSerializer.plainText().serialize(event.message())
-
+		event.isCancelled = true
+		plugin.npcMessageService.broadcastPlayerMessage(message, player)
 		// Use regex to find *whisper*, *whispers*, *whispering*
 		val isWhispering = message.matches(Regex(".*\\*whisper(s|ing)?\\*.*"))
 
@@ -268,7 +269,9 @@ class NPCInteractionListener(
 	fun onConversationStart(event: ConversationStartEvent) {
 		// For each NPC in the conversation, stop the navigation
 		for (npc in event.npcs) {
-			npc.navigator.cancelNavigation()
+			if (!plugin.mythicMobConversation.isMythicMobNPC(npc.entity)) {
+				npc.navigator.cancelNavigation()
+			}
 		}
 
 		// Other potential actions when a conversation starts:

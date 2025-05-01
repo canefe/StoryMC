@@ -3,15 +3,18 @@ package com.canefe.story.npc.service
 import com.canefe.story.Story
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.util.EssentialsUtils
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
 import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.bukkit.Bukkit
+import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.regex.Pattern
+import kotlin.text.append
 
 class NPCMessageService(
 	private val plugin: Story,
@@ -27,11 +30,117 @@ class NPCMessageService(
 		genderCache.clear()
 	}
 
+	/**
+	 * Creates formatted components for a message from an entity (NPC or player)
+	 * @param message The message content
+	 * @param name The sender's name
+	 * @param color Optional color for the name
+	 * @param avatar Optional avatar identifier
+	 * @return List of Components ready to be sent
+	 */
+	fun formatMessage(
+		message: String,
+		name: String,
+		color: String? = null,
+		avatar: String? = null,
+		npcId: UUID? = null,
+		isClientPlayer: Boolean = false,
+	): List<Component> {
+		val mm = MiniMessage.miniMessage()
+		val maxLineWidth = 40 // Adjust based on desired character limit per line
+		val padding = "             " // Space padding to align text with the image
+		val nameColor = color ?: plugin.npcUtils.randomColor(name)
+		// Split response into lines to handle multi-line input
+		val lines = message.split("\\n+".toRegex())
+		val parsedMessages = ArrayList<Component>()
+
+		for (line in lines) {
+			val trimmedLine = line.trim()
+			if (trimmedLine.isEmpty()) continue // Skip empty lines
+
+			// Regex to capture name and dialogue/emote
+			val pattern = Pattern.compile("^([A-Za-z0-9_\\s]+):\\s*(.*)$")
+			val matcher = pattern.matcher(trimmedLine)
+
+			var sender = name
+			var cleanedMessage = trimmedLine // Default to the full line if no match
+
+			if (matcher.find()) {
+				sender = matcher.group(1).trim() // Extract name
+				cleanedMessage = matcher.group(2).trim() // Extract message content
+
+				// Remove all duplicate sender name prefixes (e.g., "Name: Name: Name:")
+				while (cleanedMessage.startsWith("$sender:")) {
+					cleanedMessage = cleanedMessage.substring(sender.length + 1).trim()
+				}
+			}
+
+			// Handle emotes inside the message (*content*)
+			val formattedMessage =
+				npcId?.run { cleanedMessage }
+					?: cleanedMessage.replace(Regex("\\*(.*?)\\*"), "<gray><italic>($1)</italic></gray>")
+
+			// Split the message into multiple lines to fit within the width limit
+			val wrappedLines = wrapTextWithFormatting(formattedMessage, maxLineWidth)
+			parsedMessages.add(mm.deserialize(padding)) // Empty line for spacing
+
+			// Get avatar as a string with legacy formatting
+			val rawAvatar =
+				when {
+					!avatar.isNullOrEmpty() && plugin.itemsAdderEnabled -> {
+						try {
+							val fontImageWrapper = FontImageWrapper("npcavatars:$avatar").string
+							fontImageWrapper
+						} catch (e: Exception) {
+							plugin.logger.warning("Error loading avatar for entity $name: ${e.message}")
+							"            "
+						}
+					}
+					else -> "            "
+				}
+
+			// Create components directly
+			val avatarComponent = LegacyComponentSerializer.legacySection().deserialize(rawAvatar)
+			val nameComponent =
+				mm.deserialize(
+					" <${color ?: nameColor}>$sender</${color ?: nameColor}> ${if (isClientPlayer) "<red>(YOU)</red>" else ""}",
+				)
+
+			// Combine them
+			parsedMessages.add(Component.empty().append(avatarComponent).append(nameComponent))
+
+			// Add padding spaces before each wrapped line for alignment
+			for (wrappedLine in wrappedLines) {
+				parsedMessages.add(mm.deserialize("$padding<white>$wrappedLine"))
+			}
+
+			// Add empty lines for spacing
+			repeat(5) {
+				parsedMessages.add(mm.deserialize(padding))
+			}
+		}
+
+		// If this is a typing message, wrap everything in typing tags
+		if (npcId != null) {
+			// Convert the formatted message to a string for the typing system
+			val stringBuilder = StringBuilder()
+			for (component in parsedMessages) {
+				stringBuilder.append(MiniMessage.miniMessage().serialize(component)).append("\n")
+			}
+
+			// Create a single component with the typing tags
+			return listOf(MiniMessage.miniMessage().deserialize("<npc_typing>color:$nameColor id:$npcId:$stringBuilder"))
+		}
+
+		return parsedMessages
+	}
+
 	fun broadcastNPCMessage(
 		message: String,
 		npc: NPC,
 		color: String? = null,
 		npcContext: NPCContext? = null,
+		streaming: Boolean = false,
 	) {
 		// First check if we already have the gender cached
 		val cachedGender = genderCache[npc.name]
@@ -52,81 +161,18 @@ class NPCMessageService(
 					}
 			}
 
-		val mm = MiniMessage.miniMessage()
-		val maxLineWidth = 40 // Adjust based on desired character limit per line
-		val padding = "             " // Space padding to align text with the image
+		// Get the context if not provided
+		val context = npcContext ?: plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
 
-		// Split response into lines to handle multi-line input
-		val lines = message.split("\\n+".toRegex())
-		val parsedMessages = ArrayList<Component>()
-
-		var npcName = npc.name
-
-		for (line in lines) {
-			val trimmedLine = line.trim()
-			if (trimmedLine.isEmpty()) continue // Skip empty lines
-
-			// Regex to capture NPC name and dialogue/emote
-			val pattern = Pattern.compile("^([A-Za-z0-9_\\s]+):\\s*(.*)$")
-			val matcher = pattern.matcher(trimmedLine)
-
-			var cleanedMessage = trimmedLine // Default to the full line if no match
-
-			if (matcher.find()) {
-				npcName = matcher.group(1).trim() // Extract NPC name
-				cleanedMessage = matcher.group(2).trim() // Extract message content
-
-				// Remove all duplicate NPC name prefixes (e.g., "Ubyr: Ubyr: Ubyr:")
-				while (cleanedMessage.startsWith("$npcName:")) {
-					cleanedMessage = cleanedMessage.substring(npcName.length + 1).trim()
-				}
-			}
-
-			// Handle emotes inside the message (*content*)
-			val formattedMessage = cleanedMessage.replace(Regex("\\*(.*?)\\*"), "<gray><italic>$1</italic></gray>")
-
-			// Split the message into multiple lines to fit within the width limit
-			val wrappedLines = wrapTextWithFormatting(formattedMessage, maxLineWidth)
-			parsedMessages.add(mm.deserialize(padding)) // Empty line for spacing
-
-			// get the context if not provided
-			val context = npcContext ?: plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
-
-			val avatar = context?.avatar
-
-			// Get avatar as a string with legacy formatting
-			val rawAvatar =
-				when {
-					!avatar.isNullOrEmpty() && plugin.itemsAdderEnabled -> {
-						try {
-							val fontImageWrapper = FontImageWrapper("npcavatars:$avatar").string
-							fontImageWrapper
-						} catch (e: Exception) {
-							plugin.logger.warning("Error loading avatar for NPC $npcName: ${e.message}")
-							"            "
-						}
-					}
-					else -> "            "
-				}
-
-			// Create components directly
-			val avatarComponent = LegacyComponentSerializer.legacySection().deserialize(rawAvatar)
-			val defaultColor = plugin.npcUtils.randomColor(npcName)
-			val nameComponent = mm.deserialize(" <${color ?: defaultColor}>$npcName</${color ?: defaultColor}>")
-
-			// Combine them
-			parsedMessages.add(Component.empty().append(avatarComponent).append(nameComponent))
-
-			// Add padding spaces before each wrapped line for alignment
-			for (wrappedLine in wrappedLines) {
-				parsedMessages.add(mm.deserialize("$padding$wrappedLine"))
-			}
-
-			// Add empty lines for spacing
-			repeat(5) {
-				parsedMessages.add(mm.deserialize(padding))
-			}
-		}
+		// Format the message
+		val parsedMessages =
+			formatMessage(
+				message = message,
+				name = npc.name,
+				color = color,
+				avatar = context?.avatar,
+				npcId = if (streaming) npc.uniqueId else null,
+			)
 
 		Bukkit.getScheduler().runTask(
 			plugin,
@@ -163,13 +209,13 @@ class NPCMessageService(
 					// Send messages to players who should see them
 					if (shouldSee) {
 						playersCount++
-						parsedMessages.forEach { message ->
-							p.sendMessage(message)
+						parsedMessages.forEach { component ->
+							p.sendMessage(component)
 						}
 					}
 				}
 
-				if (playersCount > 0) {
+				if (playersCount > 0 && !streaming) {
 					// Wait for gender determination and then play sound
 					genderFuture.thenAccept { gender ->
 						// Use cached lastPlayedSound to avoid repetition
@@ -189,17 +235,97 @@ class NPCMessageService(
 				}
 
 				// Send for console
-				parsedMessages.forEach { message ->
-					Bukkit.getConsoleSender().sendMessage(message)
+				if (!streaming) {
+					parsedMessages.forEach { message ->
+						Bukkit.getConsoleSender().sendMessage(message)
+					}
 				}
 			},
 		)
 	}
 
 	/**
-	 * Determines an NPC's gender using AI analysis based on name, context and memories
-	 * Falls back to tags and pronouns if AI determination fails
+	 * NPC Stream Message Broadcast add prefix <npc_typing> to indicate we are in a stream (AI LLM)
 	 */
+	fun broadcastNPCStreamMessage(
+		message: String,
+		npc: NPC,
+		color: String? = null,
+		npcContext: NPCContext? = null,
+	) {
+		broadcastNPCMessage(
+			message = message,
+			npc = npc,
+			color = color,
+			npcContext = npcContext,
+			streaming = true,
+		)
+	}
+
+	/**
+	 * Broadcasts a player message with the same formatting as NPC messages
+	 */
+	fun broadcastPlayerMessage(
+		message: String,
+		player: Player,
+		color: String? = null,
+	) {
+		val playerName = EssentialsUtils.getNickname(player.name)
+		// Format the message - using player's name as the sender
+		val parsedMessages =
+			formatMessage(
+				message = message,
+				name = playerName,
+				color = color,
+				avatar = null, // Could add player head support later
+			)
+
+		Bukkit.getScheduler().runTask(
+			plugin,
+			Runnable {
+				val location = player.location
+				val disabledHearing = plugin.playerManager.disabledHearing
+
+				// Determine which players can see the message
+				for (p in Bukkit.getOnlinePlayers()) {
+					// Check if the player is in the same world and within the radius
+					val inRange =
+						p.world == location.world &&
+							p.location.distance(location) <= plugin.config.radiantRadius
+
+					// Check if the player has permission to see the message or in range
+					val shouldSee =
+						(p.hasPermission("story.conversation.hearglobal") && !disabledHearing.contains(p.uniqueId)) || inRange
+
+					// Send messages to players who should see them
+					if (shouldSee) {
+						// If this is the speaking player, use a version with (YOU) added
+						val messagesToSend =
+							if (p == player) {
+								formatMessage(
+									message = message,
+									name = playerName,
+									color = color,
+									avatar = null,
+									isClientPlayer = true,
+								)
+							} else {
+								parsedMessages
+							}
+
+						messagesToSend.forEach { component ->
+							p.sendMessage(component)
+						}
+					}
+				}
+
+				// Send for console
+				parsedMessages.forEach { component ->
+					Bukkit.getConsoleSender().sendMessage(component)
+				}
+			},
+		)
+	}
 
 	/**
 	 * Asynchronously determines an NPC's gender

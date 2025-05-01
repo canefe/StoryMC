@@ -149,6 +149,64 @@ class NPCResponseService(
 		}
 	}
 
+	/**
+	 * Generates an NPC response with a typewriter effect visible to all nearby players
+	 *
+	 * @param npc The NPC that will speak
+	 * @param responseContext Context messages for generating the response
+	 * @param typingSpeed Characters to reveal per tick (default 2)
+	 * @param radius How far away players can see the typing effect
+	 * @return CompletableFuture<String> with the final response
+	 */
+	fun generateNPCResponseWithTypingEffect(
+		npc: NPC,
+		responseContext: List<String>,
+		typingSpeed: Int = 8,
+		radius: Double = plugin.config.chatRadius,
+	): CompletableFuture<String> {
+		val result = CompletableFuture<String>()
+
+		// Generate the full response first
+		generateNPCResponse(npc, responseContext, false).thenAccept { response ->
+			// Start the typing effect for this NPC
+			plugin.typingSessionManager.startTyping(
+				npc = npc,
+				fullText = response,
+				typingSpeed = typingSpeed,
+				radius = radius,
+				messageFormat = "<npc_typing><npc_text>",
+			)
+
+			// When complete, maybe broadcast to chat if needed
+			Bukkit
+				.getScheduler()
+				.runTaskLater(
+					plugin,
+					Runnable {
+						val npcContext = contextService.getOrCreateContextForNPC(npc.name)
+						plugin.npcMessageService.broadcastNPCStreamMessage(
+							response,
+							npc,
+							npcContext = npcContext,
+						)
+						plugin.npcMessageService.broadcastNPCMessage(
+							response,
+							npc,
+							npcContext = npcContext,
+						)
+
+						// remove holograms after 3 seconds
+						plugin.typingSessionManager.stopTyping(npc.uniqueId)
+
+						result.complete(response)
+					},
+					(response.length / typingSpeed + 10).toLong(),
+				)
+		}
+
+		return result
+	}
+
 	fun determineNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
 		val future = CompletableFuture<String?>()
 

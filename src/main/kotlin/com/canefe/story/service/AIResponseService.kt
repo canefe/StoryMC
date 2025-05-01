@@ -14,6 +14,11 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.logging.Level
+import kotlin.code
+import kotlin.collections.get
+import kotlin.compareTo
+import kotlin.text.get
+import kotlin.toString
 
 class AIResponseService(
 	private val plugin: Story,
@@ -41,12 +46,154 @@ class AIResponseService(
 	private val pendingRequests = AtomicInteger(0)
 
 	/**
+	 * Gets an AI response from OpenRouter.ai with streaming support
+	 *
+	 * @param conversation The conversation history to send
+	 * @param streamHandler A callback to process each token as it arrives
+	 * @return The complete AI response or null if an error occurred
+	 */
+	fun getAIResponseStreaming(
+		conversation: List<ConversationMessage>,
+		streamHandler: (String) -> Unit,
+	): String? {
+		if (apiKey.isEmpty()) {
+			plugin.logger.warning("OpenAI API Key is not set!")
+			return null
+		}
+
+		// For very high load situations, reject requests if too many pending
+		if (pendingRequests.get() > 20) {
+			plugin.logger.warning("Too many pending AI requests, rejecting new request")
+			return "Sorry, the AI service is currently overloaded. Please try again later."
+		}
+
+		pendingRequests.incrementAndGet()
+
+		try {
+			// Try to acquire a permit with timeout
+			if (!apiRateLimiter.tryAcquire(10, TimeUnit.SECONDS)) {
+				pendingRequests.decrementAndGet()
+				plugin.logger.warning("API rate limit reached, couldn't acquire permit within timeout")
+				return "Sorry, the AI service is currently busy. Please try again later."
+			}
+
+			try {
+				// Create JSON request
+				val requestObject = JsonObject()
+				requestObject.addProperty("model", aiModel)
+				requestObject.addProperty("max_tokens", 500)
+				requestObject.addProperty("stream", true) // Enable streaming
+
+				val messagesArray = JsonArray()
+				for (message in conversation) {
+					val messageObject = JsonObject()
+					messageObject.addProperty("role", message.role)
+					messageObject.addProperty("content", message.content)
+					messagesArray.add(messageObject)
+				}
+				requestObject.add("messages", messagesArray)
+
+				// Build request
+				val body =
+					requestObject
+						.toString()
+						.toRequestBody("application/json".toMediaTypeOrNull())
+
+				val request =
+					Request
+						.Builder()
+						.url("https://openrouter.ai/api/v1/chat/completions")
+						.addHeader("Authorization", "Bearer $apiKey")
+						.addHeader("Content-Type", "application/json")
+						.post(body)
+						.build()
+
+				// Execute streaming request
+				httpClient.newCall(request).execute().use { response ->
+					if (!response.isSuccessful) {
+						plugin.logger.warning("API request failed: ${response.code} - ${response.message}")
+						return null
+					}
+
+					val responseBody = response.body ?: return null
+					val source = responseBody.source()
+					source.timeout().deadline(60, TimeUnit.SECONDS)
+
+					val resultBuilder = StringBuilder()
+
+					while (!source.exhausted()) {
+						val line = source.readUtf8Line() ?: continue
+
+						// Skip empty lines and [DONE] marker
+						if (line.isEmpty() || line == "data: [DONE]") {
+							continue
+						}
+
+						// Only process data: lines
+						if (line.startsWith("data: ")) {
+							val jsonData = line.substring(6).trim() // Skip "data: " prefix
+
+							try {
+								val chunk = gson.fromJson(jsonData, JsonObject::class.java)
+
+								// Extract token from delta content if available
+								if (chunk.has("choices") && chunk.getAsJsonArray("choices").size() > 0) {
+									val choice = chunk.getAsJsonArray("choices").get(0).asJsonObject
+									if (choice.has("delta") && choice.getAsJsonObject("delta").has("content")) {
+										val token = choice.getAsJsonObject("delta").get("content").asString
+										resultBuilder.append(token)
+										streamHandler(token)
+									}
+								}
+							} catch (e: Exception) {
+								plugin.logger.fine("Error parsing streaming response chunk: $jsonData")
+								// Continue processing other chunks even if one fails
+							}
+						}
+					}
+
+					val result = resultBuilder.toString()
+					return if (result.isNotEmpty()) result else null
+				}
+			} finally {
+				// Always release the permit
+				apiRateLimiter.release()
+			}
+		} catch (e: Exception) {
+			plugin.logger.log(Level.SEVERE, "Error getting streaming AI response", e)
+			return null
+		} finally {
+			pendingRequests.decrementAndGet()
+		}
+	}
+
+	/**
 	 * Gets an AI response from OpenRouter.ai with improved concurrency handling
+	 * This overloaded version supports both streaming and non-streaming behavior
+	 *
+	 * @param conversation The conversation history to send
+	 * @param useStreaming Whether to use streaming mode
+	 * @param streamHandler Optional callback for handling streaming tokens
+	 * @return The AI response or null if an error occurred
+	 */
+	fun getAIResponse(
+		conversation: List<ConversationMessage>,
+		useStreaming: Boolean = false,
+		streamHandler: (String) -> Unit = {},
+	): String? =
+		if (useStreaming) {
+			getAIResponseStreaming(conversation, streamHandler)
+		} else {
+			getAIResponseNonStreaming(conversation)
+		}
+
+	/**
+	 * Gets an AI response from OpenRouter.ai with improved concurrency handling (non-streaming)
 	 *
 	 * @param conversation The conversation history to send
 	 * @return The AI response or null if an error occurred
 	 */
-	fun getAIResponse(conversation: List<ConversationMessage>): String? {
+	private fun getAIResponseNonStreaming(conversation: List<ConversationMessage>): String? {
 		if (apiKey.isEmpty()) {
 			plugin.logger.warning("OpenAI API Key is not set!")
 			return null

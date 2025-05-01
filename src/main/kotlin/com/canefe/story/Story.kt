@@ -19,6 +19,7 @@ import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
+import com.canefe.story.npc.service.TypingSessionManager
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.player.NPCManager
 import com.canefe.story.player.PlayerManager
@@ -54,6 +55,8 @@ class Story :
 
 	// Services and managers
 	lateinit var audioManager: AudioManager
+
+	lateinit var typingSessionManager: TypingSessionManager
 
 	lateinit var npcDataManager: NPCDataManager
 		private set
@@ -93,7 +96,7 @@ class Story :
 
 	private lateinit var eventManager: EventManager
 
-	private lateinit var aiResponseService: AIResponseService
+	lateinit var aiResponseService: AIResponseService
 
 	lateinit var relationshipManager: RelationshipManager
 
@@ -166,6 +169,7 @@ class Story :
 		// Initialize the time service
 		timeService = TimeService(this)
 
+		typingSessionManager = TypingSessionManager(this)
 		// Initialize the audio
 		audioManager = AudioManager(this)
 		// Initialize in order of dependencies
@@ -316,6 +320,23 @@ class Story :
 		}
 	}
 
-	fun getAIResponse(prompts: List<ConversationMessage>): CompletableFuture<String?> =
-		aiResponseService.getAIResponseAsync(prompts)
+	fun getAIResponse(
+		prompts: List<ConversationMessage>,
+		useStreaming: Boolean = false,
+		streamHandler: (
+			(String) -> Unit
+		)? = null,
+	): CompletableFuture<String?> {
+		if (useStreaming) {
+			val future = CompletableFuture<String?>()
+			// null check streamingHandler
+			if (streamHandler == null) {
+				future.completeExceptionally(IllegalArgumentException("streamingHandler cannot be null when useStreaming is true"))
+				return future
+			}
+			future.complete(aiResponseService.getAIResponseStreaming(prompts, streamHandler))
+		}
+
+		return aiResponseService.getAIResponseAsync(prompts)
+	}
 }

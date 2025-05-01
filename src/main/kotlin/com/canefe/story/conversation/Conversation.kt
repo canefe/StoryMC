@@ -24,6 +24,9 @@ class Conversation(
 	val history: List<ConversationMessage> get() = _history.toList()
 	val players: List<UUID> get() = _players.toList()
 
+	// Last Speaking NPC
+	var lastSpeakingNPC: NPC? = null
+
 	init {
 		for (npc in initialNPCs) {
 			_npcNames.add(npc.name)

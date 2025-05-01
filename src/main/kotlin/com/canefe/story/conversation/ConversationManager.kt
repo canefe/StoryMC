@@ -163,6 +163,19 @@ class ConversationManager private constructor(
 			scheduledTasks.remove(conversation)
 		}
 
+		// If we are streaming, remove dialogue boxes by sending a secret message to client players
+		// "<npc_typing_end>id:npc_uuid"
+		if (plugin.config.streamMessages) {
+			val lastSpeaker = conversation.lastSpeakingNPC
+			if (lastSpeaker != null) {
+				val lastSpeakerUUID = lastSpeaker.uniqueId
+				conversation.players.forEach { uuid ->
+					val player = Bukkit.getPlayer(uuid)
+					// This will trigger the client to remove the dialogue box (Story Client MOD)
+					player?.sendInfo("<npc_typing_end>id:$lastSpeakerUUID")
+				}
+			}
+		}
 		// Only process conversation data if significant
 		if (conversation.history.size > 2) {
 			val playerName =
@@ -676,6 +689,9 @@ class ConversationManager private constructor(
 			if (nextSpeaker != null) {
 				val npcEntity = conversation.getNPCByName(nextSpeaker) ?: return@thenAccept
 
+				// Set the NPC as the last speaker
+				conversation.lastSpeakingNPC = npcEntity
+
 				// Show holograms for the NPCs
 				handleHolograms(conversation, nextSpeaker)
 
@@ -687,8 +703,22 @@ class ConversationManager private constructor(
 				// add one more string to the context
 				responseContext = responseContext + "You are $nextSpeaker. You are in a conversation. Generate a natural response."
 
-				val response = npcResponseService.generateNPCResponse(npcEntity, responseContext)
+				val shouldStream = plugin.config.streamMessages
+				val response =
+					if (shouldStream) {
+						npcResponseService.generateNPCResponseWithTypingEffect(
+							npcEntity,
+							responseContext,
+						)
+					} else {
+						npcResponseService.generateNPCResponse(
+							npcEntity,
+							responseContext,
+						)
+					}
+
 				response.thenAccept { npcResponse ->
+					// Add the NPC's response to the conversation history
 					conversation.addNPCMessage(npcEntity, npcResponse)
 
 					// Hologram cleanup
