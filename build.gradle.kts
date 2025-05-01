@@ -2,7 +2,11 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
-val serverPluginsDir = file("C:/Users/ideal/Desktop/testserver/plugins")
+val serverPluginsDir: String? =
+	System.getenv("SERVER_PLUGINS_DIR")
+
+val prodServerPluginsDir: String? =
+	System.getenv("PROD_SERVER_PLUGINS_DIR")
 
 plugins {
 	kotlin("jvm") version "2.1.20"
@@ -126,12 +130,35 @@ tasks.processResources {
 tasks.register<Copy>("copyToServer") {
 	dependsOn("shadowJar")
 
+	doFirst {
+		requireNotNull(serverPluginsDir) {
+			"❌ SERVER_PLUGINS_DIR is not set. Set it as an environment variable."
+		}
+	}
+
 	val shadowJar = tasks.named<Jar>("shadowJar").get()
 	from(shadowJar.archiveFile.get().asFile)
-	into(serverPluginsDir)
+	into(serverPluginsDir!!)
 
 	doLast {
 		println("✅ Copied fat plugin JAR to: $serverPluginsDir")
+	}
+}
+tasks.register<Copy>("copyToProdServer") {
+	dependsOn("shadowJar")
+
+	doFirst {
+		requireNotNull(prodServerPluginsDir) {
+			"❌ PROD_SERVER_PLUGINS_DIR is not set. Set it as an environment variable."
+		}
+	}
+
+	val shadowJar = tasks.named<Jar>("shadowJar").get()
+	from(shadowJar.archiveFile.get().asFile)
+	into(prodServerPluginsDir!!)
+
+	doLast {
+		println("✅ Copied fat plugin JAR to: $prodServerPluginsDir")
 	}
 }
 
