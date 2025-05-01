@@ -42,15 +42,15 @@ repositories {
 }
 
 dependencies {
+	// PaperMC
 	compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
+
+	// Minecraft Stuff
+
+	// Maven plugin dependencies
 	compileOnly("net.citizensnpcs:citizens-main:2.0.38-SNAPSHOT")
 	compileOnly("org.mcmonkey:sentinel:2.9.1-SNAPSHOT")
-	compileOnly(
-		fileTree("lib") {
-			include("RealisticSeasons.jar")
-			include("ReviveMe-API.jar")
-		},
-	)
+	compileOnly("net.tnemc:EconomyCore:0.1.3.5-Release-1")
 	implementation("net.kyori:adventure-api:4.17.0")
 	implementation("dev.jorel:commandapi-bukkit-shade:10.0.0")
 	compileOnly("com.github.decentsoftware-eu:decentholograms:2.8.12")
@@ -59,16 +59,31 @@ dependencies {
 	compileOnly("me.clip:placeholderapi:2.11.6")
 	compileOnly("dev.lone:api-itemsadder:4.0.9")
 	compileOnly("io.lumine:Mythic-Dist:5.6.1")
-	implementation("com.squareup.okhttp3:okhttp:4.12.0")
-	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 	implementation("com.github.stefvanschie.inventoryframework:IF:0.10.19")
 
+	// Local plugin dependencies
+	compileOnly(
+		fileTree("lib") {
+			include("RealisticSeasons.jar")
+			include("ReviveMe-API.jar")
+		},
+	)
+
+	// HTTP Client
+	implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+	// Kotlin
+	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
+	// Testing
 	testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
 	testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
 	testImplementation("org.mockito:mockito-core:5.3.1")
 	testImplementation("org.mockito:mockito-junit-jupiter:5.3.1")
 	testImplementation("com.github.seeseemelk:MockBukkit-v1.19:2.29.0")
 	testImplementation("commons-lang:commons-lang:2.6")
+	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
+	testImplementation("org.mockito:mockito-inline:4.8.0")
 }
 
 val targetJavaVersion = 21
