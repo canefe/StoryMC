@@ -21,6 +21,7 @@ import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import java.util.UUID
 
 /**
  * Centralized command manager that registers and manages all plugin commands.
@@ -121,7 +122,7 @@ class CommandManager(
 					val successMessage = plugin.miniMessage.deserialize("<green>NPC '$npc' is now talking.</green>")
 					sender.sendMessage(successMessage)
 					// Generate NPC responses
-					plugin.conversationManager.generateResponses(conversation)
+					plugin.conversationManager.generateResponses(conversation, npc)
 				},
 			).register()
 
@@ -222,6 +223,66 @@ class CommandManager(
 				},
 			).register()
 
+		// Command to generate memories for NPCs dynamically
+		CommandAPICommand("npcmemory")
+			.withPermission("storymaker.npc.memory")
+			.withArguments(TextArgument("npc"))
+			.withArguments(
+				StringArgument("type").replaceSuggestions { info, builder ->
+					val suggestions = listOf("event", "conversation", "observation", "experience")
+					suggestions.forEach { builder.suggest(it) }
+					builder.buildFuture()
+				},
+			).withArguments(GreedyStringArgument("context"))
+			.executes(
+				CommandExecutor { sender, args ->
+					val npcName = args.get("npc") as String
+					val type = args.get("type") as String
+					val context = args.get("context") as String
+
+					// Check if NPC exists first
+					val npcData = plugin.npcDataManager.getNPCData(npcName)
+					if (npcData == null) {
+						sender.sendError("NPC $npcName not found. Please create the NPC first.")
+						return@CommandExecutor
+					}
+
+					sender.sendInfo("Creating memory for <yellow>$npcName</yellow> based on: <italic>$context</italic>")
+
+					plugin.npcResponseService
+						.generateNPCMemory(npcName, type, context)
+						.thenAccept { memory ->
+							Bukkit.getScheduler().runTask(
+								plugin,
+								Runnable {
+									if (memory != null) {
+										sender.sendSuccess("Memory created for <yellow>$npcName</yellow>!")
+										sender.sendInfo(
+											"Memory preview: <yellow>${
+												if (memory.content.length > 50) {
+													memory.content.substring(0, 50) + "..."
+												} else {
+													memory.content
+												}
+											}</yellow>",
+										)
+									} else {
+										sender.sendError("Failed to create memory for $npcName")
+									}
+								},
+							)
+						}.exceptionally { e ->
+							Bukkit.getScheduler().runTask(
+								plugin,
+								Runnable {
+									sender.sendError("Failed to create memory: ${e.message}")
+								},
+							)
+							null
+						}
+				},
+			).register()
+
 		// npcinit
 		CommandAPICommand("npcinit")
 			.withPermission("storymaker.npc.init")
@@ -306,27 +367,12 @@ class CommandManager(
 						messages.add(
 							ConversationMessage(
 								"system",
-								npcContext.context,
-							),
-						)
-
-						messages.add(
-							ConversationMessage(
-								"system",
 								"Generate a detailed NPC profile for a character named " + npcName +
 									" in the location " + location + ". Include: personality traits, " +
 									"background story, appearance, unique quirks, and role in society. " +
 									"Be creative, detailed, and make the character feel alive. " +
 									"Format the response as 'ROLE: [brief role description]' followed by " +
 									"a detailed paragraph about the character.",
-							),
-						)
-
-						// Add the random npc context
-						messages.add(
-							ConversationMessage(
-								"system",
-								npcContext.context,
 							),
 						)
 
@@ -353,12 +399,15 @@ class CommandManager(
 											context = response
 										}
 
+										// add npcContext.context before 'response'
+										val contextWithNPCContext = "${npcContext.context} $context"
+
 										val npcData =
 											NPCData(
 												npcName,
 												role,
 												storyLocation,
-												context,
+												contextWithNPCContext,
 											)
 
 										plugin.npcDataManager.saveNPCData(npcName, npcData)
