@@ -160,7 +160,7 @@ class CommandManager(
 			.withPermission("storymaker.npc.schedule")
 			.withOptionalArguments(BooleanArgument("random_pathing"))
 			.executes(
-				dev.jorel.commandapi.executors.CommandExecutor { sender, args ->
+				CommandExecutor { sender, args ->
 					val randomPathing = args.getOptional("random_pathing").orElse(null) as? Boolean
 					if (randomPathing != null) {
 						plugin.config.randomPathingEnabled = randomPathing

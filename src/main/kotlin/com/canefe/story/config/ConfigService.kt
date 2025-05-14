@@ -29,10 +29,20 @@ class ConfigService(
 	var mythicMobsEnabled: Boolean = true
 	var streamMessages: Boolean = true
 
-	// NPC Behavior settings
+	/*
+	NPC Behavior settings
+	 */
+
+	// Delay in seconds before NPCs start rotating their heads
 	var headRotationDelay: Int = 2
+
+	// Whether to enable random pathing
 	var randomPathingEnabled: Boolean = true
+
+	// Chance to path to a random location
 	var randomPathingChance: Double = 0.8
+
+	// Whether to enable NPC scheduled tasks
 	var scheduleEnabled: Boolean = true
 	var scheduleTaskPeriod: Int = 60 // In seconds
 	var rangeBeforeTeleport: Double = 100.0 // Distance before teleporting

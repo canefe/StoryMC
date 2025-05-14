@@ -29,8 +29,7 @@ class ConvMuteCommand(
 						arrayOf<String>()
 					},
 				),
-			)
-			.executes(
+			).executes(
 				CommandExecutor { sender, args ->
 					val id = args.get("conversation_id") as Int
 					val npcName = args.get("npc_name") as String

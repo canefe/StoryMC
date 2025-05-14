@@ -10,7 +10,9 @@ import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
 import dev.jorel.commandapi.executors.CommandExecutor
 
-class StoryCommand(private val plugin: Story) : BaseCommand {
+class StoryCommand(
+	private val plugin: Story,
+) : BaseCommand {
 	override fun register() {
 		CommandAPICommand("story")
 			.withAliases("st", "sto")
@@ -24,8 +26,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
 						""".trimIndent()
 					sender.sendRaw(helpMessage)
 				},
-			)
-			.withSubcommand(getLocationCommand())
+			).withSubcommand(getLocationCommand())
 			.withSubcommand(getQuestCommand())
 			.withSubcommand(getHelpCommand())
 			.withSubcommand(getReloadCommand())
@@ -46,8 +47,8 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
 			""".trimIndent()
 	}
 
-	private fun getHelpCommand(): CommandAPICommand {
-		return CommandAPICommand("help")
+	private fun getHelpCommand(): CommandAPICommand =
+		CommandAPICommand("help")
 			.withPermission("story.command.help")
 			.executes(
 				CommandExecutor { sender, _ ->
@@ -58,10 +59,9 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
 					sender.sendRaw(helpMessage)
 				},
 			)
-	}
 
-	private fun getReloadCommand(): CommandAPICommand {
-		return CommandAPICommand("reload")
+	private fun getReloadCommand(): CommandAPICommand =
+		CommandAPICommand("reload")
 			.withPermission("story.command.reload")
 			.executes(
 				CommandExecutor { sender, _ ->
@@ -70,17 +70,10 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
 					sender.sendSuccess("Plugin reloaded successfully.")
 				},
 			)
-	}
 
-	private fun getLocationCommand(): CommandAPICommand {
-		return LocationCommand(plugin).getCommand()
-	}
+	private fun getLocationCommand(): CommandAPICommand = LocationCommand(plugin).getCommand()
 
-	private fun getQuestCommand(): CommandAPICommand {
-		return QuestCommand(plugin).getCommand()
-	}
+	private fun getQuestCommand(): CommandAPICommand = QuestCommand(plugin).getCommand()
 
-	private fun getNPCCommand(): CommandAPICommand {
-		return NPCCommand(plugin).getCommand()
-	}
+	private fun getNPCCommand(): CommandAPICommand = NPCCommand(plugin).getCommand()
 }

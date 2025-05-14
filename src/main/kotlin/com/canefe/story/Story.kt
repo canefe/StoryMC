@@ -27,9 +27,13 @@ import com.canefe.story.player.PlayerManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
+import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
 import com.canefe.story.util.TimeService
 import dev.jorel.commandapi.CommandAPI
+import kr.toxicity.healthbar.api.placeholder.PlaceholderContainer
+import me.libraryaddict.disguise.DisguiseAPI
+import me.libraryaddict.disguise.disguisetypes.PlayerDisguise
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.minimessage.MiniMessage

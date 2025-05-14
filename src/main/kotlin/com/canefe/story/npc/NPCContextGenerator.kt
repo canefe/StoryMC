@@ -11,7 +11,9 @@ import kotlin.random.Random
 /**
  * Service responsible for generating and updating NPC context information.
  */
-class NPCContextGenerator(private val plugin: Story) {
+class NPCContextGenerator(
+	private val plugin: Story,
+) {
 	/**
 	 * Generates a default context for a new NPC.
 	 */
@@ -74,7 +76,11 @@ class NPCContextGenerator(private val plugin: Story) {
 			npcData.context =
 				updateContext(
 					npcData.context,
-					npcName, hours, minutes, season, date,
+					npcName,
+					hours,
+					minutes,
+					season,
+					date,
 				)
 
 			// Save updated NPC data with existing memories preserved

@@ -11,7 +11,9 @@ interface InformationSource {
 	fun getSignificanceLevel(): Int
 }
 
-class WorldInformationManager(private val plugin: Story) {
+class WorldInformationManager(
+	private val plugin: Story,
+) {
 	fun processInformation(source: InformationSource) {
 		when (source.getSourceType()) {
 			"conversation" -> handleConversationInformation(source as ConversationInformationSource)
@@ -81,15 +83,15 @@ class WorldInformationManager(private val plugin: Story) {
 			Analyze the following conversation between NPCs.
 			Conversation location: $conversationLocation
 			NPCs involved: ${npcNames.joinToString(", ")}
-			
+
 			Relevant locations with context:
 			$locationsDescription
-			
+
 			Identify significant information that should be:
 			1. Remembered by specific NPCs involved (personal knowledge)
 			2. Spread as rumors throughout specific locations (location-based knowledge)
 			3. Ignored as trivial conversation
-			
+
 			For each finding, specify:
 			---
 			Type: [PERSONAL or RUMOR]
