@@ -3,6 +3,7 @@ package com.canefe.story.event
 import com.canefe.story.Story
 import com.canefe.story.util.EssentialsUtils
 import net.kokoricraft.reviveme.events.PlayerDownedEvent
+import org.bukkit.Bukkit
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -10,6 +11,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent
 import org.bukkit.event.player.PlayerDropItemEvent
+import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 
 /**
@@ -100,6 +102,29 @@ class PlayerEventListener(
 			"${EssentialsUtils.getNickname(
 				player.name,
 			)} picked up ${event.item.itemStack.type.name} amount ${event.item.itemStack.amount}",
+		)
+	}
+
+	/**
+	 * Handles player join event
+	 *
+	 */
+	@EventHandler
+	fun onPlayerJoin(event: PlayerJoinEvent) {
+		val player = event.player
+		val playerUUID = player.uniqueId
+		// Show current quest to the player
+		val currentQuest = plugin.questManager.getCurrentQuest(player) ?: return
+		// wait a few seconds before showing the quest, waiting for the player to load
+		Bukkit.getScheduler().runTaskLater(
+			plugin,
+			Runnable {
+				// Check if the player is still online
+				if (plugin.server.getPlayer(playerUUID) != null) {
+					plugin.questManager.printQuest(currentQuest, player)
+				}
+			},
+			20L * 5, // 5 seconds delay
 		)
 	}
 
