@@ -24,6 +24,7 @@ class ConfigService(
 	var chatEnabled: Boolean = true
 	var radiantEnabled: Boolean = true
 	var radiantRadius: Double = 5.0
+	var radiantCooldown: Int = 30 // 30 seconds per NPC
 	var chatRadius: Double = 5.0
 	var responseDelay: Double = 2.0
 	var mythicMobsEnabled: Boolean = true
@@ -41,15 +42,28 @@ class ConfigService(
 
 	// Chance to path to a random location
 	var randomPathingChance: Double = 0.8
+	var randomLocationOffset: Double = 3.0
 
 	// Whether to enable NPC scheduled tasks
 	var scheduleEnabled: Boolean = true
-	var scheduleTaskPeriod: Int = 60 // In seconds
-	var rangeBeforeTeleport: Double = 100.0 // Distance before teleporting
+
+	// How often to check for scheduled tasks (in seconds)
+	var scheduleTaskPeriod: Int = 60
+
+	// If NPC is already in pathing range, don't move for schedules
+	var scheduleDestinationTolerance = 1.0
+
+	// If no players are nearby within set range, NPCs will teleport to their location
+	var rangeBeforeTeleport: Double = 100.0
 
 	// NPC Voice settings
 	var maxVoiceFiles: Int = 6
 	var soundNameSpace: String = "iamusic:npc"
+
+	// Faction settings
+	var dailyEventsEnabled: Boolean = true
+	var dailyEventsChance: Double = 0.15
+	var followedSettlements: List<String> = listOf()
 
 	init {
 		plugin.saveDefaultConfig()
@@ -68,6 +82,8 @@ class ConfigService(
 			plugin.locationManager.loadAllLocations()
 			plugin.questManager.loadConfig()
 			plugin.npcMessageService.load()
+			plugin.factionManager.load()
+			plugin.playerManager.load()
 		} catch (e: Exception) {
 			plugin.logger.severe("Failed to reload configuration: ${e.message}")
 		} finally {
@@ -85,6 +101,7 @@ class ConfigService(
 		radiantEnabled = config.getBoolean("conversation.radiantEnabled", true)
 
 		radiantRadius = config.getDouble("conversation.radiantRadius", 5.0)
+		radiantCooldown = config.getInt("conversation.radiantCooldown", 30) // 30 seconds per NPC
 		chatRadius = config.getDouble("conversation.chatRadius", 5.0)
 		responseDelay = config.getDouble("conversation.responseDelay", 2.0)
 		mythicMobsEnabled =
@@ -95,9 +112,11 @@ class ConfigService(
 		headRotationDelay = config.getInt("npc.headRotationDelay", 2)
 		randomPathingEnabled = config.getBoolean("npc.randomPathingEnabled", true)
 		randomPathingChance = config.getDouble("npc.randomPathingChance", 0.8)
+		randomLocationOffset = config.getDouble("npc.randomLocationOffset", 3.0)
 		scheduleEnabled = config.getBoolean("npc.scheduleEnabled", true)
 		scheduleTaskPeriod = config.getInt("npc.scheduleTaskPeriod", 60)
-		rangeBeforeTeleport = config.getDouble("npc.rangeBeforeTeleport", 100.0) // Distance before teleporting
+		scheduleDestinationTolerance = config.getDouble("npc.scheduleDestinationTolerance", 1.0)
+		rangeBeforeTeleport = config.getDouble("npc.rangeBeforeTeleport", 100.0)
 
 		// NPC Voice settings
 		maxVoiceFiles = config.getInt("npc.maxVoiceFiles", 6)
@@ -108,6 +127,15 @@ class ConfigService(
 		motivationList = config.getStringList("context.motivations")
 		flawList = config.getStringList("context.flaws")
 		toneList = config.getStringList("context.tones")
+
+		// Faction settings
+		dailyEventsEnabled = config.getBoolean("faction.dailyEventsEnabled", true)
+		dailyEventsChance = config.getDouble("faction.dailyEventsChance", 0.15)
+		followedSettlements =
+			config
+				.getStringList("faction.followedSettlements")
+				.map { it.toString() }
+				.toList()
 	}
 
 	fun save() {
@@ -119,6 +147,7 @@ class ConfigService(
 		config.set("conversation.chatEnabled", chatEnabled)
 		config.set("conversation.radiantEnabled", radiantEnabled)
 		config.set("conversation.radiantRadius", radiantRadius)
+		config.set("conversation.radiantCooldown", radiantCooldown)
 		config.set("conversation.chatRadius", chatRadius)
 		config.set("conversation.responseDelay", responseDelay)
 		config.set("conversation.mythicMobsEnabled", mythicMobsEnabled)
@@ -128,8 +157,10 @@ class ConfigService(
 		config.set("npc.headRotationDelay", headRotationDelay)
 		config.set("npc.randomPathingEnabled", randomPathingEnabled)
 		config.set("npc.randomPathingChance", randomPathingChance)
+		config.set("npc.randomLocationOffset", randomLocationOffset)
 		config.set("npc.scheduleEnabled", scheduleEnabled)
 		config.set("npc.scheduleTaskPeriod", scheduleTaskPeriod)
+		config.set("npc.scheduleDestinationTolerance", scheduleDestinationTolerance)
 		config.set("npc.rangeBeforeTeleport", rangeBeforeTeleport)
 
 		// NPC Voice settings
@@ -142,6 +173,11 @@ class ConfigService(
 		config.set("context.motivations", motivationList)
 		config.set("context.flaws", flawList)
 		config.set("context.tones", toneList)
+
+		// Faction settings
+		config.set("faction.dailyEventsEnabled", dailyEventsEnabled)
+		config.set("faction.dailyEventsChance", dailyEventsChance)
+		config.set("faction.followedSettlements", followedSettlements)
 
 		// Save the updated configuration to disk
 		plugin.saveConfig()

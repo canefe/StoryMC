@@ -28,6 +28,10 @@ data class Settlement(
 
 	// Leader of the settlement
 	var leader: Leader? = null
+	var leaderNpcId: Int? = null
+
+	// StoryLocation
+	var location: String = ""
 
 	// Population stats
 	var population: Int = 100
@@ -171,7 +175,9 @@ data class Settlement(
 	}
 
 	// Move to Settlement class
-	fun processDailyDynamics() {
+	fun processDailyDynamics(plugin: Story) {
+		val dailyEventsChance = plugin.config.dailyEventsChance
+
 		// Random resource fluctuations
 		ResourceType.values().forEach { resourceType ->
 			val change = Random.nextDouble(-0.05, 0.07)
@@ -195,8 +201,44 @@ data class Settlement(
 		}
 
 		// Generate random events occasionally
-		if (Random.nextDouble() < 0.15) {
-			generateRandomEvent()
+		if (Random.nextDouble() < dailyEventsChance) {
+			plugin.factionManager.settlementNPCService
+				.generateRandomEvent(this)
+				.thenAccept { event ->
+					if (event != null) {
+						// Apply the effects to the settlement
+						adjustHappiness(event.effects.happiness)
+						adjustLoyalty(event.effects.loyalty)
+						adjustProsperity(event.effects.prosperity)
+						adjustPopulation(event.effects.population)
+
+						// Apply resource effects if any
+						event.resourceEffects?.let { resourceEffect ->
+							try {
+								val resourceType = ResourceType.valueOf(resourceEffect.resourceType)
+								adjustResource(resourceType, resourceEffect.change)
+							} catch (e: IllegalArgumentException) {
+								// Invalid resource type
+							}
+						}
+
+						// Add the event to settlement actions
+						addAction(
+							LeaderActionType.valueOf(event.eventType.ifEmpty { "MISC" }),
+							event.description,
+						)
+
+						val shouldBroadcast =
+							plugin.config.followedSettlements
+								.any { it.equals(this.name, ignoreCase = true) }
+
+						if (shouldBroadcast) {
+							Bukkit.getServer().sendMessage(
+								plugin.miniMessage.deserialize("<gold>[${this.name}]</gold> ${event.description}"),
+							)
+						}
+					}
+				}
 		}
 
 		// Leader-based decisions
@@ -213,123 +255,30 @@ data class Settlement(
 		faction?.addExperience(Random.nextDouble(1.0, 5.0))
 	}
 
-	// Generate random events for settlements
-	private fun generateRandomEvent(): String {
-		val settlement = this
+	// Data class to parse AI-generated event
+	data class SettlementEvent(
+		val eventType: String = "MISC",
+		val title: String = "",
+		val description: String = "",
+		val effects: SettlementEffects = SettlementEffects(),
+		val resourceEffects: ResourceEffect? = null,
+	)
 
-		val events =
-			listOf(
-				Pair(
-					LeaderActionType.DISASTER,
-					listOf(
-						"A fire has broken out in ${settlement.name}.",
-						"Heavy rains have caused flooding in ${settlement.name}.",
-						"A disease is spreading through ${settlement.name}.",
-					),
-				),
-				Pair(
-					LeaderActionType.FESTIVAL,
-					listOf(
-						"${settlement.name} is holding a harvest festival.",
-						"A grand tournament is taking place in ${settlement.name}.",
-						"Religious celebrations in ${settlement.name} have improved morale.",
-					),
-				),
-				Pair(
-					LeaderActionType.CRIME,
-					listOf(
-						"A series of robberies has occurred in ${settlement.name}.",
-						"Bandits are harassing travelers near ${settlement.name}.",
-						"Corruption has been discovered among ${settlement.name}'s officials.",
-					),
-				),
-				Pair(
-					LeaderActionType.DIPLOMATIC,
-					listOf(
-						"${settlement.name} has established trade relations with a nearby settlement.",
-						"Emissaries from a distant land are visiting ${settlement.name}.",
-						"${settlement.name} has signed a mutual defense pact with allies.",
-					),
-				),
-				Pair(
-					LeaderActionType.DISCOVERY,
-					listOf(
-						"A valuable mineral deposit has been found near ${settlement.name}.",
-						"Explorers from ${settlement.name} have mapped a new trade route.",
-						"Ancient ruins have been uncovered on the outskirts of ${settlement.name}.",
-					),
-				),
-				Pair(
-					LeaderActionType.PROSPERITY_INCREASE,
-					listOf(
-						"A market boom has increased prosperity in ${settlement.name}.",
-						"Trade caravans have increased traffic through ${settlement.name}.",
-						"Craftsmen in ${settlement.name} have developed new production methods.",
-					),
-				),
-			)
+	data class SettlementEffects(
+		val happiness: Double = 0.0,
+		val loyalty: Double = 0.0,
+		val prosperity: Double = 0.0,
+		val population: Int = 0,
+	)
 
-		// Randomly select event type and specific message
-		val eventType = events.random()
-		val eventMessage = eventType.second.random()
+	data class ResourceEffect(
+		val resourceType: String = "",
+		val change: Double = 0.0,
+	)
 
-		// Apply effects based on event type
-		when (eventType.first) {
-			LeaderActionType.DISASTER -> {
-				settlement.adjustPopulation(-Random.nextInt(2, 10))
-				settlement.adjustHappiness(-0.1)
-				settlement.resources[ResourceType.FOOD] = (settlement.resources[ResourceType.FOOD] ?: 0.5) - 0.15
-			}
-			LeaderActionType.FESTIVAL -> {
-				settlement.adjustHappiness(0.15)
-				settlement.treasuryBalance = settlement.treasuryBalance.subtract(BigDecimal("25.00"))
-			}
-			LeaderActionType.CRIME -> {
-				settlement.adjustHappiness(-0.05)
-				settlement.treasuryBalance = settlement.treasuryBalance.subtract(BigDecimal("15.00"))
-			}
-			LeaderActionType.DIPLOMATIC -> {
-				settlement.adjustHappiness(0.05)
-				settlement.treasuryBalance = settlement.treasuryBalance.add(BigDecimal("20.00"))
-			}
-			LeaderActionType.DISCOVERY -> {
-				val resourceType = listOf(ResourceType.STONE, ResourceType.IRON, ResourceType.COAL).random()
-				settlement.resources[resourceType] = (settlement.resources[resourceType] ?: 0.5) + 0.2
-				settlement.addExperience(50.0)
-			}
-			LeaderActionType.PROSPERITY_INCREASE -> {
-				settlement.treasuryBalance = settlement.treasuryBalance.add(BigDecimal("35.00"))
-				settlement.addExperience(25.0)
-			}
-
-			LeaderActionType.MISC -> TODO()
-			LeaderActionType.TAX_INCREASE -> TODO()
-			LeaderActionType.REBELLION -> TODO()
-			LeaderActionType.TAX_DECREASE -> TODO()
-			LeaderActionType.POPULATION_GROWTH -> TODO()
-			LeaderActionType.POPULATION_DECLINE -> TODO()
-			LeaderActionType.HAPPINESS_INCREASE -> TODO()
-			LeaderActionType.HAPPINESS_DECREASE -> TODO()
-			LeaderActionType.LOYALTY_INCREASE -> TODO()
-			LeaderActionType.LOYALTY_DECREASE -> TODO()
-			LeaderActionType.PROSPERITY_INCREASE -> TODO()
-			LeaderActionType.PROSPERITY_DECREASE -> TODO()
-			LeaderActionType.RESOURCE_INCREASE -> TODO()
-			LeaderActionType.RESOURCE_DECREASE -> TODO()
-			LeaderActionType.RESOURCE_CRISIS -> TODO()
-			LeaderActionType.REBELLION_RISK -> TODO()
-			LeaderActionType.DECREE -> TODO()
-			LeaderActionType.WAR -> TODO()
-			LeaderActionType.PEACE -> TODO()
-		}
-
-		// Record the event in history
-		settlement.addHistoryEntry(eventType.first.name.capitalize(), eventMessage)
-
-		// Broadcast the event
-		Bukkit.broadcastMessage("${ChatColor.GOLD}[${settlement.name}] ${ChatColor.WHITE}$eventMessage")
-
-		return eventMessage
+	fun setStoryLocation(locationId: String) {
+		location = locationId
+		// Update any location-dependent systems
 	}
 
 	private fun generateLeaderAction(

@@ -1,10 +1,10 @@
 package com.canefe.story.event
 
 import com.canefe.story.Story
-import com.canefe.story.conversation.event.ConversationJoinEvent
-import com.canefe.story.conversation.event.ConversationStartEvent
-import com.canefe.story.conversation.event.NPCParticipant
-import com.canefe.story.conversation.event.PlayerParticipant
+import com.canefe.story.api.event.ConversationJoinEvent
+import com.canefe.story.api.event.ConversationStartEvent
+import com.canefe.story.api.event.NPCParticipant
+import com.canefe.story.api.event.PlayerParticipant
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import io.papermc.paper.event.player.AsyncChatEvent
@@ -63,8 +63,20 @@ class NPCInteractionListener(
 						.filter { plugin.disguiseManager.isDisguisedAsNPC(it) }
 						.mapNotNull { (it as? org.bukkit.entity.Player)?.let { p -> plugin.disguiseManager.getImitatedNPC(p) } }
 
+				// Filter out mythic mob npcs
+				val mythicMobNPCs =
+					player
+						.getNearbyEntities(chatRadius, chatRadius, chatRadius)
+						.filter { plugin.mythicMobConversation.isMythicMobNPC(it) }
+						// plugin.mythicMobConversation.getMythicMobNPC(it) }
+						.mapNotNull {
+							(it as? org.bukkit.entity.LivingEntity)?.let { e ->
+								plugin.mythicMobConversation.getOrCreateNPCAdapter(e)
+							}
+						}
+
 				// Combine regular NPCs with impersonated NPCs for interaction
-				val allInteractableNPCs = (nearbyNPCs + disguisedPlayers).distinct()
+				val allInteractableNPCs = (nearbyNPCs + disguisedPlayers + mythicMobNPCs).distinct()
 
 				// Check if any nearby NPC is already in a conversation that player can join
 				val currentConversation = plugin.conversationManager.getConversation(player)

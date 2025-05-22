@@ -68,6 +68,7 @@ class NPCDataManager private constructor(
 			val role = config.getString("role") ?: ""
 			val location = config.getString("location") ?: "Village"
 			val context = config.getString("context") ?: ""
+			val appearance = config.getString("appearance") ?: ""
 			val avatar = config.getString("avatar") ?: ""
 			val knowledgeCategories = config.getStringList("knowledgeCategories").map { it.toString() }
 
@@ -86,6 +87,7 @@ class NPCDataManager private constructor(
 			npcData.memory = loadNPCMemory(npcName)
 			npcData.avatar = avatar
 			npcData.knowledgeCategories = knowledgeCategories
+			npcData.appearance = appearance
 
 			// Check if the NPC data is in old format and needs migration
 			if (npcDataMigrator.isOldFormat(npcData)) {
@@ -210,6 +212,7 @@ class NPCDataManager private constructor(
 		config.set("role", npcData.role)
 		config.set("location", npcData.storyLocation?.name)
 		config.set("context", npcData.context)
+		config.set("appearance", npcData.appearance)
 
 		// Save memories in structured format
 		if (npcData.memory.isNotEmpty()) {
@@ -244,7 +247,6 @@ class NPCDataManager private constructor(
 
 		try {
 			config.save(npcFile)
-			plugin.logger.info("Saved NPC data for $npcName with ${npcData.memory.size} memories")
 		} catch (e: IOException) {
 			plugin.logger.severe("Failed to save NPC file for $npcName: ${e.message}")
 			e.printStackTrace()

@@ -1,24 +1,27 @@
 package com.canefe.story.faction
 
+import com.canefe.story.Story
 import me.casperge.realisticseasons.calendar.DayChangeEvent
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.*
 
 class FactionManager(
-	private val plugin: JavaPlugin,
+	private val plugin: Story,
 ) : Listener {
 	private val factions = mutableMapOf<String, Faction>()
 	private val dataFolder = File(plugin.dataFolder, "factions")
+	val settlementNPCService: SettlementNPCService
 
 	init {
 		// Create data folder if it doesn't exist
 		if (!dataFolder.exists()) {
 			dataFolder.mkdirs()
 		}
+
+		settlementNPCService = SettlementNPCService(plugin)
 
 		// Register events
 		plugin.server.pluginManager.registerEvents(this, plugin)
@@ -56,7 +59,7 @@ class FactionManager(
 		factions.values.forEach { faction ->
 			faction.settlements.forEach { settlement ->
 				try {
-					settlement.processDailyDynamics()
+					settlement.processDailyDynamics(plugin)
 					settlementCount++
 				} catch (e: Exception) {
 					plugin.logger.severe("Error processing daily dynamics for settlement ${settlement.name}: ${e.message}")
@@ -250,6 +253,11 @@ class FactionManager(
 	}
 
 	fun factionExists(id: String): Boolean = factions.containsKey(id.lowercase(Locale.getDefault()))
+
+	fun load() {
+		// Load all factions from storage
+		loadAllFactions()
+	}
 
 	/**
 	 * Clean up when plugin disables

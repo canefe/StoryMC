@@ -3,7 +3,6 @@ package com.canefe.story.npc
 import com.canefe.story.Story
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
-import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import kotlin.random.Random
@@ -88,11 +87,12 @@ class NPCContextGenerator(
 
 			return NPCContext(
 				npcName,
-				npcData.role,
-				npcData.context,
-				npcData.storyLocation!!,
-				npcData.avatar ?: "",
-				npcData.memory,
+				role = npcData.role,
+				context = npcData.context,
+				appearance = npcData.appearance,
+				location = npcData.storyLocation!!,
+				avatar = npcData.avatar ?: "",
+				memories = npcData.memory,
 			)
 		} catch (e: Exception) {
 			plugin.logger.warning("Error while updating NPC context: ${e.message}")
@@ -112,8 +112,6 @@ class NPCContextGenerator(
 		season: String,
 		date: String,
 	): String {
-		Bukkit.getLogger().info("Updating context for NPC: $npcName")
-
 		var updatedContext =
 			context
 				.replace(Regex("The time is \\d{1,2}:\\d{2}"), "The time is $hours:${String.format("%02d", minutes)}")

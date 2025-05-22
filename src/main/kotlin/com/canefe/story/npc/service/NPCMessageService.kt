@@ -141,6 +141,7 @@ class NPCMessageService(
 		color: String? = null,
 		npcContext: NPCContext? = null,
 		streaming: Boolean = false,
+		shouldBroadcast: Boolean = true,
 	) {
 		// First check if we already have the gender cached
 		val cachedGender = genderCache[npc.name]
@@ -185,7 +186,7 @@ class NPCMessageService(
 						?: npc.entity
 
 				// Only send message to players who are nearby OR have permission
-				val npcLocation = entity.location ?: return@Runnable
+				val npcLocation = entity?.location ?: return@Runnable
 				val disabledHearing = plugin.playerManager.disabledHearing
 
 				var playersCount = 0
@@ -242,7 +243,7 @@ class NPCMessageService(
 				}
 
 				// Send for console
-				if (!streaming) {
+				if (!streaming && shouldBroadcast) {
 					parsedMessages.forEach { message ->
 						Bukkit.getConsoleSender().sendMessage(message)
 					}

@@ -5,8 +5,11 @@ import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.faction.FactionCommand
 import com.canefe.story.command.faction.SettlementCommand
 import com.canefe.story.command.story.StoryCommand
+import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCData
+import com.canefe.story.npc.relationship.Relationship
+import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -19,9 +22,12 @@ import dev.jorel.commandapi.executors.CommandExecutor
 import dev.jorel.commandapi.executors.PlayerCommandExecutor
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
+import net.citizensnpcs.trait.FollowTrait
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import org.mcmonkey.sentinel.SentinelTrait
 import java.util.UUID
+import kotlin.compareTo
 
 /**
  * Centralized command manager that registers and manages all plugin commands.
@@ -76,6 +82,8 @@ class CommandManager(
 					val npcRegistry = CitizensAPI.getNPCRegistry()
 					for (npc in npcRegistry) {
 						npc.navigator.cancelNavigation()
+						npc.getOrAddTrait(SentinelTrait::class.java).guarding = null
+						npc.getOrAddTrait(FollowTrait::class.java).follow(null)
 					}
 					sender.sendSuccess("All NPC navigation has been reset.")
 				},
@@ -289,22 +297,22 @@ class CommandManager(
 			.withArguments(StringArgument("location"))
 			.withArguments(TextArgument("npc"))
 			.withOptionalArguments(GreedyStringArgument("prompt"))
-			.executesPlayer(
-				PlayerCommandExecutor { player: Player, args: CommandArguments ->
+			.executes(
+				CommandExecutor { sender, args: CommandArguments ->
 					val npcName = args["npc"] as String
 					val location = args["location"] as String
 					val prompt = args.getOrDefault("prompt", "") as String
 
 					val npcContext =
 						plugin.npcContextGenerator.getOrCreateContextForNPC(npcName) ?: run {
-							player.sendError("NPC context not found. Please create the NPC first.")
-							return@PlayerCommandExecutor
+							sender.sendError("NPC context not found. Please create the NPC first.")
+							return@CommandExecutor
 						}
 
 					val storyLocation =
 						plugin.locationManager.getLocation(location) ?: run {
-							player.sendError("Location not found. Please create the location first.")
-							return@PlayerCommandExecutor
+							sender.sendError("Location not found. Please create the location first.")
+							return@CommandExecutor
 						}
 
 					// Set the Location for the NPC
@@ -320,7 +328,7 @@ class CommandManager(
 
 					if (prompt.isNotEmpty()) {
 						// Inform player we're generating context
-						player.sendInfo(
+						sender.sendInfo(
 							"Generating AI context for NPC <yellow>$npcName</yellow> based on: <italic>$prompt</italic>",
 						)
 
@@ -353,7 +361,7 @@ class CommandManager(
 								"No relevant lore found for the given context."
 							}
 
-						player.sendSuccess(loreInfo)
+						sender.sendSuccess(loreInfo)
 
 						// Include relevant lore in the prompt
 						messages.add(
@@ -367,12 +375,15 @@ class CommandManager(
 						messages.add(
 							ConversationMessage(
 								"system",
-								"Generate a detailed NPC profile for a character named " + npcName +
-									" in the location " + location + ". Include: personality traits, " +
-									"background story, appearance, unique quirks, and role in society. " +
-									"Be creative, detailed, and make the character feel alive. " +
-									"Format the response as 'ROLE: [brief role description]' followed by " +
-									"a detailed paragraph about the character.",
+								"""
+									Generate detailed RPG character information for an NPC named $npcName in the location $location.
+									Return ONLY a valid JSON object with these fields:
+									1. "context": Background story, personality, motivations, and role in society
+									2. "appearance": Detailed physical description including clothing, notable features
+
+									Make the character interesting with clear motivations, quirks, and depth.
+									The JSON must be properly formatted with quotes escaped.
+								 """,
 							),
 						)
 
@@ -380,66 +391,81 @@ class CommandManager(
 						messages.add(ConversationMessage("user", prompt))
 
 						// Use CompletableFuture API instead of manual task scheduling
-						plugin.getAIResponse(messages).thenAccept { response ->
-							// Return to the main thread to access Bukkit API
-							Bukkit.getScheduler().runTask(
-								plugin,
-								Runnable {
-									if (response?.contains("ROLE:") == true) { // Ensure response is not null
-										val parts = response.split("ROLE:", ignoreCase = false, limit = 2).toTypedArray()
-										val role: String
-										val context: String?
-
-										if (parts.size > 1) {
-											val roleParts = parts[1].split("\n", limit = 2).toTypedArray()
-											role = roleParts[0].trim()
-											context = if (roleParts.size > 1) roleParts[1].trim() else parts[1].trim()
-										} else {
-											role = ""
-											context = response
+						plugin
+							.getAIResponse(messages)
+							.thenAccept { response ->
+								// Return to the main thread to access Bukkit API
+								Bukkit.getScheduler().runTask(
+									plugin,
+									Runnable {
+										if (response == null) {
+											sender.sendInfo("Failed to generate NPC data for $npcName.")
+											return@Runnable
 										}
 
-										// add npcContext.context before 'response'
-										val contextWithNPCContext = "${npcContext.context} $context"
+										try {
+											// Extract the JSON object from the response
+											val jsonContent = extractJsonFromString(response)
 
-										val npcData =
-											NPCData(
-												npcName,
-												role,
-												storyLocation,
-												contextWithNPCContext,
+											// Use Gson instead of org.json.JSONObject
+											val gson = com.google.gson.Gson()
+											val npcInfo = gson.fromJson(jsonContent, NPCInfo::class.java)
+
+											// Get context and appearance from the parsed object
+											val context = npcInfo.context ?: ""
+											val appearance = npcInfo.appearance ?: ""
+
+											if (context.isEmpty() || appearance.isEmpty()) {
+												sender.sendError("Failed to parse AI response. Using default values.")
+												return@Runnable
+											}
+
+											// add npcContext.context before 'response'
+											val contextWithNPCContext = "${npcContext.context} $context"
+
+											val npcData =
+												NPCData(
+													npcName,
+													npcContext.role,
+													storyLocation,
+													contextWithNPCContext,
+												)
+
+											npcData.appearance = appearance
+
+											plugin.npcDataManager.saveNPCData(npcName, npcData)
+											sender.sendSuccess("AI-generated profile for <yellow>$npcName</yellow> created!")
+											sender.sendInfo("Role: <yellow>${npcContext.role}</yellow>")
+											sender.sendInfo(
+												"Context summary: <yellow>${if (context.length > 50) {
+													context.substring(0, 50) + "..."
+												} else {
+													context
+												}}</yellow>",
 											)
-
-										plugin.npcDataManager.saveNPCData(npcName, npcData)
-										player.sendSuccess("AI-generated profile for <yellow>$npcName</yellow> created!")
-										player.sendInfo("Role: <yellow>$role</yellow>")
-										player.sendInfo(
-											"Context summary: <yellow>${if (context.length > 50) {
-												context.substring(
-													0,
-													50,
-												) + "..."
-											} else {
-												context
-											}}</yellow>",
-										)
-									} else {
-										player.sendError("Failed to generate AI context. Using default values.")
-
-										val npcData =
-											NPCData(
-												npcName,
-												npcContext.role,
-												storyLocation,
-												npcContext.context,
+											sender.sendInfo(
+												"Appearance: <yellow>${if (appearance.length > 50) {
+													appearance.substring(0, 50) + "..."
+												} else {
+													appearance
+												}}</yellow>",
 											)
-										plugin.npcDataManager.saveNPCData(npcName, npcData)
-
-										player.sendInfo("Basic NPC data saved for <yellow>$npcName</yellow>.")
-									}
-								},
-							)
-						}
+										} catch (e: Exception) {
+											sender.sendError("Failed to generate AI context: ${e.message}. Using default values.")
+											plugin.logger.warning("Error parsing NPC data from AI: ${e.message}")
+											e.printStackTrace()
+										}
+									},
+								)
+							}.exceptionally { e ->
+								Bukkit.getScheduler().runTask(
+									plugin,
+									Runnable {
+										sender.sendError("Failed to generate AI context: ${e.message}. Using default values.")
+									},
+								)
+								null
+							}
 					}
 				},
 			).register()
@@ -484,6 +510,47 @@ class CommandManager(
 					// Add the NPC to the list of nearby NPCs
 					nearbyNPCs = nearbyNPCs + listOf(npc)
 
+					// Check if any nearby NPCs are already in a conversation
+					val existingConversation =
+						nearbyNPCs
+							.mapNotNull { plugin.conversationManager.getConversation(it.name) }
+							.firstOrNull()
+
+					// Check if any nearby players are already in a conversation
+					val playerConversation =
+						players
+							.flatMap { player ->
+								plugin.conversationManager
+									.getAllActiveConversations()
+									.filter { conv -> conv.players?.contains(player.uniqueId) == true }
+							}.firstOrNull()
+
+					// Use existing conversation if available
+					if (existingConversation != null) {
+						// Add this NPC to the existing conversation if not already included
+						if (existingConversation.npcs?.contains(npc) != true) {
+							existingConversation.addNPC(npc)
+						}
+
+						// Add any players not already in the conversation
+						players.forEach { p ->
+							if (existingConversation.players?.contains(p.uniqueId) != true) {
+								existingConversation.addPlayer(p)
+							}
+						}
+
+						plugin.conversationManager.handleHolograms(existingConversation, npc.name)
+						return@run existingConversation
+					} else if (playerConversation != null) {
+						// Add this NPC to the player's existing conversation
+						if (!playerConversation.npcs.contains(npc)) {
+							playerConversation.addNPC(npc)
+						}
+
+						plugin.conversationManager.handleHolograms(playerConversation, npc.name)
+						return@run playerConversation
+					}
+
 					if (!(players.isNotEmpty() || nearbyNPCs.size > 1)) {
 						player.sendError("No players or NPCs nearby to start a conversation.")
 						return
@@ -511,9 +578,55 @@ class CommandManager(
 					return
 				}
 
+			// Get only the messages from the conversation for context
+			val recentMessages =
+				conversation.history
+					.map { it.content }
+
+			// Prepare response context with limited messages
+			var responseContext =
+				listOf(
+					"====CURRENT CONVERSATION====\n" +
+						recentMessages.joinToString("\n") +
+						"\n=========================\n" +
+						"This is an active conversation and you are talking to multiple characters: ${conversation.players?.joinToString(
+							", ",
+						) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }}. " +
+						conversation.npcNames.joinToString("\n") +
+						"\n===APPEARANCES===\n" +
+						conversation.npcs.joinToString("\n") { npc ->
+							val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
+							"${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
+						} +
+						// We treat players as NPCs for this purpose
+						conversation.players?.joinToString("\n") { playerId ->
+							val player = Bukkit.getPlayer(playerId)
+							if (player == null) {
+								// skip this player
+								return@joinToString ""
+							}
+							val playerName = player.name
+							val nickname = EssentialsUtils.getNickname(playerName)
+							val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(nickname)
+							"$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
+						} +
+						"\n=========================",
+				)
+
+			// Add relationship context with clear section header
+			val relationships = plugin.relationshipManager.getAllRelationships(npc.name)
+			if (relationships.isNotEmpty()) {
+				val relationshipContext = buildRelationshipContext(relationships, conversation)
+				if (relationshipContext.isNotEmpty()) {
+					responseContext = responseContext + "===RELATIONSHIPS===\n$relationshipContext"
+				}
+			}
+
 			// based on message, use npcresponseservice to generate a response
-			val prompt = "This message is a rough version of what $npcName is meant to say. Rewrite it into a fully fleshed-out line that reflects $npcName’s personality, tone, and the context. Do not treat it as input from someone else or as dialogue to respond to. Just rephrase it as if $npcName said it properly."
-			plugin.npcResponseService.generateNPCResponse(npc, listOf(prompt), false).thenApply { response ->
+			responseContext =
+				responseContext +
+				"[INSTRUCTION] This message is a draft of what $npcName is should say. Rewrite it into a fully fleshed-out line that reflects $npcName’s personality, tone, and the context. The message is as follows: $message"
+			plugin.npcResponseService.generateNPCResponse(npc, responseContext, false).thenApply { response ->
 
 				if (!shouldStream) {
 					plugin.npcMessageService.broadcastNPCMessage(
@@ -712,4 +825,52 @@ class CommandManager(
 				},
 			).register()
 	}
+
+	/**
+	 * Extracts a JSON object from a string that might contain additional text.
+	 *
+	 * @param input String that contains JSON somewhere within it
+	 * @return String containing only the JSON object
+	 */
+	private fun extractJsonFromString(input: String): String {
+		// Find the first { and last } to extract the JSON object
+		val startIndex = input.indexOf("{")
+		val endIndex = input.lastIndexOf("}")
+
+		if (startIndex >= 0 && endIndex > startIndex) {
+			return input.substring(startIndex, endIndex + 1)
+		}
+
+		// If no JSON object found, return the original string
+		return input
+	}
+
+	/**
+	 * Builds a relationship context string for NPCs in the conversation
+	 *
+	 * @param relationships Map of relationships for the NPC
+	 * @param conversation The current conversation
+	 * @return A formatted string containing relationship information relevant to the conversation
+	 */
+	private fun buildRelationshipContext(
+		relationships: Map<String, Relationship>,
+		conversation: Conversation,
+	): String =
+		relationships.values
+			.filter { rel ->
+				// Only include relationships with entities that are in the conversation
+				conversation.npcs.any { it.name == rel.targetName } ||
+					conversation.players?.any { playerId ->
+						val player = Bukkit.getPlayer(playerId)
+						player != null && EssentialsUtils.getNickname(player.name) == rel.targetName
+					} == true
+			}.joinToString("\n") { rel ->
+				"${rel.id} feels ${rel.type} towards ${rel.targetName}: ${rel.describe()}"
+			}
+
+	// Helper data class for Gson parsing
+	data class NPCInfo(
+		val context: String? = null,
+		val appearance: String? = null,
+	)
 }

@@ -55,9 +55,10 @@ class NPCManager private constructor(
 		val uuid = npc.uniqueId
 		val lastInteraction = npcCooldowns[uuid] ?: return false
 		val currentTime = System.currentTimeMillis()
+		val cooldown = plugin.config.radiantCooldown.toLong()
 
 		// Default cooldown of 10 seconds
-		return currentTime - lastInteraction < TimeUnit.SECONDS.toMillis(10)
+		return currentTime - lastInteraction < TimeUnit.SECONDS.toMillis(cooldown)
 	}
 
 	/**
@@ -74,7 +75,8 @@ class NPCManager private constructor(
 		val uuid = npc.uniqueId
 		val lastInteraction = npcCooldowns[uuid] ?: return 0
 		val currentTime = System.currentTimeMillis()
-		val remainingMillis = TimeUnit.SECONDS.toMillis(10) - (currentTime - lastInteraction)
+		val cooldown = plugin.config.radiantCooldown.toLong()
+		val remainingMillis = TimeUnit.SECONDS.toMillis(cooldown) - (currentTime - lastInteraction)
 
 		return if (remainingMillis <= 0) 0 else (remainingMillis / 1000).toInt()
 	}
@@ -176,6 +178,7 @@ class NPCManager private constructor(
 		initiator: NPC,
 		target: NPC,
 		firstMessage: String,
+		radiant: Boolean = false,
 	) {
 		if (!initiator.isSpawned || !target.isSpawned || isNPCDisabled(initiator) || isNPCDisabled(target)) return
 
@@ -204,14 +207,28 @@ class NPCManager private constructor(
 					val npcs = ArrayList<NPC>()
 					npcs.add(initiator)
 					npcs.add(target)
-					plugin.conversationManager.startRadiantConversation(npcs).thenAccept { conversation ->
-						// Add the first message to the conversation
-						conversation.addNPCMessage(initiator, firstMessage)
-						// Get A list of string only from conversation.history
-						val history = conversation.history.map { it.content }
-						plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
-							// Add the response to the conversation
-							conversation.addNPCMessage(target, response)
+
+					if (radiant) {
+						plugin.conversationManager.startRadiantConversation(npcs).thenAccept { conversation ->
+							// Add the first message to the conversation
+							conversation.addNPCMessage(initiator, firstMessage)
+							// Get A list of string only from conversation.history
+							val history = conversation.history.map { it.content }
+							plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
+								// Add the response to the conversation
+								conversation.addNPCMessage(target, response)
+							}
+						}
+					} else {
+						plugin.conversationManager.startConversation(npcs).thenAccept { conversation ->
+							// Add the first message to the conversation
+							conversation.addNPCMessage(initiator, firstMessage)
+							// Get A list of string only from conversation.history
+							val history = conversation.history.map { it.content }
+							plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
+								// Add the response to the conversation
+								conversation.addNPCMessage(target, response)
+							}
 						}
 					}
 

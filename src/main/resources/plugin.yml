@@ -1,5 +1,5 @@
 name: Story
-version: '1.0-SNAPSHOT'
+version: '0-1.0-SNAPSHOT'
 main: com.canefe.story.Story
 api-version: '1.21'
 depend:

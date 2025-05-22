@@ -1,4 +1,4 @@
-package com.canefe.story.conversation.event
+package com.canefe.story.api.event
 
 import com.canefe.story.conversation.Conversation
 import net.citizensnpcs.api.npc.NPC
@@ -7,10 +7,23 @@ import org.bukkit.event.Cancellable
 import org.bukkit.event.Event
 import org.bukkit.event.HandlerList
 
-class ConversationStartEvent(
+// Define a sealed interface for conversation participants
+sealed interface ConversationParticipant {
+	// Common properties or methods could go here
+}
+
+// Implement the interface for both types
+data class PlayerParticipant(
 	val player: Player,
-	val npcs: List<NPC>,
+) : ConversationParticipant
+
+data class NPCParticipant(
+	val npc: NPC,
+) : ConversationParticipant
+
+class ConversationJoinEvent(
 	val conversation: Conversation,
+	val participant: ConversationParticipant,
 ) : Event(),
 	Cancellable {
 	private var cancelled = false

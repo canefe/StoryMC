@@ -4,11 +4,13 @@ import com.canefe.story.npc.NPCScheduleManager
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
+import dev.jorel.commandapi.arguments.ArgumentSuggestions
 import dev.jorel.commandapi.arguments.GreedyStringArgument
 import dev.jorel.commandapi.arguments.IntegerArgument
 import dev.jorel.commandapi.arguments.TextArgument
 import dev.jorel.commandapi.executors.CommandExecutor
 import dev.jorel.commandapi.executors.PlayerCommandExecutor
+import java.io.File
 
 class ScheduleCommand(
 	private val commandUtils: ScheduleCommandUtils,
@@ -18,6 +20,8 @@ class ScheduleCommand(
 			.withPermission("story.location")
 			.withSubcommand(getCreateScheduleCommand())
 			.withSubcommand(getSetScheduleCommand())
+			.withSubcommand(getEnableDisableCommands()[0]) // Add disable command
+			.withSubcommand(getEnableDisableCommands()[1]) // Add enable command
 
 	private fun getCreateScheduleCommand(): CommandAPICommand {
 		return CommandAPICommand("create")
@@ -52,17 +56,17 @@ class ScheduleCommand(
 						builder.buildFuture()
 					},
 			).withArguments(
-				TextArgument("location_name").replaceSuggestions { info, builder ->
-					val locations = commandUtils.locationManager.getAllLocations()
-					val suggestions =
-						locations
-							.map { it.name }
-							.distinct()
-					suggestions.forEach {
-						builder.suggest("\"${it}\"")
-					}
-					builder.buildFuture()
-				},
+				TextArgument("location_name").replaceSuggestions(
+					ArgumentSuggestions.strings { _ ->
+
+						val locations = commandUtils.locationManager.getAllLocations()
+						val locationNames = ArrayList<String>()
+						locations.forEach { location ->
+							locationNames.add("\"${location.name}\"")
+						}
+						locationNames.toTypedArray()
+					},
+				),
 			).withArguments(
 				GreedyStringArgument("npc_name").replaceSuggestions { info, builder ->
 					val schedules = commandUtils.scheduleManager.schedules
@@ -115,5 +119,121 @@ class ScheduleCommand(
 					player.sendSuccess("Schedule for '$npcName' set successfully.")
 				},
 			)
+	}
+
+	private fun getEnableDisableCommands(): List<CommandAPICommand> {
+		val disableCommand =
+			CommandAPICommand("disable")
+				.withArguments(
+					GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
+						val schedules = commandUtils.scheduleManager.schedules
+						val suggestions = schedules.keys.distinct()
+						suggestions.forEach {
+							builder.suggest(it)
+						}
+						builder.buildFuture()
+					},
+				).executes(
+					CommandExecutor { sender, args ->
+						val npcName = args.get("npc_name") as String
+
+						// Check if the schedule exists
+						val schedule = commandUtils.scheduleManager.getSchedule(npcName.lowercase())
+						if (schedule == null) {
+							sender.sendError("Schedule for '$npcName' does not exist or is already disabled.")
+							return@CommandExecutor
+						}
+
+						// Create disabled directory if it doesn't exist
+						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+						if (!disabledFolder.exists()) {
+							disabledFolder.mkdirs()
+						}
+
+						// Source and destination files
+						val sourceFile = File(commandUtils.story.dataFolder, "schedules/$npcName.yml")
+						val destFile = File(disabledFolder, "$npcName.yml")
+
+						// Move the file
+						if (sourceFile.exists()) {
+							try {
+								sourceFile.copyTo(destFile, overwrite = true)
+								sourceFile.delete()
+
+								// Reload schedules
+								commandUtils.scheduleManager.reloadSchedules()
+
+								sender.sendSuccess("Schedule for '$npcName' has been disabled.")
+							} catch (e: Exception) {
+								sender.sendError("Failed to disable schedule: ${e.message}")
+								commandUtils.story.logger.warning("Failed to disable schedule for $npcName: ${e.message}")
+							}
+						} else {
+							sender.sendError("Schedule file for '$npcName' not found.")
+						}
+					},
+				)
+
+		val enableCommand =
+			CommandAPICommand("enable")
+				.withArguments(
+					GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
+						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+						if (!disabledFolder.exists()) return@replaceSuggestions builder.buildFuture()
+
+						val suggestions =
+							disabledFolder
+								.listFiles()
+								?.filter { it.name.endsWith(".yml") }
+								?.map { it.name.replace(".yml", "") }
+								?: emptyList()
+
+						suggestions.forEach { builder.suggest(it) }
+						builder.buildFuture()
+					},
+				).executes(
+					CommandExecutor { sender, args ->
+						val npcName = args.get("npc_name") as String
+
+						// Check if the schedule is already enabled
+						if (commandUtils.scheduleManager.getSchedule(npcName.lowercase()) != null) {
+							sender.sendError("Schedule for '$npcName' is already enabled.")
+							return@CommandExecutor
+						}
+
+						// Disabled directory and schedules directory
+						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+						val schedulesFolder = File(commandUtils.story.dataFolder, "schedules")
+
+						if (!disabledFolder.exists()) {
+							sender.sendError("No disabled schedules found.")
+							return@CommandExecutor
+						}
+
+						// Source and destination files
+						val sourceFile = File(disabledFolder, "$npcName.yml")
+						val destFile = File(schedulesFolder, "$npcName.yml")
+
+						// Move the file
+						if (sourceFile.exists()) {
+							try {
+								sourceFile.copyTo(destFile, overwrite = true)
+								sourceFile.delete()
+
+								// Reload schedules
+								commandUtils.scheduleManager.reloadSchedules()
+
+								sender.sendSuccess("Schedule for '$npcName' has been enabled.")
+							} catch (e: Exception) {
+								sender.sendError("Failed to enable schedule: ${e.message}")
+								commandUtils.story.logger.warning("Failed to enable schedule for $npcName: ${e.message}")
+							}
+						} else {
+							sender.sendError("Disabled schedule file for '$npcName' not found.")
+						}
+					},
+				)
+
+		return listOf(enableCommand, disableCommand)
 	}
 }

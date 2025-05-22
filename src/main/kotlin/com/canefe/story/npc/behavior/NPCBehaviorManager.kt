@@ -38,6 +38,12 @@ class NPCBehaviorManager(
 						updateNPCBehavior(npc)
 					}
 				}
+				// We also do the same for Disguised Players
+				for (player in Bukkit.getOnlinePlayers()) {
+					if (plugin.disguiseManager.isDisguisedAsNPC(player)) {
+						showIdleHologram(player)
+					}
+				}
 			},
 			0L,
 			10L,
@@ -70,19 +76,70 @@ class NPCBehaviorManager(
 			// Get nearby entities to potentially look at
 			val nearbyEntities = getNearbyEntities(npc)
 
+			// Split entities into conversation participants and others
+			val entitiesInConversation =
+				nearbyEntities.filter { entity ->
+					(entity is Player && plugin.conversationManager.isPlayerInConversationWith(entity, npc)) ||
+						(
+							CitizensAPI.getNPCRegistry().isNPC(entity) &&
+								plugin.conversationManager.isNPCInConversationWith(
+									CitizensAPI.getNPCRegistry().getNPC(entity),
+									npc,
+								)
+						)
+				}
+
+			// return if npc.entity is not spawned
+			if (!npc.isSpawned) return
+
 			// Decide what to do based on probability
 			val decision = Random.nextDouble()
 
 			when {
-				// 60% chance to look at someone nearby if entities are present
-				nearbyEntities.isNotEmpty() && decision < 0.6 -> {
-					val target = nearbyEntities[Random.nextInt(nearbyEntities.size)]
+				// 50% chance to look at someone nearby if entities are present
+				nearbyEntities.isNotEmpty() && decision < 0.5 -> {
+					val target =
+						if (entitiesInConversation.isNotEmpty() && Random.nextDouble() < 0.9) {
+							// 90% chance to pick someone from the conversation
+							entitiesInConversation[Random.nextInt(entitiesInConversation.size)]
+						} else {
+							// 10% chance to pick anyone nearby (including those not in conversation)
+							nearbyEntities[Random.nextInt(nearbyEntities.size)]
+						}
 
 					Bukkit.getScheduler().runTask(
 						plugin,
 						Runnable {
 							val rot = npc.getOrAddTrait(RotationTrait::class.java)
-							rot.physicalSession.rotateToFace(target)
+
+							if (!npc.isSpawned) return@Runnable
+
+							// Get current yaw and calculate target yaw
+							val currentYaw =
+								net.citizensnpcs.util.NMS
+									.getHeadYaw(npc.entity)
+							val targetLocation = target.location
+
+							// Calculate yaw to target
+							val dx = targetLocation.x - npc.entity.location.x
+							val dz = targetLocation.z - npc.entity.location.z
+							val targetYaw = Math.toDegrees(Math.atan2(-dx, dz)).toFloat()
+
+							// Calculate yaw difference (normalized to -180 to 180)
+							var yawDiff = (targetYaw - currentYaw) % 360
+							if (yawDiff > 180) yawDiff -= 360
+							if (yawDiff < -180) yawDiff += 360
+
+							// Limit rotation to 60 degrees max for natural movement
+							val maxRotation = 60f
+							val limitedYaw =
+								if (Math.abs(yawDiff) > maxRotation) {
+									currentYaw + Math.signum(yawDiff.toDouble()).toFloat() * maxRotation
+								} else {
+									targetYaw
+								}
+
+							rot.physicalSession.rotateToHave(limitedYaw, 0f)
 						},
 					)
 
@@ -91,8 +148,8 @@ class NPCBehaviorManager(
 						showIdleHologram(npc)
 					}
 				}
-				// 25% chance to look in a random direction
-				decision < 0.85 -> {
+				// 10% chance to look in a random direction
+				decision < 0.6 -> {
 					val rot = npc.getOrAddTrait(RotationTrait::class.java)
 
 					// Check if the NPC is sitting
@@ -102,7 +159,6 @@ class NPCBehaviorManager(
 					val currentYaw =
 						if (isSitting) {
 							// For sitting NPCs, use the entity's yaw instead of head yaw
-							// This avoids the "looking at bottom" issue
 							npc.entity.location.yaw
 						} else {
 							net.citizensnpcs.util.NMS
@@ -134,7 +190,7 @@ class NPCBehaviorManager(
 						},
 					)
 				}
-				// 15% chance to do nothing (keep current position)
+				// 40% chance to do nothing (keep current position)
 			}
 		}
 
@@ -234,7 +290,7 @@ class NPCBehaviorManager(
 
 		val randomAction = idleActions[Random.nextInt(idleActions.size)]
 		val npcUUID = npc.uniqueId.toString()
-		val hologramName = "idle_$npcUUID"
+		val hologramName = npcUUID
 
 		// Use your existing hologram system to show the action
 		if (PluginUtils.isPluginEnabled("DecentHolograms")) {
@@ -277,6 +333,72 @@ class NPCBehaviorManager(
 				// Track when we last showed an idle hologram
 				npcIdleHologramTimes[npc.name ?: return] = System.currentTimeMillis()
 			} catch (e: Exception) {
+				plugin.logger.warning("Error showing idle hologram: ${e.message}")
+			}
+		}
+	}
+
+	private fun showIdleHologram(player: Player) {
+		val idleActions =
+			listOf(
+				"&7&osighs",
+				"&7&oshuffles feet",
+				"&7&oglances around",
+				"&7&oblinks slowly",
+				"&7&oyawns",
+				"&7&oclears throat",
+				"&7&omumbles",
+				"&7&oscratches head",
+				"&7&omutters",
+				"&7&obreathes deeply",
+				"&7&ogroans quietly",
+				"&7&ofidgets",
+				"&7&osniffs",
+				"&7&ostretches neck",
+				"&7&otilts head",
+				"&7&onarrows eyes",
+				"&7&onods slowly",
+			)
+
+		val randomAction = idleActions[Random.nextInt(idleActions.size)]
+
+		val hologramName = player.uniqueId.toString()
+
+		if (PluginUtils.isPluginEnabled("DecentHolograms")) {
+			try {
+				val playerPos =
+					player.location
+						.clone()
+						.add(0.0, 2.10, 0.0)
+
+				val existingHologram =
+					eu.decentsoftware.holograms.api.DHAPI
+						.getHologram(hologramName)
+				if (existingHologram != null) {
+					eu.decentsoftware.holograms.api.DHAPI
+						.removeHologram(hologramName)
+				}
+
+				val hologram =
+					eu.decentsoftware.holograms.api.DHAPI
+						.createHologram(hologramName, playerPos)
+				eu.decentsoftware.holograms.api.DHAPI
+					.addHologramLine(hologram, 0, randomAction)
+
+				Bukkit.getScheduler().runTaskLater(
+					plugin,
+					Runnable {
+						try {
+							eu.decentsoftware.holograms.api.DHAPI
+								.removeHologram(hologramName)
+						} catch (e: Exception) {
+							// Hologram might already be removed, just ignore
+						}
+					},
+					40L,
+				) // 2 seconds
+			} catch (e: Exception) {
+				e.printStackTrace()
 				plugin.logger.warning("Error showing idle hologram: ${e.message}")
 			}
 		}

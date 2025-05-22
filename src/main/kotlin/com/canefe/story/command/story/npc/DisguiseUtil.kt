@@ -58,6 +58,9 @@ class DisguiseUtil(
 		if (disguisedNPC != null) {
 			DisguiseAPI.undisguiseToAll(player)
 			plugin.disguiseManager.removeDisguise(player)
+			// remove holograms
+			eu.decentsoftware.holograms.api.DHAPI
+				.removeHologram(player.uniqueId.toString())
 			VanishAPI.hidePlayer(player)
 			disguisedNPC.teleport(player.location, PlayerTeleportEvent.TeleportCause.PLUGIN)
 			disguisedNPC.spawn(player.location)

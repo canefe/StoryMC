@@ -27,6 +27,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import java.util.*
+import java.util.function.Consumer
 import java.util.regex.Pattern
 
 /**
@@ -110,9 +111,13 @@ class MythicMobConversationIntegration(
 		player: Player,
 		radius: Double,
 	): List<Entity> {
+		// Get all entities in a cube around the player
 		val nearbyEntities = player.getNearbyEntities(radius, radius, radius)
+
+		// Filter for MythicMobs that are actually within spherical radius
 		return nearbyEntities.filter { entity ->
-			mythicMobsHandler.isMythicMob(entity)
+			mythicMobsHandler.isMythicMob(entity) &&
+				player.location.distanceSquared(entity.location) <= radius * radius
 		}
 	}
 
@@ -257,13 +262,15 @@ class MythicMobConversationIntegration(
 					return true
 				}
 
-				// Add this NPC to the existing conversation
-				conversation.addNPC(npc)
+				if (isDirectInteraction) {
+					// Add this NPC to the existing conversation
+					conversation.addNPC(npc)
 
-				// Set MythicMob in conversation mode
-				if (entity != null) {
-					mythicMobsHandler.setMythicMobInConversation(entity, true)
-					mythicMobsHandler.lookAtTarget(entity, player)
+					// Set MythicMob in conversation mode
+					if (entity != null) {
+						mythicMobsHandler.setMythicMobInConversation(entity, true)
+						mythicMobsHandler.lookAtTarget(entity, player)
+					}
 				}
 
 				return true
@@ -276,8 +283,15 @@ class MythicMobConversationIntegration(
 					return true
 				}
 
+				// check if there is any CitizensNPC nearby before starting a conversation
+				val nearbyCitizensNPCs = plugin.getNearbyNPCs(player, plugin.config.chatRadius)
+
 				val existingConversation =
 					conversationManager.getConversation(npc) ?: run {
+						if (nearbyCitizensNPCs.isNotEmpty()) {
+							return true
+						}
+
 						// No existing conversation, create a new one
 						val npcs = ArrayList<NPC>()
 						npcs.add(npc)
@@ -515,6 +529,14 @@ class MythicMobConversationIntegration(
 		override fun spawn(
 			p0: Location?,
 			p1: SpawnReason?,
+		): Boolean {
+			TODO("Not yet implemented")
+		}
+
+		override fun spawn(
+			p0: Location?,
+			p1: SpawnReason?,
+			p2: Consumer<Entity?>?,
 		): Boolean {
 			TODO("Not yet implemented")
 		}

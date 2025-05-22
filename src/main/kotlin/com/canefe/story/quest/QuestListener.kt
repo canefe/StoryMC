@@ -1,7 +1,7 @@
 package com.canefe.story.quest
 
 import com.canefe.story.Story
-import com.canefe.story.conversation.event.ConversationStartEvent
+import com.canefe.story.api.event.ConversationStartEvent
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -52,7 +52,7 @@ class QuestListener(
 								questId,
 								ObjectiveType.COLLECT,
 								objective.target,
-								1,
+								item.amount,
 							)
 						}
 					}
@@ -203,6 +203,7 @@ class QuestListener(
 
 		// For each NPC in the conversation, update the TALK objective
 		for (npc in event.npcs) {
+			if (npc.name == null) continue
 			val npcName = npc.name
 			updateQuestProgress(player, ObjectiveType.TALK, npcName)
 		}

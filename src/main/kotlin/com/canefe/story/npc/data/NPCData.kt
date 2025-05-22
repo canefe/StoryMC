@@ -12,6 +12,7 @@ data class NPCData(
 	var memory: MutableList<Memory> = mutableListOf()
 	var avatar: String = ""
 	var knowledgeCategories: List<String> = listOf()
+	var appearance: String = ""
 
 	// Helper method to add a memory
 	fun addMemory(
@@ -23,7 +24,5 @@ data class NPCData(
 		return memory
 	}
 
-	override fun toString(): String {
-		return "NPCData{name=$name, role=$role, location=$storyLocation, context=$context}"
-	}
+	override fun toString(): String = "NPCData{name=$name, role=$role, location=$storyLocation, context=$context}"
 }

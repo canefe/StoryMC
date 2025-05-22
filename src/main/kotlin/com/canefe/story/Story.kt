@@ -1,8 +1,10 @@
 package com.canefe.story
 
 import ConversationManager
+import com.canefe.story.api.StoryAPI
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.command.base.CommandManager
+import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.config.ConfigService
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
@@ -30,6 +32,7 @@ import com.canefe.story.service.AIResponseService
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
 import com.canefe.story.util.TimeService
+import com.canefe.story.webui.WebUIServer
 import dev.jorel.commandapi.CommandAPI
 import kr.toxicity.healthbar.api.placeholder.PlaceholderContainer
 import me.libraryaddict.disguise.DisguiseAPI
@@ -38,9 +41,19 @@ import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
+import org.bukkit.Location
+import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
+import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.block.Action
+import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.meta.BookMeta
+import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
+import java.util.Collections.emptyList
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 class Story :
@@ -50,6 +63,13 @@ class Story :
 	companion object {
 		lateinit var instance: Story
 			private set
+
+		/**
+		 * Gets the API instance for other plugins to use
+		 * @return The StoryAPI instance
+		 */
+		@JvmStatic
+		fun getAPI(): StoryAPI = instance.api
 	}
 
 	// Plugin configuration
@@ -111,6 +131,11 @@ class Story :
 
 	lateinit var mythicMobConversation: MythicMobConversationIntegration
 
+	private var webUIServer: WebUIServer? = null
+
+	lateinit var api: StoryAPI
+		private set
+
 	// Configuration and state
 	val miniMessage = MiniMessage.miniMessage()
 	var itemsAdderEnabled = false
@@ -148,7 +173,7 @@ class Story :
 		radiantConversationService.startProximityTask()
 
 		server.pluginManager.registerEvents(QuestListener(this), this)
-
+		initializeWebUIServer()
 		// Load configuration
 		configService.reload()
 		PlaceholderContainer.STRING.addPlaceholder("disguise_name") { e ->
@@ -173,6 +198,8 @@ class Story :
 				bukkitEntity.name
 			}
 		}
+
+		StoryAPI.initialize(this)
 	}
 
 	private fun checkRequiredPlugins() {
@@ -237,6 +264,8 @@ class Story :
 		eventManager = EventManager.getInstance(this)
 		eventManager.registerEvents()
 
+		registerQuestBookListener()
+
 		aiResponseService = AIResponseService(this)
 
 		relationshipManager = RelationshipManager(this)
@@ -244,12 +273,76 @@ class Story :
 		mythicMobConversation = MythicMobConversationIntegration(this)
 	}
 
+	private fun registerQuestBookListener() {
+		server.pluginManager.registerEvents(
+			object : Listener {
+				@EventHandler
+				fun onBookInteract(event: PlayerInteractEvent) {
+					if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
+					if (event.item?.type != Material.WRITTEN_BOOK) return
+
+					val meta = event.item?.itemMeta as? BookMeta ?: return
+					val targetKey = NamespacedKey(this@Story, "quest_book_target")
+					val targetUuidString = meta.persistentDataContainer.get(targetKey, PersistentDataType.STRING) ?: return
+
+					try {
+						val targetUuid = UUID.fromString(targetUuidString)
+						val targetPlayer = Bukkit.getOfflinePlayer(targetUuid)
+
+						// Cancel the default book opening
+						event.isCancelled = true
+
+						// Open custom quest book interface
+						val commandUtils = QuestCommandUtils()
+						if (targetPlayer.isOnline) {
+							commandUtils.openQuestBook(event.player, targetPlayer.player)
+						} else {
+							// If target is offline but we have their UUID, we can still try to open their quest data
+							commandUtils.openQuestBook(event.player, targetPlayer)
+						}
+					} catch (e: IllegalArgumentException) {
+						logger.warning("Invalid UUID in quest book: $targetUuidString")
+					}
+				}
+			},
+			this,
+		)
+	}
+
+	private fun initializeWebUIServer() {
+		val port = 7777
+		webUIServer = WebUIServer(this, port)
+		logger.info("WebUI server started on port $port")
+	}
+
 	override fun onDisable() {
 		logger.info("Story has been disabled.")
-		CommandAPI.onDisable()
-		scheduleManager.shutdown()
-		commandManager.onDisable()
-		eventManager.unregisterAll()
+
+		// Cancel all tasks first to prevent new ones from being registered
+		Bukkit.getScheduler().cancelTasks(this)
+		webUIServer?.shutdown()
+		// Then shut down each manager in reverse order of initialization
+		try {
+			// Conversation-related systems first
+			conversationManager.cancelScheduledTasks()
+			typingSessionManager.shutdown()
+
+			// NPC-related systems
+			scheduleManager.shutdown()
+
+			// Data-related systems
+			factionManager.shutdown()
+
+			// Generic systems
+			CommandAPI.onDisable()
+			commandManager.onDisable()
+			eventManager.unregisterAll()
+
+			logger.info("Story plugin has been successfully disabled.")
+		} catch (e: Exception) {
+			logger.severe("Error during plugin shutdown: ${e.message}")
+			e.printStackTrace()
+		}
 	}
 
 	/**
@@ -330,6 +423,28 @@ class Story :
 
 	// TODO: This method should be moved to a dedicated Player service
 	fun getNearbyPlayers(
+		player: Player,
+		radius: Double,
+		ignoreY: Boolean = false,
+	): List<Player> {
+		val radiusSquared = radius * radius
+		val playerLoc = player.location
+
+		return Bukkit.getOnlinePlayers().filter { otherPlayer ->
+			val loc = otherPlayer.location
+			if (loc.world != playerLoc.world) return@filter false
+
+			if (ignoreY) {
+				val dx = loc.x - playerLoc.x
+				val dz = loc.z - playerLoc.z
+				(dx * dx + dz * dz) <= radiusSquared
+			} else {
+				loc.distanceSquared(playerLoc) <= radiusSquared
+			}
+		}
+	}
+
+	fun getNearbyPlayers(
 		npc: NPC,
 		radius: Double,
 		ignoreY: Boolean = false,
@@ -349,6 +464,27 @@ class Story :
 				(dx * dx + dz * dz) <= radiusSquared
 			} else {
 				loc.distanceSquared(npcLoc) <= radiusSquared
+			}
+		}
+	}
+
+	fun getNearbyPlayers(
+		location: Location,
+		radius: Double,
+		ignoreY: Boolean = false,
+	): List<Player> {
+		val radiusSquared = radius * radius
+
+		return Bukkit.getOnlinePlayers().filter { player ->
+			val loc = player.location
+			if (loc.world != location.world) return@filter false
+
+			if (ignoreY) {
+				val dx = loc.x - location.x
+				val dz = loc.z - location.z
+				(dx * dx + dz * dz) <= radiusSquared
+			} else {
+				loc.distanceSquared(location) <= radiusSquared
 			}
 		}
 	}

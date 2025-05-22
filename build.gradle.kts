@@ -72,6 +72,7 @@ dependencies {
 
 	// HTTP Client
 	implementation("com.squareup.okhttp3:okhttp:4.12.0")
+	implementation("org.nanohttpd:nanohttpd:2.3.1")
 
 	// Kotlin
 	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
@@ -85,6 +86,15 @@ dependencies {
 	testImplementation("commons-lang:commons-lang:2.6")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
 	testImplementation("org.mockito:mockito-inline:4.8.0")
+	// Add Gson if used by the plugin
+	implementation("com.google.code.gson:gson:2.10.1") // Or the latest version
+
+	// Add Mockito-Kotlin for tests
+	testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0") // Or the latest version compatible with your mockito-core
+
+	// Update MockBukkit
+	// Replace testImplementation("com.github.seeseemelk:MockBukkit-v1.19:2.29.0") with:
+	testImplementation("com.github.MockBukkit:MockBukkit:v1.21-SNAPSHOT") // Find the latest version for 1.21
 }
 
 val targetJavaVersion = 21
@@ -144,6 +154,7 @@ tasks.processResources {
 }
 
 tasks.register<Copy>("copyToServer") {
+	dependsOn("build")
 	dependsOn("shadowJar")
 
 	doFirst {

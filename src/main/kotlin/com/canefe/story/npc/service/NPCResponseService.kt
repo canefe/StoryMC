@@ -4,8 +4,11 @@ import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.memory.Memory
+import com.canefe.story.util.EssentialsUtils
+import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
+import org.bukkit.entity.Player
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
@@ -18,33 +21,26 @@ class NPCResponseService(
 	private val contextService = plugin.npcContextGenerator
 
 	fun generateNPCResponse(
-		npc: NPC,
+		npc: NPC? = null,
 		responseContext: List<String>,
 		broadcast: Boolean = true,
+		player: Player? = null,
 	): CompletableFuture<String> {
 		val prompts: MutableList<ConversationMessage> = ArrayList()
 
+		// Fallback entity is a player character.
+		val isPlayerCharacter = player != null && npc == null
+		val charName = if (isPlayerCharacter) EssentialsUtils.getNickname(player.name) else npc?.name ?: "Unknown"
 		// Add basic roleplay instruction first
 		prompts.add(
 			ConversationMessage(
 				"system",
-				"You are roleplaying as an NPC named ${npc.name} in a Minecraft world.",
+				"You are roleplaying as $charName in a fantasy medieval world.",
 			),
 		)
 
-		// Add general context with clear section header
-		prompts.add(ConversationMessage("system", "===GENERAL INFORMATION==="))
-		contextService.getGeneralContexts().forEach {
-			prompts.add(
-				ConversationMessage(
-					"system",
-					it,
-				),
-			)
-		}
-
 		// Get NPC context
-		val npcContext = contextService.getOrCreateContextForNPC(npc.name)
+		val npcContext = contextService.getOrCreateContextForNPC(charName)
 
 		// Add location context with clear section header
 		val location = npcContext?.location
@@ -53,20 +49,79 @@ class NPCResponseService(
 			prompts.add(
 				ConversationMessage(
 					"system",
-					"===LOCATION INFORMATION===\n" +
+					"===HOME(CONTEXT) LOCATION===\n" +
 						location.getContextForPrompt(plugin.locationManager),
 				),
 			)
 		}
 
+		val entityPos =
+			if (isPlayerCharacter) {
+				player.location
+			} else {
+				plugin.conversationManager.getRealEntityForNPC(npc!!)?.location
+			}
+
+		// Check if NPC is spawned to determine actual location
+		if (entityPos != null) {
+			val actualLocation = plugin.locationManager.getLocationByPosition(entityPos, 150.0)
+
+			// If actual location exists and differs from context location
+			if (actualLocation != null && location != null) {
+				// Check if they're exactly the same location
+				val exactSameLocation = (location.name == actualLocation.name)
+
+				// If not the exact same location
+				if (!exactSameLocation) {
+					// Check if they share the same parent location
+					val sameParentLocation =
+						(
+							location.hasParent() &&
+								actualLocation.hasParent() &&
+								location.parentLocationName == actualLocation.parentLocationName
+						) ||
+							(!location.hasParent() && actualLocation.parentLocationName == location.name)
+
+					// Add current location information with appropriate detail level
+					val locationInfo =
+						if (sameParentLocation) {
+							// Only include this specific sublocation's context, not parent context
+							"===CURRENT SUBLOCATION===\n" +
+								"You are currently at ${actualLocation.name} (within ${actualLocation.parentLocationName}).\n" +
+								"Sublocation details:\n" +
+								actualLocation.context.joinToString("\n") { "- $it" }
+						} else {
+							// Include full context (with parent context) for completely different locations
+							"===CURRENT LOCATION===\n" +
+								"You are currently physically at ${actualLocation.name}.\n" +
+								actualLocation.getContextForPrompt(plugin.locationManager)
+						}
+
+					prompts.add(ConversationMessage("system", locationInfo))
+				}
+			}
+		}
+
 		// Lorebook context with clear section header
 		val lorebookContexts = mutableListOf<String>()
-		plugin.conversationManager.getConversation(npc)?.let { conversation ->
-			lorebookContexts.addAll(
-				plugin.conversationManager.checkAndGetLoreContexts(conversation).map { lore ->
-					"${lore.loreName} - ${lore.context}"
-				},
-			)
+		if (player != null) {
+			plugin.conversationManager.getConversation(player)?.let { conversation ->
+				lorebookContexts.addAll(
+					plugin.conversationManager.checkAndGetLoreContexts(conversation).map { lore ->
+						"${lore.loreName} - ${lore.context}"
+					},
+				)
+			}
+		}
+
+		if (npc != null) {
+			plugin.conversationManager.getConversation(npc)?.let { conversation ->
+				lorebookContexts.addAll(
+					plugin.conversationManager.checkAndGetLoreContexts(conversation).map { lore ->
+						"${lore.loreName} - ${lore.context}"
+					},
+				)
+			}
 		}
 
 		if (lorebookContexts.isNotEmpty()) {
@@ -87,6 +142,16 @@ class NPCResponseService(
 					"===CHARACTER INFORMATION===\n" + npcContext.context,
 				),
 			)
+
+			// Add appearance information if available
+			if (npcContext.appearance.isNotEmpty()) {
+				prompts.add(
+					ConversationMessage(
+						"system",
+						"===PHYSICAL APPEARANCE===\n" + npcContext.appearance,
+					),
+				)
+			}
 		}
 
 		// Finally, add NPCs memories with clear section header
@@ -99,51 +164,43 @@ class NPCResponseService(
 			)
 		}
 
+		// Add specific instructions at the end for emphasis
+		// Add general context with clear section header
+		prompts.add(ConversationMessage("system", "===INSTRUCTIONS===\n"))
+		prompts.add(
+			ConversationMessage(
+				"system",
+				contextService.getGeneralContexts().joinToString(separator = "\n"),
+			),
+		)
+
 		// Add the response context with clear section header
 		if (responseContext.isNotEmpty()) {
 			prompts.add(
 				ConversationMessage(
 					"system",
-					"===CONVERSATION CONTEXT===\n" +
-						responseContext.joinToString(separator = "\n"),
+					responseContext.joinToString(separator = "\n"),
 				),
 			)
 		}
 
-		// Add specific instructions at the end for emphasis
-		prompts.add(
-			ConversationMessage(
-				"system",
-				"===INSTRUCTIONS===\nRespond in character as ${npc.name}. Keep responses concise (2-4 sentences). Never break character. Your response should reflect your personality and knowledge. Format your response without quotation marks or name prefixes.",
-			),
-		)
-
 		return plugin.getAIResponse(prompts).thenApply { response ->
 			val finalResponse = response ?: "No response generated."
 			if (broadcast) {
-				plugin.npcMessageService.broadcastNPCMessage(
-					finalResponse,
-					npc,
-					npcContext = npcContext,
-				)
-			}
-			// Get the current player in conversation with this NPC, if any
-			val targetPlayer =
-				plugin.conversationManager.getConversation(npc)?.players?.firstOrNull()?.let {
-					Bukkit.getPlayer(it)
+				if (npc != null) {
+					// Broadcast to all players in the vicinity
+					plugin.npcMessageService.broadcastNPCStreamMessage(
+						finalResponse,
+						npc,
+						npcContext = npcContext,
+					)
+				} else if (player != null) {
+					// Send to the player character
+					plugin.npcMessageService.broadcastPlayerMessage(
+						finalResponse,
+						player,
+					)
 				}
-			// Analyze response for action intents asynchronously
-			if (targetPlayer != null) {
-				plugin.npcActionIntentRecognizer.recognizeQuestGivingIntent(
-					npc,
-					finalResponse,
-					targetPlayer,
-				)
-				plugin.npcActionIntentRecognizer.recognizeActionIntents(
-					npc,
-					finalResponse,
-					targetPlayer,
-				)
 			}
 			finalResponse
 		}
@@ -207,6 +264,59 @@ class NPCResponseService(
 		return result
 	}
 
+	/**
+	 * Generates a behavioral directive for an NPC to guide their response based on conversation context.
+	 *
+	 * @param conversation The current conversation
+	 * @param npc The NPC who will be responding
+	 * @return CompletableFuture<String> containing the behavioral directive
+	 */
+	fun generateBehavioralDirective(
+		conversation: Conversation,
+		npc: NPC,
+	): CompletableFuture<String> {
+		// Get only the behavioral directive prompt - no need to duplicate context that generateNPCResponse already adds
+
+		val recentMessages =
+			conversation.history
+				.takeLast(10)
+				.map { it.content }
+				.joinToString("\n")
+
+		val directivePrompt =
+			listOf(
+				"""You are a behavioral analysis agent responsible for generating actionable roleplay directives.
+
+Your job is to decide how the NPC should act **in this exact moment**, and generate a short system instruction to guide the LLM generating their response.
+
+FORMAT:
+"Make [NPC_NAME] [clear emotional or behavioral instruction]. [Optional elaboration or motive.]"
+
+Examples:
+- Make Omaloa recoil in betrayal and accuse James of treason. She should speak with hurt and disbelief.
+- Make Varcar act smug and dismissive. He should mock the speaker's concerns and flex his authority.
+- Make Arin act cautious but probing. She suspects the speaker knows something and wants to test them.
+
+RULES:
+- Analyze the recent conversation history, do not be repetitive, and advance the conversation through your directive.
+- Always generate one single instruction. No narration, no explanation.
+- Keep it short. Max 3 sentences.
+- Use emotionally charged verbs: accuse, lash out, demand, beg, tremble, break, mock, etc.
+- Always reference specific NPC names.
+- Never summarize memories. Your job is to produce a **directive**, not exposition.
+- Treat the situation as if it's unfolding live — you are the director calling the emotional shot for this scene.
+
+Current conversation:
+$recentMessages
+
+Generate a behavioral directive for ${npc.name} in this exact moment.
+Respond only with the directive. No extra commentary.""",
+			)
+
+		// Use the existing generateNPCResponse method with broadcast set to false
+		return generateNPCResponse(npc, directivePrompt, false)
+	}
+
 	fun determineNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
 		val future = CompletableFuture<String?>()
 
@@ -236,7 +346,7 @@ class NPCResponseService(
 				Based on the conversation history below, determine which character should speak next. Consider: who was addressed in the last message, who has relevant information, and who hasn't spoken recently. Available characters: ${
 					java.lang.String.join(
 						", ",
-						conversation.npcNames,
+						conversation.npcs.filterNot { conversation.mutedNPCs.contains(it) }.map { it.name },
 					)
 				}
 				Respond with ONLY the name of who should speak next. No explanation or additional text.
@@ -312,12 +422,21 @@ class NPCResponseService(
 		return CompletableFuture.completedFuture(response)
 	}
 
-	fun summarizeConversation(
-		history: List<ConversationMessage>,
-		npcNames: List<String>,
-		playerName: String? = null,
-	): CompletableFuture<Void> {
+	fun summarizeConversation(conversation: Conversation): CompletableFuture<Void> {
 		val future = CompletableFuture<Void>()
+		val history = conversation.history
+		val npcNames = conversation.npcNames
+		// convert to EssentialUtils.getNickname(playerName(!))
+		val playerNames =
+			conversation.players.map {
+				Bukkit.getPlayer(it).let { player ->
+					if (player != null) {
+						EssentialsUtils.getNickname(player.name)
+					} else {
+						null
+					}
+				}
+			}
 
 		// Return early if not enough conversation history
 		if (history.isEmpty() || history.size < 3) {
@@ -325,114 +444,62 @@ class NPCResponseService(
 			return future
 		}
 
-		val messages = mutableListOf<ConversationMessage>()
+		// Return early if no NPCs to summarize for
+		if (npcNames.isEmpty()) {
+			future.complete(null)
+			return future
+		}
 
-		messages.addAll(history)
-		messages.add(
-			ConversationMessage(
-				"system",
-				"Summarize this conversation from the perspective of each participant. Use this format exactly:\n\n" +
-					"NPC_NAME: <their individual perspective and key takeaway>\n\n" +
-					"Avoid extra formatting like asterisks, role labels (e.g., NPC/Player), or markdown. Keep the tone consistent with how each participant might naturally reflect on the interaction. Be concise and insightful.",
-			),
-		)
+		// Track completion of all individual summaries
+		val pendingNPCs = npcNames.size
+		val completedNPCs = AtomicInteger(0)
 
-		plugin
-			.getAIResponse(messages)
-			.thenAccept { summaryResponse ->
-				if (summaryResponse.isNullOrEmpty()) {
-					plugin.logger.warning("Failed to get summary response for conversation")
-					future.complete(null)
-					return@thenAccept
-				}
-
-				val pendingNPCs = npcNames.size
-				val completedNPCs = AtomicInteger(0)
-
-				for (npcName in npcNames) {
-					val npcSummaryMatch =
-						Regex(
-							"(?m)^$npcName:\\s*(.*?)(?=^\\w+:|\$)",
-							RegexOption.DOT_MATCHES_ALL,
-						).find(summaryResponse)
-							?.groupValues
-							?.getOrNull(1)
-							?.trim()
-
-					if (!npcSummaryMatch.isNullOrEmpty()) {
-						val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
-
-						evaluateMemorySignificance(npcSummaryMatch)
-							.thenAccept { significance ->
-								val memory =
-									Memory(
-										id =
-											"conversation_summary_${System.currentTimeMillis()}_$npcName",
-										content = npcSummaryMatch,
-										gameCreatedAt =
-											plugin.timeService
-												.getCurrentGameTime(),
-										lastAccessed =
-											plugin.timeService
-												.getCurrentGameTime(),
-										power = 0.85,
-										_significance = significance,
-									)
-
-								npcData.memory.add(memory)
-								plugin.relationshipManager.updateRelationshipFromMemory(
-									memory,
-									npcName,
-								)
-								plugin.npcDataManager.saveNPCData(npcName, npcData)
-
-								if (completedNPCs.incrementAndGet() >= pendingNPCs) {
-									future.complete(null)
-								}
-							}.exceptionally { ex ->
-								plugin.logger.warning(
-									"Error evaluating memory significance for $npcName: ${ex.message}",
-								)
-								val memory =
-									Memory(
-										id =
-											"conversation_summary_${System.currentTimeMillis()}_$npcName",
-										content = npcSummaryMatch,
-										gameCreatedAt =
-											plugin.timeService
-												.getCurrentGameTime(),
-										lastAccessed =
-											plugin.timeService
-												.getCurrentGameTime(),
-										power = 0.85,
-										_significance = 1.0,
-									)
-
-								npcData.memory.add(memory)
-								plugin.npcDataManager.saveNPCData(npcName, npcData)
-
-								if (completedNPCs.incrementAndGet() >= pendingNPCs) {
-									future.complete(null)
-								}
-
-								null
-							}
-					} else {
-						plugin.logger.warning("No summary match found for $npcName in response")
-						if (completedNPCs.incrementAndGet() >= pendingNPCs) {
-							future.complete(null)
-						}
+		// Process each NPC individually using summarizeConversationForSingleNPC
+		for (npcName in npcNames) {
+			// Use the existing method to generate individual summaries with proper memory integration
+			summarizeConversationForSingleNPC(history, npcName)
+				.thenAccept {
+					// Increment counter and check if all are complete
+					if (completedNPCs.incrementAndGet() >= pendingNPCs) {
+						future.complete(null)
 					}
-				}
+				}.exceptionally { e ->
+					plugin.logger.warning("Error summarizing conversation for $npcName: ${e.message}")
 
-				if (npcNames.isEmpty()) {
-					future.complete(null)
+					// Still increment counter to avoid deadlock even if one fails
+					if (completedNPCs.incrementAndGet() >= pendingNPCs) {
+						future.complete(null)
+					}
+					null
 				}
-			}.exceptionally { e ->
-				plugin.logger.warning("Error summarizing conversation: ${e.message}")
-				future.completeExceptionally(e)
-				null
+		}
+
+		val completedPlayers = AtomicInteger(0)
+		val pendingPlayers = playerNames.size
+
+		// Process each player individually using summarizeConversationForSingleNPC
+		for (playerName in playerNames) {
+			// Skip null player names
+			if (playerName == null) {
+				continue
 			}
+			// Use the existing method to generate individual summaries with proper memory integration
+			summarizeConversationForSingleNPC(history, playerName)
+				.thenAccept {
+					// Increment counter and check if all are complete
+					if (completedPlayers.incrementAndGet() >= pendingPlayers) {
+						future.complete(null)
+					}
+				}.exceptionally { e ->
+					plugin.logger.warning("Error summarizing conversation for $playerName: ${e.message}")
+
+					// Still increment counter to avoid deadlock even if one fails
+					if (completedPlayers.incrementAndGet() >= pendingPlayers) {
+						future.complete(null)
+					}
+					null
+				}
+		}
 
 		return future
 	}
@@ -457,24 +524,35 @@ class NPCResponseService(
 			return future
 		}
 
-		val messages = mutableListOf<ConversationMessage>()
+		// Find the NPC by name
+		val npc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == npcName }
+		val player =
+			Bukkit
+				.getOnlinePlayers()
+				.firstOrNull { EssentialsUtils.getNickname(it.name) == npcName }
 
-		messages.addAll(history)
-		messages.add(
-			ConversationMessage(
-				"system",
-				"""
-        Summarize this conversation from $npcName's perspective only.
-        Create a concise summary of what happened in this conversation and what $npcName learned or felt about it.
-        Focus only on $npcName's experience and perspective, not other participants.
-        Keep the tone consistent with how $npcName would naturally reflect on this interaction.
-        Be concise and insightful.
-        """,
-			),
-		)
+		// Convert conversation history to a format suitable for responseContext
+		val conversationText =
+			history
+				.filter { it.role != "system" }
+				.map { it.content }
+				.joinToString("\n") {
+					"$it"
+				}
 
-		plugin
-			.getAIResponse(messages)
+		// Create the context for the NPC's perspective summary
+		val responseContext =
+			listOf(
+				"===EVENT===\n$conversationText",
+				"Summarize this event from your perspective only.",
+				"Create a concise summary of what happened in this event and what you learned or felt about it.",
+				"Focus only on your experience and perspective, not other participants.",
+				"Keep the tone consistent with how you would naturally reflect on this interaction.",
+				"Be concise and insightful.",
+			)
+
+		// Use generateNPCResponse which already handles memory integration
+		generateNPCResponse(npc, responseContext, false, player)
 			.thenAccept { summaryResponse ->
 				if (summaryResponse.isNullOrEmpty()) {
 					plugin.logger.warning("Failed to get summary response for $npcName")
@@ -496,40 +574,29 @@ class NPCResponseService(
 					.thenAccept { significance ->
 						val memory =
 							Memory(
-								id =
-									"conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
+								id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
 								content = cleanSummary,
-								gameCreatedAt =
-									plugin.timeService.getCurrentGameTime(),
-								lastAccessed =
-									plugin.timeService.getCurrentGameTime(),
+								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+								lastAccessed = plugin.timeService.getCurrentGameTime(),
 								power = 0.85,
 								_significance = significance,
 							)
 
 						npcData.memory.add(memory)
-						plugin.relationshipManager.updateRelationshipFromMemory(
-							memory,
-							npcName,
-						)
+						plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
 						plugin.npcDataManager.saveNPCData(npcName, npcData)
 
 						future.complete(null)
 					}.exceptionally { ex ->
-						plugin.logger.warning(
-							"Error evaluating memory significance for $npcName: ${ex.message}",
-						)
+						plugin.logger.warning("Error evaluating memory significance for $npcName: ${ex.message}")
 
 						// Create memory with default significance on error
 						val memory =
 							Memory(
-								id =
-									"conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
+								id = "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
 								content = cleanSummary,
-								gameCreatedAt =
-									plugin.timeService.getCurrentGameTime(),
-								lastAccessed =
-									plugin.timeService.getCurrentGameTime(),
+								gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+								lastAccessed = plugin.timeService.getCurrentGameTime(),
 								power = 0.85,
 								_significance = 1.0,
 							)
@@ -541,9 +608,7 @@ class NPCResponseService(
 						null
 					}
 			}.exceptionally { e ->
-				plugin.logger.warning(
-					"Error summarizing conversation for $npcName: ${e.message}",
-				)
+				plugin.logger.warning("Error summarizing conversation for $npcName: ${e.message}")
 				future.completeExceptionally(e)
 				null
 			}
@@ -579,5 +644,79 @@ class NPCResponseService(
 			// Ensure value is within valid range
 			significanceValue.coerceIn(1.0, 5.0)
 		}
+	}
+
+	/**
+	 * Generates a memory for an NPC based on the provided context and type.
+	 * @param npcName The name of the NPC
+	 * @param type The type of memory (event, conversation, observation, experience)
+	 * @param context The context for the memory
+	 * @return CompletableFuture<Memory?> that completes with the created memory or null if faileds
+	 */
+	fun generateNPCMemory(
+		npcName: String,
+		type: String,
+		context: String,
+	): CompletableFuture<Memory?> {
+		val future = CompletableFuture<Memory?>()
+
+		// Check if NPC exists
+		val npcData = plugin.npcDataManager.getNPCData(npcName)
+		if (npcData == null) {
+			future.complete(null)
+			return future
+		}
+
+		// Create synthetic conversation history
+		val syntheticConversation = mutableListOf<ConversationMessage>()
+
+		// First message: Memory type explanation
+		syntheticConversation.add(
+			ConversationMessage(
+				"system",
+				when (type) {
+					"event" -> "This is an important event that $npcName experienced or witnessed."
+					"conversation" -> "This is a conversation that $npcName had with someone."
+					"observation" -> "This is something that $npcName observed or noticed."
+					"experience" -> "This is a personal experience or memory of $npcName."
+					else -> "This is an important memory for $npcName."
+				},
+			),
+		)
+
+		// Second message: NPC context from data
+		val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)?.context
+		if (npcContext != null) {
+			syntheticConversation.add(ConversationMessage("system", npcContext))
+		}
+
+		// Third message: Instruction
+		syntheticConversation.add(
+			ConversationMessage(
+				"system",
+				"Based on the following input, create a detailed memory from $npcName's perspective.",
+			),
+		)
+
+		// Add the player-provided context
+		syntheticConversation.add(ConversationMessage("user", context))
+
+		// Process using existing functionality
+		summarizeConversationForSingleNPC(syntheticConversation, npcName)
+			.thenAccept {
+				val latestMemory =
+					plugin.npcDataManager
+						.getNPCData(npcName)
+						?.memory
+						?.lastOrNull()
+
+				future.complete(latestMemory)
+			}.exceptionally { e ->
+				plugin.logger.warning("Failed to create memory for $npcName: ${e.message}")
+				future.completeExceptionally(e)
+				null
+			}
+
+		return future
 	}
 }

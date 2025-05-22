@@ -132,20 +132,6 @@ class WorldInformationManager(
 
 			// Process based on type
 			when {
-				type.equals("PERSONAL", ignoreCase = true) -> {
-					// Split target by comma to handle multiple NPCs
-					val targetNpcs = target.split(",\\s*".toRegex())
-
-					for (singleTarget in targetNpcs) {
-						val trimmedTarget = singleTarget.trim()
-						// Only add personal knowledge if target is a valid NPC name
-						if (npcNames.contains(trimmedTarget)) {
-							addPersonalKnowledge(trimmedTarget, information, importance ?: "MEDIUM")
-						} else {
-							plugin.logger.warning("Ignoring personal knowledge for unknown NPC: $trimmedTarget")
-						}
-					}
-				}
 				type.equals("RUMOR", ignoreCase = true) -> {
 					// Is the target a specific location?
 					if (relevantLocations.any { it.equals(target, ignoreCase = true) }) {
@@ -168,7 +154,6 @@ class WorldInformationManager(
 							val trimmedTarget = singleTarget.trim()
 							// Only if target is a valid NPC name
 							if (npcNames.contains(trimmedTarget)) {
-								addPersonalKnowledge(trimmedTarget, information, importance ?: "MEDIUM")
 								validTargetFound = true
 							}
 						}
