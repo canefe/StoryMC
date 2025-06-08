@@ -135,9 +135,11 @@ class WebUIServer(
 	private fun serializePluginState(): PluginStateDTO {
 		// Create a complete snapshot of the current plugin state
 		val conversations = plugin.conversationManager.getAllActiveConversations().map { it.toDTO() }
+		val npcs = plugin.npcDataManager.getAllNPCData().map { it.toDTO() }
 
 		return PluginStateDTO(
 			conversations = conversations,
+			npcs = npcs,
 		)
 	}
 
