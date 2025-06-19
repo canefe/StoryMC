@@ -16,9 +16,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.regex.Pattern
 import kotlin.text.append
 
-class NPCMessageService(
-	private val plugin: Story,
-) {
+class NPCMessageService(private val plugin: Story) {
 	// Cache already gender-checked NPCs
 	private val genderCache: MutableMap<String, String> = mutableMapOf()
 
@@ -45,6 +43,8 @@ class NPCMessageService(
 		avatar: String? = null,
 		npcId: UUID? = null,
 		isClientPlayer: Boolean = false,
+		formatColor: String? = "<white>",
+		formatColorSuffix: String? = "</white>",
 	): List<Component> {
 		val mm = MiniMessage.miniMessage()
 		val maxLineWidth = 40 // Adjust based on desired character limit per line
@@ -111,7 +111,7 @@ class NPCMessageService(
 
 			// Add padding spaces before each wrapped line for alignment
 			for (wrappedLine in wrappedLines) {
-				parsedMessages.add(mm.deserialize("$padding<white>$wrappedLine"))
+				parsedMessages.add(mm.deserialize("$padding$formatColor$wrappedLine$formatColorSuffix"))
 			}
 
 			// Add empty lines for spacing
@@ -141,6 +141,7 @@ class NPCMessageService(
 		color: String? = null,
 		npcContext: NPCContext? = null,
 		streaming: Boolean = false,
+		shouldBroadcast: Boolean = true,
 	) {
 		// First check if we already have the gender cached
 		val cachedGender = genderCache[npc.name]
@@ -177,8 +178,15 @@ class NPCMessageService(
 		Bukkit.getScheduler().runTask(
 			plugin,
 			Runnable {
+				val entity =
+					plugin.disguiseManager.isNPCBeingImpersonated(npc).let {
+						// if it is true then return the player
+						plugin.disguiseManager.getDisguisedPlayer(npc)
+					}
+						?: npc.entity
+
 				// Only send message to players who are nearby OR have permission
-				val npcLocation = npc.entity?.location ?: return@Runnable
+				val npcLocation = entity?.location ?: return@Runnable
 				val disabledHearing = plugin.playerManager.disabledHearing
 
 				var playersCount = 0
@@ -235,7 +243,7 @@ class NPCMessageService(
 				}
 
 				// Send for console
-				if (!streaming) {
+				if (!streaming && shouldBroadcast) {
 					parsedMessages.forEach { message ->
 						Bukkit.getConsoleSender().sendMessage(message)
 					}
@@ -247,12 +255,7 @@ class NPCMessageService(
 	/**
 	 * NPC Stream Message Broadcast add prefix <npc_typing> to indicate we are in a stream (AI LLM)
 	 */
-	fun broadcastNPCStreamMessage(
-		message: String,
-		npc: NPC,
-		color: String? = null,
-		npcContext: NPCContext? = null,
-	) {
+	fun broadcastNPCStreamMessage(message: String, npc: NPC, color: String? = null, npcContext: NPCContext? = null) {
 		broadcastNPCMessage(
 			message = message,
 			npc = npc,
@@ -265,11 +268,7 @@ class NPCMessageService(
 	/**
 	 * Broadcasts a player message with the same formatting as NPC messages
 	 */
-	fun broadcastPlayerMessage(
-		message: String,
-		player: Player,
-		color: String? = null,
-	) {
+	fun broadcastPlayerMessage(message: String, player: Player, color: String? = null) {
 		val playerName = EssentialsUtils.getNickname(player.name)
 		// Format the message - using player's name as the sender
 		val parsedMessages =
@@ -407,7 +406,7 @@ class NPCMessageService(
 				// Get AI response - wait as long as needed
 				val response =
 					plugin
-						.getAIResponse(prompt)
+						.getAIResponse(prompt, lowCost = true)
 						.get()
 						?.trim()
 						?.lowercase()
@@ -440,10 +439,7 @@ class NPCMessageService(
 	}
 
 	// Helper methods for text wrapping
-	private fun wrapTextWithFormatting(
-		text: String,
-		maxWidth: Int,
-	): List<String> {
+	private fun wrapTextWithFormatting(text: String, maxWidth: Int): List<String> {
 		val result = ArrayList<String>()
 		var remainingText = text
 		var safetyLimit = 100 // to avoid infinite loops
@@ -487,10 +483,7 @@ class NPCMessageService(
 		return text.replace("<[^>]+>".toRegex(), "").length
 	}
 
-	private fun findBreakPoint(
-		text: String,
-		maxWidth: Int,
-	): Int {
+	private fun findBreakPoint(text: String, maxWidth: Int): Int {
 		var count = 0
 		var lastSpaceIndex = -1
 		var inTag = false

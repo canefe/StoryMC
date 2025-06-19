@@ -87,10 +87,21 @@ class TypingSessionManager(
 		try {
 			if (PluginUtils.isPluginEnabled("DecentHolograms")) {
 				val npcUUID = npc.uniqueId.toString()
-				DHAPI.removeHologram(npcUUID + "_dialogue")
+				DHAPI.removeHologram(npcUUID)
 			}
 		} catch (e: Exception) {
 			plugin.logger.warning("Error clearing existing hologram: ${e.message}")
+		}
+
+		val location =
+			plugin.disguiseManager
+				.isNPCBeingImpersonated(npc)
+				?.let { plugin.disguiseManager.getDisguisedPlayer(npc)?.location }
+				?: npc.entity.location
+
+		if (location == null) {
+			plugin.logger.warning("NPC location is null, cannot start typing session.")
+			return TypingSession(npc, fullText)
 		}
 
 		val session =
@@ -98,7 +109,7 @@ class TypingSessionManager(
 				npc = npc,
 				fullText = fullText,
 				typingSpeed = typingSpeed,
-				location = npc.entity.location,
+				location = location,
 			)
 
 		activeSessions[npc.uniqueId] = session
@@ -129,7 +140,7 @@ class TypingSessionManager(
 				try {
 					if (PluginUtils.isPluginEnabled("DecentHolograms")) {
 						val npcUUID = session.npc.uniqueId.toString()
-						DHAPI.removeHologram(npcUUID + "_dialogue")
+						DHAPI.removeHologram(npcUUID)
 					}
 				} catch (e: Exception) {
 					plugin.logger.warning("Error removing NPC typing hologram: ${e.message}")

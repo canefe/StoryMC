@@ -52,11 +52,7 @@ class QuestObjective(
 	val required: Int = 1,
 )
 
-class QuestReward(
-	val type: RewardType,
-	val amount: Int = 0,
-	private val itemStack: ItemStack? = null,
-) {
+class QuestReward(val type: RewardType, val amount: Int = 0, private val itemStack: ItemStack? = null) {
 	fun getItemStack(): ItemStack? = itemStack
 }
 

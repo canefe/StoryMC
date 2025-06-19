@@ -1,5 +1,6 @@
 package com.canefe.story.npc.relationship
 
+import com.canefe.story.Story
 import java.util.UUID
 
 /**
@@ -40,8 +41,17 @@ data class Relationship(
 	/**
 	 * Updates the relationship type based on the current score and traits
 	 */
-	private fun updateRelationshipType() {
-		// Only automatically update type for significant score changes
+	fun updateRelationshipType() {
+		Story.instance.relationshipManager.generateRelationshipLabel(this)
+			.thenAccept { generatedType ->
+				this.type = generatedType
+			}
+			.exceptionally { ex ->
+				// Log a warning or handle the exception as needed
+				println("Warning: Failed to generate relationship label - ${ex.message}")
+				this.type = "unknown" // Set a default type on failure
+				null // Return null for the exceptionally block
+			}
 	}
 
 	/**

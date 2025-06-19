@@ -11,25 +11,29 @@ import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.trait.RotationTrait
 import org.bukkit.Bukkit
 import org.bukkit.Location
+import org.bukkit.attribute.Attribute
 import org.bukkit.command.CommandSender
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
+import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import java.io.File
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.text.set
 
-class NPCManager private constructor(
-	private val plugin: Story,
-) : Listener {
+class NPCManager private constructor(private val plugin: Story) : Listener {
 	// NPC cooldowns mapping (NPC UUID to timestamp)
 	private val npcCooldowns = HashMap<UUID, Long>()
 
 	// Disabled NPCs set
 	private val disabledNPCs = HashSet<Int>()
+
+	// Scaled NPCs Mapping (NPC UUID to scale)
+	val scaledNPCs = HashMap<UUID, Double>()
 
 	companion object {
 		private var instance: NPCManager? = null
@@ -48,6 +52,29 @@ class NPCManager private constructor(
 		loadData()
 	}
 
+	fun loadConfig() {
+		loadData()
+	}
+
+	fun applyScalesToNPCs() {
+		// Skip if Citizens isn't enabled
+		if (!Bukkit.getPluginManager().isPluginEnabled("Citizens")) {
+			plugin.logger.warning("Citizens plugin not enabled, couldn't apply NPC scales")
+			return
+		}
+
+		// Apply scales to all NPCs that have saved scale values
+		scaledNPCs.forEach { (uuid, scale) ->
+			// Find the NPC by UUID
+			val npc = CitizensAPI.getNPCRegistry().getByUniqueId(uuid)
+			if (npc != null && npc.isSpawned && npc.entity is LivingEntity) {
+				val livingEntity = npc.entity as LivingEntity
+				livingEntity.getAttribute(Attribute.GENERIC_SCALE)?.baseValue = scale
+				plugin.logger.info("Applied scale $scale to NPC ${npc.name}")
+			}
+		}
+	}
+
 	/**
 	 * Check if an NPC is on cooldown
 	 */
@@ -55,9 +82,10 @@ class NPCManager private constructor(
 		val uuid = npc.uniqueId
 		val lastInteraction = npcCooldowns[uuid] ?: return false
 		val currentTime = System.currentTimeMillis()
+		val cooldown = plugin.config.radiantCooldown.toLong()
 
 		// Default cooldown of 10 seconds
-		return currentTime - lastInteraction < TimeUnit.SECONDS.toMillis(10)
+		return currentTime - lastInteraction < TimeUnit.SECONDS.toMillis(cooldown)
 	}
 
 	/**
@@ -74,7 +102,8 @@ class NPCManager private constructor(
 		val uuid = npc.uniqueId
 		val lastInteraction = npcCooldowns[uuid] ?: return 0
 		val currentTime = System.currentTimeMillis()
-		val remainingMillis = TimeUnit.SECONDS.toMillis(10) - (currentTime - lastInteraction)
+		val cooldown = plugin.config.radiantCooldown.toLong()
+		val remainingMillis = TimeUnit.SECONDS.toMillis(cooldown) - (currentTime - lastInteraction)
 
 		return if (remainingMillis <= 0) 0 else (remainingMillis / 1000).toInt()
 	}
@@ -87,10 +116,7 @@ class NPCManager private constructor(
 	/**
 	 * Toggle NPC enabled/disabled status
 	 */
-	fun toggleNPC(
-		npc: NPC,
-		executor: CommandSender,
-	) {
+	fun toggleNPC(npc: NPC, executor: CommandSender) {
 		if (disabledNPCs.contains(npc.id)) {
 			disabledNPCs.remove(npc.id)
 			executor.sendSuccess("Enabled NPC: ${npc.name}")
@@ -121,12 +147,7 @@ class NPCManager private constructor(
 	/**
 	 * Makes an NPC walk to a player and speak a message
 	 */
-	fun eventGoToPlayerAndTalk(
-		npc: NPC,
-		player: Player,
-		message: String,
-		onCompleteAction: Runnable?,
-	) {
+	fun eventGoToPlayerAndTalk(npc: NPC, player: Player, message: String, onCompleteAction: Runnable?) {
 		if (!npc.isSpawned || isNPCDisabled(npc)) return
 
 		val navigator = npc.navigator
@@ -172,11 +193,7 @@ class NPCManager private constructor(
 	/**
 	 * Makes an NPC walk to another NPC and initiate conversation
 	 */
-	fun walkToNPC(
-		initiator: NPC,
-		target: NPC,
-		firstMessage: String,
-	) {
+	fun walkToNPC(initiator: NPC, target: NPC, firstMessage: String, radiant: Boolean = false) {
 		if (!initiator.isSpawned || !target.isSpawned || isNPCDisabled(initiator) || isNPCDisabled(target)) return
 
 		val navigator = initiator.navigator
@@ -204,14 +221,28 @@ class NPCManager private constructor(
 					val npcs = ArrayList<NPC>()
 					npcs.add(initiator)
 					npcs.add(target)
-					plugin.conversationManager.startRadiantConversation(npcs).thenAccept { conversation ->
-						// Add the first message to the conversation
-						conversation.addNPCMessage(initiator, firstMessage)
-						// Get A list of string only from conversation.history
-						val history = conversation.history.map { it.content }
-						plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
-							// Add the response to the conversation
-							conversation.addNPCMessage(target, response)
+
+					if (radiant) {
+						plugin.conversationManager.startRadiantConversation(npcs).thenAccept { conversation ->
+							// Add the first message to the conversation
+							conversation.addNPCMessage(initiator, firstMessage)
+							// Get A list of string only from conversation.history
+							val history = conversation.history.map { it.content }
+							plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
+								// Add the response to the conversation
+								conversation.addNPCMessage(target, response)
+							}
+						}
+					} else {
+						plugin.conversationManager.startConversation(npcs).thenAccept { conversation ->
+							// Add the first message to the conversation
+							conversation.addNPCMessage(initiator, firstMessage)
+							// Get A list of string only from conversation.history
+							val history = conversation.history.map { it.content }
+							plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
+								// Add the response to the conversation
+								conversation.addNPCMessage(target, response)
+							}
 						}
 					}
 
@@ -223,12 +254,27 @@ class NPCManager private constructor(
 	}
 
 	/**
+	 * Scales an NPC
+	 */
+	fun scaleNPC(npc: NPC, scale: Double): Boolean {
+		scaledNPCs [npc.uniqueId] = scale
+		saveData()
+
+		val livingEntity: LivingEntity?
+		val entity = npc.entity
+		if (npc.isSpawned && entity is LivingEntity) {
+			livingEntity = entity
+		} else {
+			return false
+		}
+		livingEntity.getAttribute(Attribute.GENERIC_SCALE)!!.setBaseValue(scale)
+		return true
+	}
+
+	/**
 	 * Makes an NPC face toward a specific location
 	 */
-	private fun makeNPCFaceLocation(
-		npc: NPC,
-		targetLocation: Location,
-	) {
+	private fun makeNPCFaceLocation(npc: NPC, targetLocation: Location) {
 		if (!npc.isSpawned) return
 
 		val npcLoc = npc.entity.location
@@ -241,10 +287,7 @@ class NPCManager private constructor(
 	/**
 	 * Checks if an NPC is close enough to a target location
 	 */
-	private fun isNearTarget(
-		npc: NPC,
-		targetLocation: Location,
-	): Boolean {
+	private fun isNearTarget(npc: NPC, targetLocation: Location): Boolean {
 		if (!npc.isSpawned) return false
 
 		val npcLocation = npc.entity.location
@@ -331,10 +374,7 @@ class NPCManager private constructor(
 	 * @param end Target location
 	 * @return List of waypoints including start and end points
 	 */
-	private fun generateWaypoints(
-		start: Location,
-		end: Location,
-	): List<Location> {
+	private fun generateWaypoints(start: Location, end: Location): List<Location> {
 		val waypoints = mutableListOf<Location>()
 
 		// Always include start point
@@ -661,10 +701,7 @@ class NPCManager private constructor(
 	/**
 	 * Makes an NPC walk away from a conversation
 	 */
-	fun makeNPCWalkAway(
-		npc: NPC,
-		convo: Conversation,
-	) {
+	fun makeNPCWalkAway(npc: NPC, convo: Conversation) {
 		if (!npc.isSpawned) return
 
 		val npcLocation = npc.entity.location
@@ -717,10 +754,7 @@ class NPCManager private constructor(
 	/**
 	 * Makes an NPC speak without walking
 	 */
-	fun makeNPCTalk(
-		npc: NPC,
-		message: String,
-	) {
+	fun makeNPCTalk(npc: NPC, message: String) {
 		if (!npc.isSpawned || isNPCDisabled(npc)) return
 
 		// Broadcast the message to players
@@ -733,10 +767,7 @@ class NPCManager private constructor(
 	/**
 	 * Makes an NPC follow a player
 	 */
-	fun followPlayer(
-		npc: NPC,
-		player: Player,
-	) {
+	fun followPlayer(npc: NPC, player: Player) {
 		if (!npc.isSpawned || !player.isOnline || isNPCDisabled(npc)) return
 
 		val navigator = npc.navigator
@@ -766,12 +797,7 @@ class NPCManager private constructor(
 		}
 	}
 
-	fun spawnNPC(
-		npcName: String,
-		location: Location?,
-		player: Player,
-		message: String?,
-	) {
+	fun spawnNPC(npcName: String, location: Location?, player: Player, message: String?) {
 		// Check if Citizens plugin is enabled
 		if (!Bukkit.getPluginManager().isPluginEnabled("Citizens")) {
 			Bukkit.getLogger().warning("Citizens plugin is not enabled!")
@@ -807,11 +833,23 @@ class NPCManager private constructor(
 	 */
 	fun saveData() {
 		try {
+			// Disabled NPCs file
 			val disabledNpcsFile = File(plugin.dataFolder, "disabled-npcs.yml")
 			val config = YamlConfiguration()
 
 			config.set("disabled-npcs", disabledNPCs.toList())
 			config.save(disabledNpcsFile)
+
+			// Scaled NPCs file
+			val scaledNpcsFile = File(plugin.dataFolder, "scaled-npcs.yml")
+			val scaledConfig = YamlConfiguration()
+
+			// Create a proper configuration section for each UUID
+			scaledNPCs.forEach { (uuid, scale) ->
+				scaledConfig.set("scaled-npcs.$uuid", scale)
+			}
+
+			scaledConfig.save(scaledNpcsFile)
 		} catch (e: Exception) {
 			plugin.logger.severe("Could not save disabled NPCs: ${e.message}")
 		}
@@ -830,6 +868,19 @@ class NPCManager private constructor(
 				disabledNPCs.clear()
 				disabledNPCs.addAll(disabledList)
 			}
+
+			// Load scaled NPCs
+			val scaledNpcsFile = File(plugin.dataFolder, "scaled-npcs.yml")
+			if (scaledNpcsFile.exists()) {
+				val scaledConfig = YamlConfiguration.loadConfiguration(scaledNpcsFile)
+				val scaledList = scaledConfig.getConfigurationSection("scaled-npcs")?.getKeys(false) ?: emptySet()
+
+				scaledNPCs.clear()
+				for (key in scaledList) {
+					val scale = scaledConfig.getDouble("scaled-npcs.$key")
+					scaledNPCs[UUID.fromString(key)] = scale
+				}
+			}
 		} catch (e: Exception) {
 			plugin.logger.severe("Could not load disabled NPCs: ${e.message}")
 		}
@@ -838,10 +889,7 @@ class NPCManager private constructor(
 	/**
 	 * Find a walkable location for an NPC to move to away from a conversation
 	 */
-	private fun findWalkableLocation(
-		npc: NPC,
-		convo: Conversation,
-	): Location? {
+	private fun findWalkableLocation(npc: NPC, convo: Conversation): Location? {
 		if (!npc.isSpawned) return null
 
 		val npcLocation = npc.entity.location

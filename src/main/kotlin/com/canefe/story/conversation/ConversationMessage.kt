@@ -3,14 +3,13 @@ package com.canefe.story.conversation
 data class ConversationMessage(
 	val role: String,
 	val content: String,
+	val timestamp: Long = System.currentTimeMillis(),
 ) {
-	override fun toString(): String {
-		return "ConversationMessage(role='$role', content='$content')"
-	}
+	override fun toString(): String = "ConversationMessage(role='$role', content='$content')"
 
 	companion object {
-		fun fromString(str: String): ConversationMessage? {
-			return try {
+		fun fromString(str: String): ConversationMessage? =
+			try {
 				val rolePattern = "role='([^']*)'".toRegex()
 				val contentPattern = "content='([^']*)'".toRegex()
 
@@ -27,6 +26,5 @@ data class ConversationMessage(
 			} catch (e: Exception) {
 				null
 			}
-		}
 	}
 }

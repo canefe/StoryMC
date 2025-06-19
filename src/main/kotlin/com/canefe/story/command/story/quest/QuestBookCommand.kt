@@ -12,6 +12,7 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.BookMeta
 import org.json.simple.JSONObject
 import org.json.simple.parser.JSONParser
+import kotlin.text.isNotEmpty
 
 class QuestBookCommand(
 	private val commandUtils: QuestCommandUtils,
@@ -46,30 +47,105 @@ class QuestBookCommand(
 							""
 						}
 
+					// Find relevant locations mentioned in the prompt
+					val locationKeywords =
+						context
+							.split(" ")
+							.filter { it.length > 3 } // Only consider words with more than 3 characters
+							.distinct()
+
+					val relevantLocations = mutableListOf<String>()
+					val locationContexts = mutableListOf<String>()
+
+					// Check if any location names match our keywords
+					locationKeywords.forEach { keyword ->
+						story.locationManager.getAllLocations().forEach { location ->
+							if (location.name.equals(keyword, ignoreCase = true) && location.context.isNotEmpty()) {
+								relevantLocations.add(location.name)
+								location.context.forEach { ctx ->
+									locationContexts.add("${location.name}: $ctx")
+								}
+							}
+						}
+					}
+
+					val locationInfo =
+						if (relevantLocations.isNotEmpty()) {
+							"Relevant locations found: ${relevantLocations.joinToString(", ")}"
+						} else {
+							"No relevant locations found for the given prompt."
+						}
+
+					player.sendSuccess(locationInfo)
+
+					// Check any NPCs mentioned in the prompt
+					val npcKeywords =
+						context
+							.split(" ")
+							.filter { it.length > 3 } // Only consider words with more than 3 characters
+							.distinct()
+
+					val relevantNPCs = mutableListOf<String>()
+					val npcContexts = mutableListOf<String>()
+
+					// Check if any NPC names match our keywords
+					npcKeywords.forEach { keyword ->
+						story.npcDataManager.getAllNPCNames().forEach { npcName ->
+							if (npcName.equals(keyword, ignoreCase = true)) {
+								relevantNPCs.add(npcName)
+								val npcContext = story.npcContextGenerator.getOrCreateContextForNPC(npcName)
+								val lastFewMemories = npcContext?.getMemoriesForPrompt(story.timeService, 3)
+								if (npcContext != null) {
+									npcContexts.add("$npcName's context: ${npcContext.context} ")
+									if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
+										npcContexts.add("$npcName's recent memories: $lastFewMemories")
+									}
+								}
+							}
+						}
+					}
+
+					val npcInfo =
+						if (relevantNPCs.isNotEmpty()) {
+							"Relevant NPCs found: ${relevantNPCs.joinToString(", ")}"
+						} else {
+							"No relevant NPCs found for the given prompt."
+						}
+
+					player.sendSuccess(npcInfo)
+
 					// Create messages for AI prompt
 					val messages =
 						mutableListOf(
 							ConversationMessage(
 								"system",
 								"""
-                        Generate a short narrative passage that could be found in a Minecraft book.
+                        Generate a short narrative passage that could be found in a medieval fantasy book.
 
                         The passage should be:
-                        - Written in a style appropriate for a fantasy Minecraft world
-                        - Maximum 800 characters total
+                        - Written in a style appropriate for a fantasy medieval world
+                        - Maximum 5000 characters total
                         - Written in-character as if it's a book, personal notes, or letter
                         - Include relevant details from the provided context and lore
 
                         IMPORTANT: Format your response as a valid JSON object with this structure:
-                        {"content": "The actual book content goes here..."}
+                        {"title":"EXAMPLE TITLE (TWO WORDS MAX)", "content": "The actual book content goes here..."}
 
-                        Wrap words in <bold></bold> tags to make them bold.
-                        Use <italic></italic> tags for italicized text.
+                        Wrap words in <b></b> tags to make them bold.
+                        Use <i></i> tags for italicized text.
+						Use <#hexcolor></#hexcolor> tags for colored text.
                         Use these where appropriate in the text.
 
                         Don't add any explanations or other text outside the JSON.
                         $loreContext
-                        """,
+						$locationInfo
+						${if (relevantNPCs.isNotEmpty()) {
+									"Relevant NPCs found: ${relevantNPCs.joinToString(", ")}\n" +
+										npcContexts.joinToString("\n")
+								} else {
+									""
+								}}
+						""".trimIndent(),
 							),
 							ConversationMessage("user", context),
 						)
@@ -85,23 +161,23 @@ class QuestBookCommand(
 
 							try {
 								// Parse the JSON response
-								val bookContent = extractBookContentFromJSON(aiResponse)
+								val (title, content) = extractBookContentFromJSON(aiResponse)
 
-								if (bookContent.isBlank()) {
+								if (content.isBlank()) {
 									player.sendError("Failed to parse book content from AI response")
 									return@thenAccept
 								}
 
 								// Split content into pages of appropriate size
-								val pages = splitIntoPages(bookContent)
+								val pages = commandUtils.splitIntoPages(content)
 
 								// Create the book item
 								val book = ItemStack(Material.WRITTEN_BOOK)
 								val meta = book.itemMeta as BookMeta
 
 								// Set book properties
-								meta.title(Component.text("Quest Book"))
-								meta.author(Component.text("Story Plugin"))
+								meta.title(Component.text(title))
+								meta.author(Component.text("Unknown"))
 
 								// Add pages to the book
 								meta.addPages(*pages.map { story.miniMessage.deserialize(it) }.toTypedArray())
@@ -132,10 +208,13 @@ class QuestBookCommand(
 	}
 
 	/**
-	 * Extract book content from JSON response
+	 * Extract book title and content from JSON response
+	 * @return Pair of (title, content)
 	 */
-	private fun extractBookContentFromJSON(response: String): String {
+	private fun extractBookContentFromJSON(response: String): Pair<String, String> {
 		val trimmedResponse = response.trim()
+		var title = "Quest Book" // Default title
+		var content = ""
 
 		try {
 			// Try to find JSON object in the response
@@ -147,126 +226,44 @@ class QuestBookCommand(
 				val parser = JSONParser()
 				val jsonObject = parser.parse(jsonStr) as JSONObject
 
-				return (jsonObject["content"] as? String) ?: ""
+				// Extract title and content
+				title = (jsonObject["title"] as? String) ?: title
+				content = (jsonObject["content"] as? String) ?: ""
+
+				return Pair(title, content)
 			}
 
-			// Fallback: if no content key but looks like JSON, try to extract any string value
+			// Fallback: if no content key but looks like JSON, try to extract title and content
 			if (trimmedResponse.startsWith("{") && trimmedResponse.endsWith("}")) {
 				val parser = JSONParser()
 				val jsonObject = parser.parse(trimmedResponse) as JSONObject
 
-				// Return first string value found
-				for (key in jsonObject.keys) {
-					val value = jsonObject[key]
-					if (value is String) {
-						return value
-					}
+				// Try to find title and content keys
+				if (jsonObject.containsKey("title")) {
+					title = (jsonObject["title"] as? String) ?: title
+				}
+
+				if (jsonObject.containsKey("content")) {
+					content = (jsonObject["content"] as? String) ?: ""
 				}
 			}
 		} catch (e: Exception) {
 			// If JSON parsing fails, check if response has content wrapped in quotes and braces
+			val titleRegex = "\"title\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"".toRegex()
 			val contentRegex = "\"content\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"".toRegex()
-			val matchResult = contentRegex.find(trimmedResponse)
 
-			if (matchResult != null) {
-				return matchResult.groupValues[1].replace("\\\"", "\"").replace("\\n", "\n")
+			val titleMatch = titleRegex.find(trimmedResponse)
+			if (titleMatch != null) {
+				title = titleMatch.groupValues[1].replace("\\\"", "\"")
+			}
+
+			val contentMatch = contentRegex.find(trimmedResponse)
+			if (contentMatch != null) {
+				content = contentMatch.groupValues[1].replace("\\\"", "\"").replace("\\n", "\n")
 			}
 		}
 
-		// Last resort: return the whole response if all else fails
-		return trimmedResponse
-	}
-
-	/**
-	 * Splits content into pages with fixed values:
-	 * - 165 characters per page maximum
-	 * - Preferably 3 paragraphs per page for readability
-	 * - Maximum 6 lines per page
-	 */
-	private fun splitIntoPages(content: String): List<String> {
-		val pages = mutableListOf<String>()
-
-		// Split by paragraphs first
-		val paragraphs = content.split("\n\n").filter { it.isNotBlank() }
-
-		var currentPage = StringBuilder()
-		var paragraphsInCurrentPage = 0
-		var index = 0
-
-		while (index < paragraphs.size) {
-			val paragraph = paragraphs[index]
-
-			// Check if adding this paragraph would exceed character limit
-			if (currentPage.length + paragraph.length + (if (currentPage.isEmpty()) 0 else 2) <= 165) {
-				// We can fit this paragraph on the current page
-				if (currentPage.isNotEmpty()) {
-					currentPage.append("\n\n")
-				}
-				currentPage.append(paragraph)
-				paragraphsInCurrentPage++
-				index++
-
-				// If we have 3 paragraphs or reached the end, create a new page
-				if (paragraphsInCurrentPage == 3 || index == paragraphs.size) {
-					pages.add(currentPage.toString().trim())
-					currentPage = StringBuilder()
-					paragraphsInCurrentPage = 0
-				}
-			} else {
-				// Paragraph is too large for the current page, we need to split it
-				if (currentPage.isNotEmpty()) {
-					// Finish current page first
-					pages.add(currentPage.toString().trim())
-					currentPage = StringBuilder()
-					paragraphsInCurrentPage = 0
-				}
-
-				// Now handle the large paragraph
-				var remainingText = paragraph
-				while (remainingText.isNotEmpty()) {
-					// Find a good breaking point within character limit
-					val chunkSize = minOf(remainingText.length, 165)
-					val breakPoint =
-						if (chunkSize < remainingText.length) {
-							val possibleBreakPoint =
-								remainingText
-									.substring(
-										0,
-										chunkSize,
-									).lastIndexOfAny(charArrayOf(' ', '.', '!', '?', ','))
-							if (possibleBreakPoint > 0) possibleBreakPoint + 1 else chunkSize
-						} else {
-							chunkSize
-						}
-
-					val chunk = remainingText.substring(0, breakPoint).trim()
-					currentPage.append(chunk)
-					paragraphsInCurrentPage++
-
-					remainingText =
-						if (breakPoint < remainingText.length) {
-							remainingText.substring(breakPoint).trim()
-						} else {
-							""
-						}
-
-					// If we have text remaining but have reached character limit, start new page
-					if (remainingText.isNotEmpty() || paragraphsInCurrentPage == 3) {
-						pages.add(currentPage.toString().trim())
-						currentPage = StringBuilder()
-						paragraphsInCurrentPage = 0
-					}
-				}
-
-				index++
-			}
-		}
-
-		// Add any remaining content as the last page
-		if (currentPage.isNotEmpty()) {
-			pages.add(currentPage.toString().trim())
-		}
-
-		return pages
+		// Return the extracted title and content
+		return Pair(title, content)
 	}
 }

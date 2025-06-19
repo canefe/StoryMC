@@ -20,15 +20,19 @@ import kotlin.compareTo
 import kotlin.text.get
 import kotlin.toString
 
-class AIResponseService(
-	private val plugin: Story,
-) {
+class AIResponseService(private val plugin: Story) {
 	private val gson = Gson()
 	private val apiKey: String
 		get() = plugin.config.openAIKey
 
 	private val aiModel: String
 		get() = plugin.config.aiModel
+
+	private val aiConversationModel: String
+		get() = plugin.config.aiConversationModel
+
+	private val maxTokens: Int
+		get() = plugin.config.maxTokens
 
 	// Shared HTTP client for better connection pooling
 	private val httpClient =
@@ -40,7 +44,7 @@ class AIResponseService(
 			.build()
 
 	// Semaphore to limit concurrent API calls
-	private val apiRateLimiter = Semaphore(5)
+	private val apiRateLimiter = Semaphore(10)
 
 	// Request queue tracking
 	private val pendingRequests = AtomicInteger(0)
@@ -55,16 +59,24 @@ class AIResponseService(
 	fun getAIResponseStreaming(
 		conversation: List<ConversationMessage>,
 		streamHandler: (String) -> Unit,
+		lowCost: Boolean = false,
 	): String? {
 		if (apiKey.isEmpty()) {
 			plugin.logger.warning("OpenAI API Key is not set!")
 			return null
 		}
 
+		val model =
+			if (lowCost) {
+				aiConversationModel
+			} else {
+				aiModel
+			}
+
 		// For very high load situations, reject requests if too many pending
 		if (pendingRequests.get() > 20) {
 			plugin.logger.warning("Too many pending AI requests, rejecting new request")
-			return "Sorry, the AI service is currently overloaded. Please try again later."
+			return null
 		}
 
 		pendingRequests.incrementAndGet()
@@ -74,14 +86,14 @@ class AIResponseService(
 			if (!apiRateLimiter.tryAcquire(10, TimeUnit.SECONDS)) {
 				pendingRequests.decrementAndGet()
 				plugin.logger.warning("API rate limit reached, couldn't acquire permit within timeout")
-				return "Sorry, the AI service is currently busy. Please try again later."
+				return null
 			}
 
 			try {
 				// Create JSON request
 				val requestObject = JsonObject()
-				requestObject.addProperty("model", aiModel)
-				requestObject.addProperty("max_tokens", 500)
+				requestObject.addProperty("model", model)
+				requestObject.addProperty("max_tokens", maxTokens)
 				requestObject.addProperty("stream", true) // Enable streaming
 
 				val messagesArray = JsonArray()
@@ -180,12 +192,12 @@ class AIResponseService(
 		conversation: List<ConversationMessage>,
 		useStreaming: Boolean = false,
 		streamHandler: (String) -> Unit = {},
-	): String? =
-		if (useStreaming) {
-			getAIResponseStreaming(conversation, streamHandler)
-		} else {
-			getAIResponseNonStreaming(conversation)
-		}
+		lowCost: Boolean = false,
+	): String? = if (useStreaming) {
+		getAIResponseStreaming(conversation, streamHandler, lowCost)
+	} else {
+		getAIResponseNonStreaming(conversation, lowCost)
+	}
 
 	/**
 	 * Gets an AI response from OpenRouter.ai with improved concurrency handling (non-streaming)
@@ -193,16 +205,23 @@ class AIResponseService(
 	 * @param conversation The conversation history to send
 	 * @return The AI response or null if an error occurred
 	 */
-	private fun getAIResponseNonStreaming(conversation: List<ConversationMessage>): String? {
+	private fun getAIResponseNonStreaming(conversation: List<ConversationMessage>, lowCost: Boolean = false): String? {
 		if (apiKey.isEmpty()) {
 			plugin.logger.warning("OpenAI API Key is not set!")
 			return null
 		}
 
+		val aiModel =
+			if (lowCost) {
+				aiConversationModel
+			} else {
+				this.aiModel
+			}
+
 		// For very high load situations, reject requests if too many pending
 		if (pendingRequests.get() > 20) {
 			plugin.logger.warning("Too many pending AI requests, rejecting new request")
-			return "Sorry, the AI service is currently overloaded. Please try again later."
+			return null
 		}
 
 		pendingRequests.incrementAndGet()
@@ -212,14 +231,14 @@ class AIResponseService(
 			if (!apiRateLimiter.tryAcquire(10, TimeUnit.SECONDS)) {
 				pendingRequests.decrementAndGet()
 				plugin.logger.warning("API rate limit reached, couldn't acquire permit within timeout")
-				return "Sorry, the AI service is currently busy. Please try again later."
+				return null
 			}
 
 			try {
 				// Create JSON request
 				val requestObject = JsonObject()
 				requestObject.addProperty("model", aiModel)
-				requestObject.addProperty("max_tokens", 500)
+				requestObject.addProperty("max_tokens", maxTokens)
 
 				val messagesArray = JsonArray()
 				for (message in conversation) {
@@ -284,8 +303,10 @@ class AIResponseService(
 	 * @param conversation The conversation history to send
 	 * @return A CompletableFuture with the AI response
 	 */
-	fun getAIResponseAsync(conversation: List<ConversationMessage>): CompletableFuture<String?> =
-		CompletableFuture.supplyAsync { getAIResponse(conversation) }
+	fun getAIResponseAsync(
+		conversation: List<ConversationMessage>,
+		lowCost: Boolean = false,
+	): CompletableFuture<String?> = CompletableFuture.supplyAsync { getAIResponse(conversation, lowCost = lowCost) }
 
 	// Helper method to build conversation context
 	private fun buildConversationContext(conversation: List<ConversationMessage>): String {

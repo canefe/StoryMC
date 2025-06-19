@@ -6,13 +6,12 @@ import dev.jorel.commandapi.CommandAPICommand
 class LocationCommand(private val plugin: Story) {
 	private val commandUtils = LocationCommandUtils()
 
-	fun getCommand(): CommandAPICommand {
-		return CommandAPICommand("location")
-			.withPermission("story.location")
-			.withSubcommand(getCreateLocationCommand())
-	}
+	fun getCommand(): CommandAPICommand = CommandAPICommand("location")
+		.withPermission("story.location")
+		.withUsage(
+			"/story location <create> <name>",
+		)
+		.withSubcommand(getCreateLocationCommand())
 
-	private fun getCreateLocationCommand(): CommandAPICommand {
-		return CreateLocationCommand(commandUtils).getCommand()
-	}
+	private fun getCreateLocationCommand(): CommandAPICommand = CreateLocationCommand(commandUtils).getCommand()
 }

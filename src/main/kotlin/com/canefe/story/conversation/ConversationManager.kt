@@ -1,24 +1,20 @@
 import com.canefe.story.Story
+import com.canefe.story.api.event.*
 import com.canefe.story.conversation.*
-import com.canefe.story.conversation.event.ConversationJoinEvent
-import com.canefe.story.conversation.event.ConversationStartEvent
-import com.canefe.story.conversation.event.NPCParticipant
-import com.canefe.story.conversation.event.PlayerParticipant
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
 import com.canefe.story.npc.NPCContextGenerator
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
+import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
-import kotlin.collections.ArrayList
-import kotlin.collections.HashSet
 
 class ConversationManager private constructor(
 	private val plugin: Story,
@@ -44,10 +40,7 @@ class ConversationManager private constructor(
 		get() = repository.getAllActiveConversations()
 
 	// Core conversation management methods
-	fun startConversation(
-		player: Player,
-		npcs: List<NPC>,
-	): Conversation {
+	fun startConversation(player: Player, npcs: List<NPC>): Conversation {
 		// Check if player is already in a conversation and end it
 		val existingConversation = repository.getConversationByPlayer(player)
 		existingConversation?.let {
@@ -95,10 +88,30 @@ class ConversationManager private constructor(
 		return conversation
 	}
 
-	fun endConversationWithGoodbye(
-		conversation: Conversation,
-		goodbyeContext: List<String>? = null,
-	) {
+	// start conversation, no players
+	fun startConversation(npcs: List<NPC>): CompletableFuture<Conversation> {
+		// Empty playerl ist
+		val participants = mutableListOf<UUID>()
+
+		// Create a new conversation
+		val conversation =
+			Conversation(
+				_players = participants,
+				initialNPCs = npcs,
+			)
+
+		// If chat is not enabled, allow manual conversation
+		if (!plugin.config.chatEnabled) {
+			conversation.chatEnabled = false
+		}
+
+		// Add to repository
+		repository.addConversation(conversation)
+
+		return CompletableFuture.completedFuture(conversation)
+	}
+
+	fun endConversationWithGoodbye(conversation: Conversation, goodbyeContext: List<String>? = null) {
 		// Get a random NPC
 		val npc =
 			conversation.npcs.randomOrNull()
@@ -119,10 +132,7 @@ class ConversationManager private constructor(
 		)
 	}
 
-	fun endConversationWithGoodbye(
-		npc: NPC,
-		goodbyeContext: List<String>? = null,
-	) {
+	fun endConversationWithGoodbye(npc: NPC, goodbyeContext: List<String>? = null) {
 		// Get the conversation
 		val conversation =
 			repository.getConversationByNPC(npc)
@@ -176,16 +186,20 @@ class ConversationManager private constructor(
 				}
 			}
 		}
+		// size of user messages
+		val userMessageCount =
+			conversation.history.count { it.role != "system" }
 		// Only process conversation data if significant
-		if (conversation.history.size > 2) {
-			val playerName =
-				conversation.players.firstOrNull()?.let {
-					Bukkit.getPlayer(it)?.name
-				}
-
+		if (userMessageCount > 2) {
 			conversation.players.forEach { uuid ->
 				val player = Bukkit.getPlayer(uuid)
 				player?.sendInfo("<i>The conversation is ending...")
+
+				// Call EndConversationEvent
+				if (player != null) {
+					val endEvent = ConversationEndEvent(player, conversation.npcs, conversation)
+					Bukkit.getPluginManager().callEvent(endEvent)
+				}
 			}
 
 			// Get the conversation location (where the conversation is happening)
@@ -207,12 +221,28 @@ class ConversationManager private constructor(
 			// Process information using the new system
 			worldInformationManager.processInformation(conversationSource)
 
+			// Feed the current session with conversation history
+			// String builder context
+			val sessionContext = StringBuilder()
+			sessionContext.append(
+				"A new conversation has ended between ${conversation.players.joinToString(", ") {
+					EssentialsUtils.getNickname(Bukkit.getPlayer(it)?.name ?: "")
+				}}, ${conversation.npcNames.joinToString(", ")}.\n",
+			)
+			sessionContext.append("Conversation history:\n")
+			sessionContext.append(
+				conversation.history.filter(
+					{ it.role != "system" }, // Exclude system messages
+				).joinToString("\n") { "${it.content}" },
+			)
+			sessionContext.append("\nLocation: ${conversationLocation}\n")
+			sessionContext.append("Summarize this conversation and add it. ")
+			plugin.sessionManager.feed(sessionContext.toString())
+
 			// Summarize conversation for NPC memory if needed
 			npcResponseService
 				.summarizeConversation(
-					conversation.history,
-					conversation.npcs.map { it.name },
-					playerName,
+					conversation,
 				).thenAccept {
 					// Complete remaining steps after summarization is done
 					completeEndConversation(conversation)
@@ -233,6 +263,8 @@ class ConversationManager private constructor(
 			val player = Bukkit.getPlayer(uuid)
 			player?.sendInfo("The conversation has ended.")
 		}
+
+		cleanupHolograms(conversation)
 
 		// Remove from repository
 		repository.removeConversation(conversation)
@@ -286,6 +318,10 @@ class ConversationManager private constructor(
 				conversation.players.forEach { uuid ->
 					Bukkit.getPlayer(uuid)?.sendInfo("<yellow>${player.name}</yellow> joined the conversation.")
 				}
+
+				conversation.addSystemMessage(
+					"${EssentialsUtils.getNickname(player.name)} has joined the conversation.",
+				)
 
 				result.complete(true)
 			},
@@ -343,6 +379,10 @@ class ConversationManager private constructor(
 					Bukkit.getPlayer(uuid)?.sendInfo("<yellow>${npc.name}</yellow> joined the conversation.")
 				}
 
+				conversation.addSystemMessage(
+					"${npc.name} has joined the conversation.",
+				)
+
 				// Update NPC state
 				hologramManager.showListeningHolo(npc, false)
 
@@ -365,7 +405,7 @@ class ConversationManager private constructor(
 					plugin,
 					Runnable {
 						// Skip if conversation is no longer active
-						if (!conversation.isActive) {
+						if (!conversation.active) {
 							return@Runnable
 						}
 
@@ -379,9 +419,9 @@ class ConversationManager private constructor(
 							var isNearAnyNPC = false
 
 							for (npc in conversation.npcs) {
-								if (!npc.isSpawned) continue
+								val npcEntity = getRealEntityForNPC(npc) ?: continue
 
-								val npcLoc = npc.entity.location
+								var npcLoc = npcEntity.location
 								val playerLoc = player.location
 
 								// Check if player and NPC are in the same world and within range
@@ -399,14 +439,26 @@ class ConversationManager private constructor(
 							}
 						}
 
+						val lastRemovedPlayer: Player? =
+							if (playersToRemove.isNotEmpty()) {
+								playersToRemove[0]
+							} else {
+								null
+							}
+
 						// Handle players who moved away
 						for (player in playersToRemove) {
 							player.sendInfo("<gray>You've moved away from the conversation.")
-							conversation.removePlayer(player)
+							removePlayer(player, conversation)
 						}
 
 						// End conversation if no players left
 						if (conversation.players.isEmpty()) {
+							// add the last removed player to the conversation
+							if (lastRemovedPlayer != null) {
+								conversation.addPlayer(lastRemovedPlayer)
+							}
+
 							endConversation(conversation)
 
 							// If there was a MythicMob involved, remove it
@@ -498,11 +550,7 @@ class ConversationManager private constructor(
 	/**
 	 * Adds a player message to the conversation and triggers NPC response with debouncing
 	 */
-	fun addPlayerMessage(
-		player: Player,
-		conversation: Conversation,
-		message: String,
-	) {
+	fun addPlayerMessage(player: Player, conversation: Conversation, message: String) {
 		// Add the player's message to the conversation
 		conversation.addPlayerMessage(player, message)
 		handleHolograms(conversation, player.name)
@@ -540,10 +588,7 @@ class ConversationManager private constructor(
 	}
 
 	// * Remove NPC from a conversation
-	fun removeNPC(
-		npc: NPC,
-		conversation: Conversation,
-	) {
+	fun removeNPC(npc: NPC, conversation: Conversation) {
 		// Remove the NPC from the conversation
 		if (conversation.removeNPC(npc)) {
 			// Notify players in the conversation
@@ -551,6 +596,8 @@ class ConversationManager private constructor(
 				val player = Bukkit.getPlayer(playerId)
 				player?.sendInfo("<gold>${npc.name}</gold> has left the conversation.")
 			}
+
+			conversation.addSystemMessage("${npc.name} has left the conversation. They are no longer participating.")
 
 			// Summarise the conversation for left NPC. (Only if there is still npcs)
 			if (conversation.npcs.isNotEmpty()) {
@@ -568,25 +615,51 @@ class ConversationManager private constructor(
 		}
 	}
 
-	fun handleHolograms(
-		conversation: Conversation,
-		speakerName: String? = null,
-	) {
+	fun removePlayer(player: Player, conversation: Conversation) {
+		// Remove the player from the conversation
+		if (conversation.removePlayer(player)) {
+			val playerName = EssentialsUtils.getNickname(player.name)
+
+			// Notify other players in the conversation
+			for (otherPlayerId in conversation.players) {
+				val otherPlayer = Bukkit.getPlayer(otherPlayerId)
+				otherPlayer?.sendInfo("<gold>$playerName</gold> has left the conversation.")
+			}
+
+			conversation.addSystemMessage("$playerName has left the conversation. They are no longer participating.")
+
+			// Cleanup holograms
+			cleanupHolograms(conversation)
+
+			// If no players left, end the conversation
+			if (conversation.players.isEmpty()) {
+				endConversation(conversation)
+			}
+		}
+	}
+
+	fun handleHolograms(conversation: Conversation, speakerName: String? = null) {
 		for (npc in conversation.npcs) {
-			if (npc.isSpawned && npc.entity != null) {
+			val entity = getRealEntityForNPC(npc)
+
+			if (entity != null) {
 				if (speakerName == null || speakerName == npc.name) {
-					hologramManager.showThinkingHolo(npc)
+					hologramManager.showThinkingHolo(entity)
 				} else {
-					hologramManager.showListeningHolo(npc, false)
+					hologramManager.showListeningHolo(entity, false)
 				}
 			}
 		}
 	}
 
+	/**
+	 * Clean up holograms from NPCs or disguised players
+	 */
 	fun cleanupHolograms(conversation: Conversation) {
 		for (npc in conversation.npcs) {
-			if (npc.isSpawned && npc.entity != null) {
-				hologramManager.cleanupNPCHologram(npc)
+			val entity = getRealEntityForNPC(npc)
+			if (entity != null) {
+				hologramManager.cleanupNPCHologram(entity)
 			}
 		}
 	}
@@ -651,31 +724,22 @@ class ConversationManager private constructor(
 
 	fun isInConversation(npc: NPC): Boolean = repository.getConversationByNPC(npc) != null
 
-	// NPC conversation joining methods
-	fun handleNPCJoiningConversation(
-		npc: NPC,
-		conversation: Conversation,
-		greetingMessage: String?,
-		targetPlayer: Player?,
-		npcContext: NPCContext?,
-	) {
-		// Implementation
-	}
+	/**
+	 * Gets the entity representing an NPC, accounting for disguised players
+	 */
+	fun getRealEntityForNPC(npc: NPC): Entity? {
+		// Check if someone is disguised as this NPC
+		val disguisedPlayer = plugin.disguiseManager.getDisguisedPlayer(npc)
+		if (disguisedPlayer != null) {
+			return disguisedPlayer
+		}
 
-	fun handleNPCJoiningConversationDirectly(
-		npc: NPC,
-		conversation: Conversation,
-		greetingMessage: String?,
-		npcContext: NPCContext?,
-	) {
-		// Implementation
+		// Otherwise return the actual NPC entity
+		return npc.entity
 	}
 
 	// NPC conversation coordination
-	fun generateResponses(
-		conversation: Conversation,
-		forceSpeaker: String? = null,
-	): CompletableFuture<Unit> {
+	fun generateResponses(conversation: Conversation, forceSpeaker: String? = null): CompletableFuture<Unit> {
 		// Determine the next speaker
 		val speakerFuture =
 			if (forceSpeaker != null) {
@@ -685,49 +749,188 @@ class ConversationManager private constructor(
 			}
 
 		// Generate the response for the next speaker, handle holograms, and cleanup
-		speakerFuture.thenAccept { nextSpeaker ->
-			if (nextSpeaker != null) {
-				val npcEntity = conversation.getNPCByName(nextSpeaker) ?: return@thenAccept
+		val result = CompletableFuture<Unit>()
 
-				// Set the NPC as the last speaker
-				conversation.lastSpeakingNPC = npcEntity
+		speakerFuture
+			.thenAccept { nextSpeaker ->
+				if (nextSpeaker != null) {
+					val npcEntity = conversation.getNPCByName(nextSpeaker) ?: return@thenAccept
 
-				// Show holograms for the NPCs
-				handleHolograms(conversation, nextSpeaker)
+					// Set the NPC as the last speaker
+					conversation.lastSpeakingNPC = npcEntity
 
-				var responseContext =
-					conversation.history
-						.map { it.content }
-						.toList()
+					// Show holograms for the NPCs
+					handleHolograms(conversation, nextSpeaker)
 
-				// add one more string to the context
-				responseContext = responseContext + "You are $nextSpeaker. You are in a conversation. Generate a natural response."
+					// First generate behavioral directive to guide the response
+					npcResponseService
+						.generateBehavioralDirective(conversation, npcEntity)
+						.thenAccept { directive ->
+							// Add the directive as a system message to guide the response
+							if (directive.isNotEmpty()) {
+								conversation.addSystemMessage(directive)
+							}
 
-				val shouldStream = plugin.config.streamMessages
-				val response =
-					if (shouldStream) {
-						npcResponseService.generateNPCResponseWithTypingEffect(
-							npcEntity,
-							responseContext,
-						)
-					} else {
-						npcResponseService.generateNPCResponse(
-							npcEntity,
-							responseContext,
-						)
-					}
+							// Get only the messages from the conversation for context
+							val recentMessages =
+								conversation.history
+									.map { it.content }
 
-				response.thenAccept { npcResponse ->
-					// Add the NPC's response to the conversation history
-					conversation.addNPCMessage(npcEntity, npcResponse)
+							// Prepare response context with limited messages
+							var responseContext =
+								listOf(
+									"====CURRENT CONVERSATION====\n" +
+										recentMessages.joinToString("\n") +
+										"\n=========================\n" +
+										"Respond in character as $nextSpeaker. This is an active conversation and you are talking to multiple characters: ${conversation.players?.joinToString(
+											", ",
+										) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }}. " +
+										conversation.npcNames.joinToString("\n") +
+										"\n===APPEARANCES===\n" +
+										conversation.npcs.joinToString("\n") { npc ->
+											val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc.name)
+											"${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
+										} +
+										// We treat players as NPCs for this purpose
+										conversation.players?.joinToString("\n") { playerId ->
+											val player = Bukkit.getPlayer(playerId)
+											if (player == null) {
+												// skip this player
+												return@joinToString ""
+											}
+											val playerName = player.name
+											val nickname = EssentialsUtils.getNickname(playerName)
+											val playerContext = npcContextGenerator.getOrCreateContextForNPC(nickname)
+											"$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
+										} +
+										"\n=========================",
+								)
 
-					// Hologram cleanup
-					cleanupHolograms(conversation)
+							// Add relationship context with clear section header
+							val relationships = plugin.relationshipManager.getAllRelationships(npcEntity.name)
+							if (relationships.isNotEmpty()) {
+								val relationshipContext =
+									plugin.relationshipManager.buildRelationshipContext(
+										npcEntity.name,
+										relationships,
+										conversation,
+									)
+								if (relationshipContext.isNotEmpty()) {
+									responseContext = responseContext + "===RELATIONSHIPS===\n$relationshipContext"
+								}
+							}
+
+							val shouldStream = plugin.config.streamMessages
+							val response =
+								if (shouldStream) {
+									npcResponseService.generateNPCResponseWithTypingEffect(
+										npcEntity,
+										responseContext,
+									)
+								} else {
+									npcResponseService.generateNPCResponse(
+										npcEntity,
+										responseContext,
+									)
+								}
+
+							response
+								.thenAccept { npcResponse ->
+									// Add the NPC's response to the conversation history
+									conversation.addNPCMessage(npcEntity, npcResponse)
+
+									// Hologram cleanup
+									cleanupHolograms(conversation)
+
+									// Get the current player in conversation with this NPC, if any
+									val targetPlayer =
+										conversation.players?.firstOrNull()?.let {
+											Bukkit.getPlayer(it)
+										}
+
+									// take last two user + assistant message
+									val lastTwoMessages =
+										conversation.history
+											.filter { it.role != "system" && it.content != "..." }
+											.takeLast(2)
+											.map { it.content }
+
+									// Analyze response for action intents asynchronously
+									if (targetPlayer != null) {
+										plugin.npcActionIntentRecognizer.recognizeQuestGivingIntent(
+											npcEntity,
+											lastTwoMessages,
+											targetPlayer,
+										)
+										plugin.npcActionIntentRecognizer.recognizeActionIntents(
+											npcEntity,
+											lastTwoMessages,
+											targetPlayer,
+										)
+									}
+
+									result.complete(Unit)
+								}.exceptionally { e ->
+									plugin.logger.warning("Error generating NPC response: ${e.message}")
+									result.completeExceptionally(e)
+									null
+								}
+						}.exceptionally { e ->
+							plugin.logger.warning("Error generating behavioral directive: ${e.message}")
+
+							// Continue without directive if it fails - use the same code but without the directive
+							// Get only the last 4 messages from the conversation for context
+							val recentMessages =
+								conversation.history
+									.filterNot { it.role == "system" }
+									.takeLast(4)
+									.map { it.content }
+
+							val responseContext =
+								listOf(
+									"====CURRENT CONVERSATION====\n" +
+										recentMessages.joinToString("\n") +
+										"\n=========================\n" +
+										"Respond in character as $nextSpeaker. This is an active conversation and you are talking to ${conversation.players?.joinToString(
+											", ",
+										) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }}. " +
+										conversation.npcNames.joinToString("\n") +
+										"\n=========================",
+								)
+
+							// Continue with normal response generation
+							val shouldStream = plugin.config.streamMessages
+							val response =
+								if (shouldStream) {
+									npcResponseService.generateNPCResponseWithTypingEffect(npcEntity, responseContext)
+								} else {
+									npcResponseService.generateNPCResponse(npcEntity, responseContext)
+								}
+
+							response
+								.thenAccept { npcResponse ->
+									// Rest of processing code
+									conversation.addNPCMessage(npcEntity, npcResponse)
+									cleanupHolograms(conversation)
+									// Process action intents...
+									result.complete(Unit)
+								}.exceptionally { responseError ->
+									result.completeExceptionally(responseError)
+									null
+								}
+
+							null
+						}
+				} else {
+					result.complete(Unit)
 				}
+			}.exceptionally { e ->
+				plugin.logger.warning("Error determining next speaker: ${e.message}")
+				result.completeExceptionally(e)
+				null
 			}
-		}
 
-		return CompletableFuture.completedFuture(Unit)
+		return result
 	}
 
 	fun lockConversation(conversation: Conversation) {
@@ -789,16 +992,83 @@ class ConversationManager private constructor(
 		TODO("Not yet implemented")
 	}
 
-	fun addNPCToConversationWalk(
-		npc: NPC?,
-		conversation: Conversation,
-		message: String,
-	): Boolean {
-		TODO("Not yet implemented")
+	fun addNPCToConversationWalk(npc: NPC?, conversation: Conversation, message: String): Boolean {
+		if (npc == null || !npc.isSpawned) {
+			return false
+		}
+
+		// Check if the NPC is already in this conversation
+		if (conversation.npcs.contains(npc)) {
+			return false
+		}
+
+		// Pick a random participant from the conversation to walk to
+		val target =
+			when {
+				// If there are players in the conversation, walk to one of them
+				conversation.players.isNotEmpty() -> {
+					val randomPlayerUUID = conversation.players.random()
+					Bukkit.getPlayer(randomPlayerUUID) ?: return false
+				}
+				// If no players, walk to an NPC already in the conversation
+				conversation.npcs.isNotEmpty() -> {
+					val randomNPC = conversation.npcs.random()
+					randomNPC.entity ?: return false
+				}
+				// No valid targets to walk to
+				else -> return false
+			}
+
+		// Use NPCManager to make the NPC walk to the target
+		val taskId =
+			plugin.npcManager.walkToLocation(
+				npc,
+				target,
+				2.0, // Distance margin
+				1.0f, // Speed modifier
+				30, // Timeout in seconds
+				// On arrival
+				{
+					// Add NPC to conversation
+					conversation.addNPC(npc)
+
+					// Send greeting message if provided
+					if (message.isNotEmpty()) {
+						conversation.addNPCMessage(npc, message)
+					}
+
+					// Notify players in the conversation
+					conversation.players.forEach { playerId ->
+						val player = Bukkit.getPlayer(playerId)
+						player?.sendInfo("<gold>${npc.name}</gold> has joined the conversation.")
+					}
+				},
+				// On failure
+				{
+					plugin.logger.warning("NPC ${npc.name} failed to walk to the conversation.")
+				},
+			)
+
+		return taskId != -1
 	}
 
 	fun stopAllConversations() {
 		TODO("Not yet implemented")
+	}
+
+	fun isPlayerInConversationWith(player: Player, npc: NPC): Boolean {
+		val conversation = repository.getConversationByPlayer(player)
+		return conversation?.npcs?.contains(npc) ?: false
+	}
+
+	fun isNPCInConversationWith(npc: NPC, player: Player): Boolean {
+		val conversation = repository.getConversationByNPC(npc)
+		return conversation?.players?.contains(player.uniqueId) ?: false
+	}
+
+	fun isNPCInConversationWith(npc: NPC, npc2: NPC): Boolean {
+		val conversation = repository.getConversationByNPC(npc)
+		return conversation?.npcs?.contains(npc2) ?: false
 	}
 
 	companion object {

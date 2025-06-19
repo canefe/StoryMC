@@ -18,7 +18,9 @@
   - ItemsAdder
   - BetterHealthBar
 - **Command Utilities for Players and Admins**: Includes commands for toggling NPC behaviors, feeding messages, and managing conversations.
-  
+
 ## License
-This project is proprietary. All rights are reserved.
+
+This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) License.
+
 

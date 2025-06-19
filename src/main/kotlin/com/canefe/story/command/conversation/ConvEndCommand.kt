@@ -20,11 +20,12 @@ class ConvEndCommand(
 						commandUtils.getConversation(id, sender)
 							?: return@CommandExecutor
 
+					sender.sendInfo("Ending conversation with ID $id...")
+
 					// Generate goodbye
 					commandUtils.conversationManager.endConversationWithGoodbye(
 						conversation,
 					)
-					sender.sendInfo("Ending conversation with ID $id...")
 				},
 			)
 	}

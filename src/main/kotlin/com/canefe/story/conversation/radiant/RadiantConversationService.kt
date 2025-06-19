@@ -12,9 +12,7 @@ import java.util.concurrent.CompletableFuture
 /**
  * Service responsible for handling radiant conversations between NPCs and players
  */
-class RadiantConversationService(
-	private val plugin: Story,
-) {
+class RadiantConversationService(private val plugin: Story) {
 	private val npcManager = NPCManager.getInstance(plugin)
 
 	/**
@@ -66,10 +64,7 @@ class RadiantConversationService(
 	/**
 	 * Triggers a radiant conversation with an NPC and a player or another NPC
 	 */
-	private fun triggerRadiantConversation(
-		initiator: NPC,
-		player: Player,
-	) {
+	private fun triggerRadiantConversation(initiator: NPC, player: Player) {
 		if (plugin.conversationManager.isInConversation(initiator)) {
 			return
 		}
@@ -100,7 +95,7 @@ class RadiantConversationService(
 				isPlayerValid // Choose player only if it's the only valid option
 			}
 
-		if (choosePlayer && isPlayerValid) {
+		if (choosePlayer) {
 			val playerName = EssentialsUtils.getNickname(player.name)
 
 			// Check if the relationship is strong enough
@@ -122,10 +117,9 @@ class RadiantConversationService(
 	/**
 	 * Check if a player is an invalid target for conversation
 	 */
-	private fun isPlayerInvalidTarget(player: Player): Boolean =
-		isVanished(player) ||
-			plugin.playerManager.isPlayerDisabled(player) ||
-			plugin.conversationManager.isInConversation(player)
+	private fun isPlayerInvalidTarget(player: Player): Boolean = isVanished(player) ||
+		plugin.playerManager.isPlayerDisabled(player) ||
+		plugin.conversationManager.isInConversation(player)
 
 	/**
 	 * Check if a player is vanished
@@ -140,14 +134,8 @@ class RadiantConversationService(
 	/**
 	 * Initiates a conversation between an NPC and a player
 	 */
-	private fun initiatePlayerConversation(
-		initiator: NPC,
-		player: Player,
-	) {
+	private fun initiatePlayerConversation(initiator: NPC, player: Player) {
 		val initiatorName = initiator.name
-		val npcContext =
-			plugin.npcContextGenerator.getOrCreateContextForNPC(initiatorName)
-				?: return
 
 		CompletableFuture.runAsync {
 			try {
@@ -203,9 +191,6 @@ class RadiantConversationService(
 		val targetNPC = availableNPCs[random.nextInt(availableNPCs.size)]
 
 		val initiatorName = initiator.name
-		val npcContext =
-			plugin.npcContextGenerator.getOrCreateContextForNPC(initiatorName)
-				?: return
 
 		npcManager.setNPCCooldown(targetNPC)
 
@@ -218,7 +203,7 @@ class RadiantConversationService(
 				Bukkit.getScheduler().runTask(
 					plugin,
 					Runnable {
-						npcManager.walkToNPC(initiator, targetNPC, greeting)
+						npcManager.walkToNPC(initiator, targetNPC, greeting, radiant = true)
 					},
 				)
 			} catch (e: Exception) {

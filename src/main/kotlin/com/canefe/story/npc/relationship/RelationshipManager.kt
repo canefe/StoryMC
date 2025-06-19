@@ -1,13 +1,20 @@
 package com.canefe.story.npc.relationship
 
 import com.canefe.story.Story
+import com.canefe.story.conversation.Conversation
+import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.memory.Memory
+import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.absoluteValue
+import kotlin.text.get
+import kotlin.times
 
 class RelationshipManager(private val plugin: Story) {
 	// Stores relationships as: sourceId -> (targetId -> Relationship)
@@ -16,6 +23,12 @@ class RelationshipManager(private val plugin: Story) {
 
 	init {
 		dataFolder.mkdirs()
+		// Load existing relationships from files
+		loadAllRelationships()
+	}
+
+	fun load() {
+		// Load all relationships from files
 		loadAllRelationships()
 	}
 
@@ -79,10 +92,7 @@ class RelationshipManager(private val plugin: Story) {
 	/**
 	 * Gets a relationship between two entities (creates if it doesn't exist)
 	 */
-	fun getRelationship(
-		sourceId: String,
-		targetName: String,
-	): Relationship {
+	fun getRelationship(sourceId: String, targetName: String): Relationship {
 		val sourceRelationships = relationships.computeIfAbsent(sourceId) { ConcurrentHashMap() }
 		return sourceRelationships.computeIfAbsent(targetName) {
 			Relationship(targetName = targetName)
@@ -90,10 +100,46 @@ class RelationshipManager(private val plugin: Story) {
 	}
 
 	/**
+	 * Builds a relationship context string for Characters in the conversation
+	 *
+	 * @param relationships Map of relationships for the Character
+	 * @param conversation The current conversation
+	 * @return A formatted string containing relationship information relevant to the conversation
+	 */
+	fun buildRelationshipContext(
+		character: String,
+		relationships: Map<String, Relationship>,
+		conversation: Conversation,
+	): String = relationships.values
+		.filter { rel ->
+			// Only include relationships with entities that are in the conversation
+			conversation.npcs.any {
+				it.name.lowercase() == rel.targetName.lowercase() &&
+					it.name.lowercase() != character.lowercase()
+			} ||
+				conversation.players?.any { playerId ->
+					val player = Bukkit.getPlayer(playerId)
+					player != null && EssentialsUtils.getNickname(player.name).lowercase() == rel.targetName.lowercase()
+				} == true
+		}.joinToString("\n") { rel ->
+			"$character and ${rel.targetName}'s relationship is ${rel.type} with a score of ${rel.score}." +
+				" Traits: ${if (rel.traits.isNotEmpty()) rel.traits.joinToString(", ") else "none"}."
+		}
+
+	/**
 	 * Gets all relationships for an entity
 	 */
 	fun getAllRelationships(sourceId: String): Map<String, Relationship> {
-		return relationships[sourceId] ?: emptyMap()
+		val allRelationships = relationships[sourceId] ?: return emptyMap()
+
+		// Filter out relationships where target doesn't have valid NPCData
+		return allRelationships.filterKeys { targetName ->
+			// Keep only relationships where either:
+			// 1. The target has valid NPC data, or
+			// 2. The target is a known player name
+			plugin.npcDataManager.getNPCData(targetName) != null ||
+				Bukkit.getOfflinePlayer(targetName).hasPlayedBefore()
+		}
 	}
 
 	/**
@@ -187,10 +233,7 @@ class RelationshipManager(private val plugin: Story) {
 		}
 	}
 
-	fun updateRelationshipFromMemory(
-		memory: Memory,
-		npcName: String,
-	) {
+	fun updateRelationshipFromMemory(memory: Memory, npcName: String) {
 		// Identify potential relationship targets in the memory
 		val potentialTargets = findRelationshipTargets(memory.content)
 
@@ -221,33 +264,68 @@ class RelationshipManager(private val plugin: Story) {
 	 * Calculate relationship impact from memory
 	 */
 	private fun calculateRelationshipImpact(memory: Memory): Double {
-		// Scale based on significance and power
-		// Higher significance = stronger impact on relationship
-		return (memory.significance - 2.5) * memory.power
-		// This gives negative impact for memories with significance < 2.5
-		// and positive impact for memories with significance > 2.5
+		// Use AI to evaluate the emotional impact of the memory
+		// Get the response synchronously with a timeout
+		val prompt =
+			"""
+			You are a relationship analyzer that ONLY returns a single word.
+			Based on this memory, return ONLY a single word between 'negative' (negative impact) and 'positive' (positive impact).
+			DO NOT include any explanation or text - ONLY return the word.
+
+			Memory: ${memory.content}
+			""".trimIndent()
+
+		// Get the impact value from AI response and scale it by memory power
+		// If AI fails, fall back to the mathematical formula
+		return try {
+			// Get the response synchronously with a timeout
+			val response =
+				plugin
+					.getAIResponse(
+						listOf(
+							ConversationMessage("system", prompt),
+						),
+						lowCost = true,
+					).get(15, java.util.concurrent.TimeUnit.SECONDS)
+
+			val calculatedValue = (memory.significance - 2.5)
+			val impact =
+				when {
+					response?.trim()?.lowercase() == "negative" -> -calculatedValue.absoluteValue
+					response?.trim()?.lowercase() == "positive" -> calculatedValue.absoluteValue
+					else -> calculatedValue
+				}
+			impact * memory.power
+		} catch (e: Exception) {
+			plugin.logger.warning("Failed to get AI impact calculation: ${e.message}")
+			(memory.significance - 2.5) * memory.power
+		}
 	}
 
 	/**
 	 * Find potential relationship targets mentioned in memory content
 	 */
 	private fun findRelationshipTargets(content: String): List<String> {
-		val targets = mutableListOf<String>()
+		// Try AI-based extraction first
+		val aiTargets = extractTargetsWithAI(content)
+		if (aiTargets.isNotEmpty()) {
+			return aiTargets
+		}
 
-		// Get all registered NPCs and players to check for mentions
+		// Fall back to regex matching if AI fails or returns empty
+		val targets = mutableListOf<String>()
 		val allNpcs = plugin.npcDataManager.getAllNPCNames()
 		val allPlayers = Bukkit.getOnlinePlayers().map { it.name }
 
-		// Prepare regex pattern to match whole words only
+		// Pattern matching fallback for NPCs
 		for (npcName in allNpcs) {
-			// Create regex that matches word boundaries around the name
 			val pattern = "\\b${Regex.escape(npcName)}\\b"
 			if (Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(content)) {
 				targets.add(npcName)
 			}
 		}
 
-		// Do the same for player names
+		// Pattern matching fallback for players
 		for (playerName in allPlayers) {
 			val pattern = "\\b${Regex.escape(playerName)}\\b"
 			if (Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(content)) {
@@ -258,6 +336,92 @@ class RelationshipManager(private val plugin: Story) {
 		return targets
 	}
 
+	private fun extractTargetsWithAI(content: String): List<String> {
+		val allNpcs = plugin.npcDataManager.getAllNPCNames()
+		val allPlayers = Bukkit.getOnlinePlayers().map { EssentialsUtils.getNickname(it.name) }
+		val allEntities = (allNpcs + allPlayers).joinToString("\n")
+
+		val prompt = """
+        You are a character detection system. Given a text and a list of known character,
+        identify which character are mentioned in the text. Return ONLY a JSON array of
+        character names that are mentioned.
+
+        Text: $content
+
+        Known characters:
+        $allEntities
+
+        Format your response as a valid JSON array: ["Character1", "Character2"]
+        IMPORTANT: Only include characters that are explicitly mentioned in the text.
+		""".trimIndent()
+
+		val messages = listOf(ConversationMessage("system", prompt))
+
+		try {
+			val response = plugin.getAIResponse(messages, lowCost = true)
+				.get(10, java.util.concurrent.TimeUnit.SECONDS)
+
+			// Parse JSON array from response
+			if (!response.isNullOrBlank()) {
+				// Extract JSON array part from response
+				val jsonStart = response.indexOf('[')
+				val jsonEnd = response.lastIndexOf(']') + 1
+
+				if (jsonStart >= 0 && jsonEnd > jsonStart) {
+					val jsonArray = response.substring(jsonStart, jsonEnd)
+					try {
+						val parser = org.json.simple.parser.JSONParser()
+						val parsedArray = parser.parse(jsonArray) as org.json.simple.JSONArray
+
+						return parsedArray.map { it.toString() }
+					} catch (e: Exception) {
+						plugin.logger.warning("Failed to parse AI response as JSON: ${e.message}")
+					}
+				}
+			}
+		} catch (e: Exception) {
+			plugin.logger.warning("AI entity extraction failed: ${e.message}")
+		}
+
+		return emptyList()
+	}
+
 	// Track last ambient interaction times
 	private val npcLastAmbientInteraction = HashMap<String, Long>()
+
+	/**
+	 * Generates a relationship label using AI based on the relationship's score and traits.
+	 */
+	fun generateRelationshipLabel(relationship: Relationship): CompletableFuture<String> {
+		val score = relationship.score
+		val traits = if (relationship.traits.isNotEmpty()) relationship.traits.joinToString(", ") else "none"
+		val memorySummary = "No specific memories provided for this label generation task yet." // Placeholder
+
+		val prompt =
+			"""
+			Based on the following relationship details, generate a concise 1-3 word label (e.g., 'Lovers', 'Boyfriend Girlfriends', 'Acquiatances', 'Friends', 'Close Friends', 'Romantic Interest', 'Sexual Tension').
+			The label should reflect the overall sentiment and nature of the relationship.
+			Details:
+			Score (from -100 to 100, where higher is better): $score
+			Current relationship type: ${relationship.type}
+			Traits: $traits
+			Recent memories: $memorySummary
+			""".trimIndent()
+
+		val messages =
+			listOf(
+				ConversationMessage("system", prompt),
+			)
+
+		return plugin.getAIResponse(messages).thenApply { response ->
+			if (response.isNullOrBlank() || !isValidRelationshipLabel(response)) {
+				relationship.type // Fallback to existing type if AI fails
+			} else {
+				response
+			}
+		}
+	}
+
+	// 4 word max validator boolean
+	fun isValidRelationshipLabel(label: String): Boolean = label.split(" ").size <= 4
 }

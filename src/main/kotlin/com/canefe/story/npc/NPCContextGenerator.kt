@@ -3,7 +3,6 @@ package com.canefe.story.npc
 import com.canefe.story.Story
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
-import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import kotlin.random.Random
@@ -60,21 +59,25 @@ class NPCContextGenerator(private val plugin: Story) {
 						?: plugin.locationManager.createLocation("Village", null)
 						?: return null,
 					context =
-						generateDefaultContext(
-							npcName,
-							"Default role",
-							hours,
-							minutes,
-							season,
-							date,
-						),
+					generateDefaultContext(
+						npcName,
+						"Default role",
+						hours,
+						minutes,
+						season,
+						date,
+					),
 				)
 
 			// Update or generate context
 			npcData.context =
 				updateContext(
 					npcData.context,
-					npcName, hours, minutes, season, date,
+					npcName,
+					hours,
+					minutes,
+					season,
+					date,
 				)
 
 			// Save updated NPC data with existing memories preserved
@@ -82,11 +85,12 @@ class NPCContextGenerator(private val plugin: Story) {
 
 			return NPCContext(
 				npcName,
-				npcData.role,
-				npcData.context,
-				npcData.storyLocation!!,
-				npcData.avatar ?: "",
-				npcData.memory,
+				role = npcData.role,
+				context = npcData.context,
+				appearance = npcData.appearance,
+				location = npcData.storyLocation!!,
+				avatar = npcData.avatar ?: "",
+				memories = npcData.memory,
 			)
 		} catch (e: Exception) {
 			plugin.logger.warning("Error while updating NPC context: ${e.message}")
@@ -106,8 +110,6 @@ class NPCContextGenerator(private val plugin: Story) {
 		season: String,
 		date: String,
 	): String {
-		Bukkit.getLogger().info("Updating context for NPC: $npcName")
-
 		var updatedContext =
 			context
 				.replace(Regex("The time is \\d{1,2}:\\d{2}"), "The time is $hours:${String.format("%02d", minutes)}")

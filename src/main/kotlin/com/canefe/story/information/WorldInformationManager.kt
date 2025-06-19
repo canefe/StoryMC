@@ -11,7 +11,9 @@ interface InformationSource {
 	fun getSignificanceLevel(): Int
 }
 
-class WorldInformationManager(private val plugin: Story) {
+class WorldInformationManager(
+	private val plugin: Story,
+) {
 	fun processInformation(source: InformationSource) {
 		when (source.getSourceType()) {
 			"conversation" -> handleConversationInformation(source as ConversationInformationSource)
@@ -81,15 +83,15 @@ class WorldInformationManager(private val plugin: Story) {
 			Analyze the following conversation between NPCs.
 			Conversation location: $conversationLocation
 			NPCs involved: ${npcNames.joinToString(", ")}
-			
+
 			Relevant locations with context:
 			$locationsDescription
-			
+
 			Identify significant information that should be:
 			1. Remembered by specific NPCs involved (personal knowledge)
 			2. Spread as rumors throughout specific locations (location-based knowledge)
 			3. Ignored as trivial conversation
-			
+
 			For each finding, specify:
 			---
 			Type: [PERSONAL or RUMOR]
@@ -130,20 +132,6 @@ class WorldInformationManager(private val plugin: Story) {
 
 			// Process based on type
 			when {
-				type.equals("PERSONAL", ignoreCase = true) -> {
-					// Split target by comma to handle multiple NPCs
-					val targetNpcs = target.split(",\\s*".toRegex())
-
-					for (singleTarget in targetNpcs) {
-						val trimmedTarget = singleTarget.trim()
-						// Only add personal knowledge if target is a valid NPC name
-						if (npcNames.contains(trimmedTarget)) {
-							addPersonalKnowledge(trimmedTarget, information, importance ?: "MEDIUM")
-						} else {
-							plugin.logger.warning("Ignoring personal knowledge for unknown NPC: $trimmedTarget")
-						}
-					}
-				}
 				type.equals("RUMOR", ignoreCase = true) -> {
 					// Is the target a specific location?
 					if (relevantLocations.any { it.equals(target, ignoreCase = true) }) {
@@ -166,7 +154,6 @@ class WorldInformationManager(private val plugin: Story) {
 							val trimmedTarget = singleTarget.trim()
 							// Only if target is a valid NPC name
 							if (npcNames.contains(trimmedTarget)) {
-								addPersonalKnowledge(trimmedTarget, information, importance ?: "MEDIUM")
 								validTargetFound = true
 							}
 						}

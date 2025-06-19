@@ -35,7 +35,7 @@ class PlayerManager(
 	private val teams = HashMap<String, MutableSet<UUID>>()
 
 	init {
-		loadData()
+		load()
 	}
 
 	// Player-NPC interaction methods
@@ -109,7 +109,6 @@ class PlayerManager(
 		val playerUUID = player.uniqueId
 		playerQuestTitles.remove(playerUUID)
 		playerQuestObjectives.remove(playerUUID)
-		player.sendInfo("Your quest has been cleared.")
 		saveData()
 	}
 
@@ -289,7 +288,7 @@ class PlayerManager(
 		}
 	}
 
-	private fun loadData() {
+	fun load() {
 		loadTeamsAndQuests()
 		loadDisabledPlayers()
 	}

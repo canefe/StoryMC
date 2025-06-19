@@ -8,12 +8,13 @@ import dev.jorel.commandapi.executors.PlayerCommandExecutor
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes.player
 import org.bukkit.Location
 
-class CreateLocationCommand(
-	private val commandUtils: LocationCommandUtils,
-) {
+class CreateLocationCommand(private val commandUtils: LocationCommandUtils) {
 	fun getCommand(): CommandAPICommand {
 		return CommandAPICommand("create")
 			.withArguments(GreedyStringArgument("location_name"))
+			.withUsage(
+				"/story location create <location_name>",
+			)
 			.executesPlayer(
 				PlayerCommandExecutor { player, args ->
 					val locationName = args["location_name"] as String

@@ -9,19 +9,14 @@ import java.io.File
 import java.io.IOException
 import java.util.logging.Level
 
-class LocationManager private constructor(
-	private val plugin: Story,
-) {
+class LocationManager private constructor(private val plugin: Story) {
 	private val locations: MutableMap<String, StoryLocation> = HashMap()
 	val locationDirectory: File =
 		File(plugin.dataFolder, "locations").apply {
 			if (!exists()) mkdirs()
 		}
 
-	fun saveLocationFile(
-		locationName: String,
-		config: FileConfiguration,
-	) {
+	fun saveLocationFile(locationName: String, config: FileConfiguration) {
 		val locationFile = File(locationDirectory, "$locationName.yml")
 		try {
 			config.save(locationFile)
@@ -35,14 +30,13 @@ class LocationManager private constructor(
 	 * @param parentLocationName The name of the parent location
 	 * @return List of all sublocations that have the specified parent
 	 */
-	fun getSublocations(parentLocationName: String): List<StoryLocation> =
-		locations.values.filter { location ->
-			// A location is a sublocation of the parent if:
-			// 1. It explicitly has the given parent name OR
-			// 2. Its name starts with parentLocationName/ (nested path structure)
-			location.parentLocationName == parentLocationName ||
-				location.name.startsWith("$parentLocationName/")
-		}
+	fun getSublocations(parentLocationName: String): List<StoryLocation> = locations.values.filter { location ->
+		// A location is a sublocation of the parent if:
+		// 1. It explicitly has the given parent name OR
+		// 2. Its name starts with parentLocationName/ (nested path structure)
+		location.parentLocationName == parentLocationName ||
+			location.name.startsWith("$parentLocationName/")
+	}
 
 	fun loadLocationData(locationName: String): StoryLocation? {
 		val locationFile = File(locationDirectory, "$locationName.yml")
@@ -63,10 +57,7 @@ class LocationManager private constructor(
 	 * @param range The maximum distance to consider, defaults to 50 blocks
 	 * @return The closest StoryLocation within range, or null if none found
 	 */
-	fun getLocationByPosition(
-		position: Location,
-		range: Double = 50.0,
-	): StoryLocation? {
+	fun getLocationByPosition(position: Location, range: Double = 50.0): StoryLocation? {
 		var closestLocation: StoryLocation? = null
 		var closestDistance = Double.MAX_VALUE
 
@@ -91,10 +82,7 @@ class LocationManager private constructor(
 		locations[storyLocation.name] = storyLocation
 	}
 
-	fun createLocation(
-		name: String,
-		bukkitLocation: Location?,
-	): StoryLocation? {
+	fun createLocation(name: String, bukkitLocation: Location?): StoryLocation? {
 		return try {
 			if (locations.containsKey(name)) {
 				plugin.logger.warning("Location with name $name already exists.")
@@ -130,10 +118,7 @@ class LocationManager private constructor(
 		plugin.logger.info("Loaded ${locations.size} locations")
 	}
 
-	private fun loadBukkitLocation(
-		config: FileConfiguration,
-		location: StoryLocation,
-	) {
+	private fun loadBukkitLocation(config: FileConfiguration, location: StoryLocation) {
 		if (config.contains("world")) {
 			val worldName = config.getString("world")
 			val x = config.getDouble("x")
@@ -150,10 +135,7 @@ class LocationManager private constructor(
 		}
 	}
 
-	private fun loadLocationsRecursively(
-		directory: File,
-		parentPath: String?,
-	) {
+	private fun loadLocationsRecursively(directory: File, parentPath: String?) {
 		if (!directory.exists() || !directory.isDirectory) return
 
 		val files = directory.listFiles() ?: return
@@ -182,10 +164,10 @@ class LocationManager private constructor(
 				loadBukkitLocation(config, location)
 
 				locations[fullPath] = location
-				plugin.logger.info(
+				/*plugin.logger.info(
 					"Loaded location: $fullPath" +
 						(effectiveParent?.let { " with parent: $it" } ?: ""),
-				)
+				)*/
 			}
 		}
 
@@ -298,9 +280,8 @@ class LocationManager private constructor(
 		private var instance: LocationManager? = null
 
 		@JvmStatic
-		fun getInstance(plugin: Story): LocationManager =
-			instance ?: synchronized(this) {
-				instance ?: LocationManager(plugin).also { instance = it }
-			}
+		fun getInstance(plugin: Story): LocationManager = instance ?: synchronized(this) {
+			instance ?: LocationManager(plugin).also { instance = it }
+		}
 	}
 }

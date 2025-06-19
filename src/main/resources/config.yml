@@ -1,4 +1,4 @@
-openai:
+openrouter:
   apikey: "your-api-key-here"
   aiModel: "gryphe/mythomax-l2-13b:extended"
 ai:

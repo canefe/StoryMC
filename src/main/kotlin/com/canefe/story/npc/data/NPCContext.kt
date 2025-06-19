@@ -13,6 +13,7 @@ data class NPCContext(
 	val name: String,
 	val role: String,
 	val context: String,
+	val appearance: String = "",
 	val location: StoryLocation?,
 	val avatar: String,
 	val memories: List<Memory>,
@@ -22,13 +23,13 @@ data class NPCContext(
 	private fun getStrongestMemories(
 		timeService: TimeService,
 		limit: Int = 5,
-	): List<Memory> {
-		return memories.sortedByDescending { it.getCurrentStrength(timeService) }.take(limit)
-	}
+	): List<Memory> = memories.sortedByDescending { it.getCurrentStrength(timeService) }.take(limit)
 
-	private fun getRecentMemories(limit: Int = 5): List<Memory> {
-		return memories.sortedByDescending { it.gameCreatedAt }.take(limit)
-	}
+	private fun getRecentMemories(limit: Int = 5): List<Memory> =
+		memories
+			.sortedByDescending {
+				it.gameCreatedAt
+			}.take(limit)
 
 	// Convert memories to a format suitable for AI prompts, including relationship information
 	fun getMemoriesForPrompt(

@@ -15,8 +15,9 @@ class Conversation(
 	private val _history: MutableList<ConversationMessage> = ArrayList()
 
 	// Public properties
-	var isActive: Boolean = true
+	var active: Boolean = true
 	var chatEnabled: Boolean = true
+	val mutedNPCs: MutableList<NPC> = ArrayList()
 
 	// Read-only property exposing internal list as immutable
 	val npcNames: List<String> get() = _npcNames.toList()
@@ -76,6 +77,25 @@ class Conversation(
 	fun removePlayer(player: Player): Boolean {
 		if (_players.contains(player.uniqueId)) {
 			_players.remove(player.uniqueId)
+			return true
+		}
+		return false
+	}
+
+	fun muteNPC(npc: NPC): Boolean {
+		if (!_npcs.contains(npc)) {
+			return false
+		}
+		if (!mutedNPCs.contains(npc)) {
+			mutedNPCs.add(npc)
+			return true
+		}
+		return false
+	}
+
+	fun unmuteNPC(npc: NPC): Boolean {
+		if (mutedNPCs.contains(npc)) {
+			mutedNPCs.remove(npc)
 			return true
 		}
 		return false

@@ -37,7 +37,7 @@ class LoreBookManager private constructor(
 		val iterator = recentlyAddedLoreContexts.entries.iterator()
 		while (iterator.hasNext()) {
 			val entry = iterator.next()
-			if (!entry.key.isActive || entry.value.isEmpty()) {
+			if (!entry.key.active || entry.value.isEmpty()) {
 				iterator.remove()
 			}
 		}

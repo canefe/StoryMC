@@ -3,7 +3,6 @@ package com.canefe.story.npc.mythicmobs
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.util.Msg.sendError
-import io.papermc.paper.event.player.AsyncChatEvent
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.ai.Navigator
 import net.citizensnpcs.api.event.DespawnReason
@@ -13,7 +12,6 @@ import net.citizensnpcs.api.npc.MetadataStore
 import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.api.trait.Trait
 import net.citizensnpcs.api.util.DataKey
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.block.Block
@@ -27,6 +25,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import java.util.*
+import java.util.function.Consumer
 import java.util.regex.Pattern
 
 /**
@@ -110,111 +109,14 @@ class MythicMobConversationIntegration(
 		player: Player,
 		radius: Double,
 	): List<Entity> {
+		// Get all entities in a cube around the player
 		val nearbyEntities = player.getNearbyEntities(radius, radius, radius)
+
+		// Filter for MythicMobs that are actually within spherical radius
 		return nearbyEntities.filter { entity ->
-			mythicMobsHandler.isMythicMob(entity)
+			mythicMobsHandler.isMythicMob(entity) &&
+				player.location.distanceSquared(entity.location) <= radius * radius
 		}
-	}
-
-	/**
-	 * Handle chat interactions with MythicMobs
-	 */
-	@EventHandler
-	fun onPlayerChat(event: AsyncChatEvent) {
-		if (!plugin.config.mythicMobsEnabled) {
-			return // Skip if MythicMobs integration is disabled
-		}
-
-		val player = event.player
-		val message = PlainTextComponentSerializer.plainText().serialize(event.message())
-
-		// Skip if player has disabled NPC interactions
-		if (plugin.playerManager.isPlayerDisabled(player)) {
-			return
-		}
-
-		// Process chat on the main thread since Bukkit API methods aren't thread-safe
-		Bukkit.getScheduler().runTask(
-			plugin,
-			Runnable {
-				// Get nearby MythicMobs (now running on the main thread)
-				val nearbyMythicMobs = getNearbyMythicMobs(player, plugin.config.chatRadius)
-				if (nearbyMythicMobs.isEmpty()) return@Runnable
-
-				// Get conversation manager
-				val conversationManager = plugin.conversationManager
-				var joinedExistingConversation = false
-
-				// Check for existing conversations with nearby MythicMobs
-				for (entity in nearbyMythicMobs) {
-					val npcAdapter = getOrCreateNPCAdapter(entity) ?: continue
-
-					if (conversationManager.isInConversation(npcAdapter)) {
-						val existingConvo = conversationManager.getConversation(npcAdapter)
-
-						if (existingConvo != null &&
-							(
-								!conversationManager.isInConversation(player) ||
-									conversationManager.getConversation(player) != existingConvo
-							)
-						) {
-							// End player's current conversation if they're in one
-							if (conversationManager.isInConversation(player)) {
-								conversationManager.endConversation(
-									conversationManager.getConversation(player)!!,
-								)
-							}
-
-							// Add player to existing conversation
-							existingConvo.addPlayer(player)
-							conversationManager.addPlayerMessage(player, existingConvo, message)
-
-							joinedExistingConversation = true
-							break
-						}
-					}
-				}
-
-				// Handle normal interactions if player didn't join an existing conversation
-				if (!joinedExistingConversation) {
-					// Process chat with nearby MythicMobs
-					for (entity in nearbyMythicMobs) {
-						val npcAdapter = getOrCreateNPCAdapter(entity) ?: continue
-
-						if (!plugin.npcManager.isNPCDisabled(npcAdapter)) {
-							plugin.playerManager.playerCurrentNPC[player.uniqueId] = npcAdapter.uniqueId
-							handleConversation(player, npcAdapter, false)
-						}
-					}
-
-					// Check for MythicMobs that need to be removed from player's conversation
-					if (conversationManager.isInConversation(player)) {
-						val conversation = conversationManager.getConversation(player) ?: return@Runnable
-						val npcsToRemove = ArrayList<NPC>()
-
-						for (npc in conversation.npcs) {
-							// Check if this is a MythicMob adapter
-							if (npc is MythicMobNPCAdapter) {
-								val entity = npc.entity
-								if (entity == null ||
-									!nearbyMythicMobs.contains(entity) ||
-									plugin.npcManager.isNPCDisabled(npc)
-								) {
-									npcsToRemove.add(npc)
-								}
-							}
-						}
-
-						// Remove MythicMobs that are no longer nearby
-						for (npcToRemove in npcsToRemove) {
-							plugin.conversationManager.removeNPC(npcToRemove, conversation)
-						}
-
-						conversationManager.addPlayerMessage(player, conversation, message)
-					}
-				}
-			},
-		)
 	}
 
 	/**
@@ -257,13 +159,15 @@ class MythicMobConversationIntegration(
 					return true
 				}
 
-				// Add this NPC to the existing conversation
-				conversation.addNPC(npc)
+				if (isDirectInteraction) {
+					// Add this NPC to the existing conversation
+					conversation.addNPC(npc)
 
-				// Set MythicMob in conversation mode
-				if (entity != null) {
-					mythicMobsHandler.setMythicMobInConversation(entity, true)
-					mythicMobsHandler.lookAtTarget(entity, player)
+					// Set MythicMob in conversation mode
+					if (entity != null) {
+						mythicMobsHandler.setMythicMobInConversation(entity, true)
+						mythicMobsHandler.lookAtTarget(entity, player)
+					}
 				}
 
 				return true
@@ -276,8 +180,15 @@ class MythicMobConversationIntegration(
 					return true
 				}
 
+				// check if there is any CitizensNPC nearby before starting a conversation
+				val nearbyCitizensNPCs = plugin.getNearbyNPCs(player, plugin.config.chatRadius)
+
 				val existingConversation =
 					conversationManager.getConversation(npc) ?: run {
+						if (nearbyCitizensNPCs.isNotEmpty()) {
+							return true
+						}
+
 						// No existing conversation, create a new one
 						val npcs = ArrayList<NPC>()
 						npcs.add(npc)
@@ -515,6 +426,14 @@ class MythicMobConversationIntegration(
 		override fun spawn(
 			p0: Location?,
 			p1: SpawnReason?,
+		): Boolean {
+			TODO("Not yet implemented")
+		}
+
+		override fun spawn(
+			p0: Location?,
+			p1: SpawnReason?,
+			p2: Consumer<Entity?>?,
 		): Boolean {
 			TODO("Not yet implemented")
 		}

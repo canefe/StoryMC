@@ -1,8 +1,13 @@
 package com.canefe.story.quest
 
 import com.canefe.story.Story
+import com.canefe.story.api.event.QuestCompleteEvent
+import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
+import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
+import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
+import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.title.Title
@@ -15,10 +20,10 @@ import java.io.IOException
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.collections.getOrDefault
+import kotlin.text.get
 
-class QuestManager private constructor(
-	private val plugin: Story,
-) {
+class QuestManager private constructor(private val plugin: Story) {
 	private val quests = ConcurrentHashMap<String, Quest>()
 	private val playerQuests = ConcurrentHashMap<UUID, MutableMap<String, PlayerQuest>>()
 
@@ -44,7 +49,7 @@ class QuestManager private constructor(
 	fun getValidKillTargets(): List<String> = questReference?.getStringList("killableEntities") ?: emptyList()
 
 	// Get valid locations
-	fun getValidLocations(): List<String> = questReference?.getStringList("locations") ?: emptyList()
+	fun getValidLocations(): List<String> = plugin.locationManager.getAllLocations().map { it.name }
 
 	fun getValidTalkTargets(npc: NPC): List<String> {
 		// First get the location of npc (Get his npcData)
@@ -94,7 +99,7 @@ class QuestManager private constructor(
 				val quest = loadQuest(questId)
 				if (quest != null) {
 					quests[questId] = quest
-					plugin.logger.info("Loaded quest: ${quest.title} (ID: $questId)")
+					// plugin.logger.info("Loaded quest: ${quest.title} (ID: $questId)")
 				}
 			} catch (e: Exception) {
 				plugin.logger.warning("Error loading quest from file: ${file.name}")
@@ -161,6 +166,16 @@ class QuestManager private constructor(
 		plugin.logger.info("Loaded quests for ${playerQuests.size} players")
 	}
 
+	fun resetQuest(player: Player, questId: String) {
+		val playerQuestMap = getPlayerQuests(player.uniqueId)
+		val playerQuest = playerQuestMap[questId] ?: return
+
+		playerQuest.status = QuestStatus.NOT_STARTED
+		playerQuest.objectiveProgress.clear()
+		player.sendSuccess("Quest reset: <yellow>$questId")
+		savePlayerQuest(player.uniqueId, playerQuest)
+	}
+
 	fun saveQuest(quest: Quest) {
 		val questFile = File(questFolder, "${quest.id}.yml")
 		val config = YamlConfiguration()
@@ -216,11 +231,25 @@ class QuestManager private constructor(
 		return questPlayerMap
 	}
 
+	// A function to get all quests of single player
+	fun getAllQuestsOfPlayer(playerId: UUID): Map<Quest, QuestStatus> {
+		val playerQuestMap = mutableMapOf<Quest, QuestStatus>()
+
+		val quests = getAllQuestsWithPlayers()
+		for ((questId, players) in quests) {
+			if (players.any { it.uniqueId == playerId }) {
+				val quest = getQuest(questId)
+				if (quest != null) {
+					playerQuestMap[quest] = getPlayerQuestStatus(plugin.server.getOfflinePlayer(playerId), questId)
+				}
+			}
+		}
+
+		return playerQuestMap
+	}
+
 	// Player quest management
-	fun assignQuestToPlayer(
-		player: Player,
-		questId: String,
-	): Boolean {
+	fun assignQuestToPlayer(player: Player, questId: String): Boolean {
 		val quest = getQuest(questId) ?: return false
 
 		// Check prerequisites
@@ -238,6 +267,9 @@ class QuestManager private constructor(
 
 		savePlayerQuest(player.uniqueId, playerQuest)
 		plugin.playerManager.setPlayerQuest(player, quest.title, quest.objectives[0].description)
+
+		newQuest(player, quest)
+
 		return true
 	}
 
@@ -246,10 +278,7 @@ class QuestManager private constructor(
 		return playerQuests.getOrDefault(playerId, mutableMapOf())
 	}
 
-	fun getPlayerQuestStatus(
-		player: OfflinePlayer,
-		questId: String,
-	): QuestStatus {
+	fun getPlayerQuestStatus(player: OfflinePlayer, questId: String): QuestStatus {
 		val playerQuestMap = getPlayerQuests(player.uniqueId)
 		return playerQuestMap[questId]?.status ?: QuestStatus.NOT_STARTED
 	}
@@ -257,17 +286,16 @@ class QuestManager private constructor(
 	/**
 	 * Registers a dynamically generated quest into the quests collection and saves it to disk
 	 */
-	fun registerQuest(
-		quest: Quest,
-		npc: NPC,
-	) {
+	fun registerQuest(quest: Quest, npc: NPC? = null) {
 		val turnInObjective =
-			QuestObjective(
-				description = "Return to ${npc.name}",
-				type = ObjectiveType.TALK,
-				target = npc.name,
-				required = 1,
-			)
+			npc?.let {
+				QuestObjective(
+					description = "Return to ${it.name}",
+					type = ObjectiveType.TALK,
+					target = it.name,
+					required = 1,
+				)
+			}
 
 		val newQuest =
 			Quest(
@@ -275,7 +303,7 @@ class QuestManager private constructor(
 				title = quest.title,
 				description = quest.description,
 				type = quest.type,
-				objectives = quest.objectives + turnInObjective,
+				objectives = quest.objectives + (turnInObjective?.let { listOf(it) } ?: emptyList()),
 				rewards = quest.rewards,
 				prerequisites = quest.prerequisites,
 				nextQuests = quest.nextQuests,
@@ -289,8 +317,8 @@ class QuestManager private constructor(
 	fun updateObjectiveProgress(
 		player: Player,
 		questId: String,
-		objectiveType: ObjectiveType,
-		target: String,
+		objectiveType: ObjectiveType? = null,
+		target: String? = null,
 		progress: Int = 1,
 	) {
 		val playerQuestMap = getPlayerQuests(player.uniqueId)
@@ -300,78 +328,84 @@ class QuestManager private constructor(
 
 		if (playerQuest.status != QuestStatus.IN_PROGRESS) return
 
-		var allCompleted = true
-		var currentQuest: Quest? = null
-		var objectiveFinished = false
-		for (i in quest.objectives.indices) {
-			val objective = quest.objectives[i]
+		var finalTarget = target
+		var finalObjectiveType = objectiveType
 
-			// Check if this objective matches the criteria
-			// lowercase string
+		// Find the current objective (first incomplete objective)
+		val currentObjectiveMap = getCurrentObjective(player, questId)
+		val currentObjectiveIndex = currentObjectiveMap?.keys?.firstOrNull()
+		val currentObjective = currentObjectiveIndex?.let { currentObjectiveMap[it] }
 
-			if (objective.type == objectiveType &&
-				(objective.target.isEmpty() || objective.target.lowercase() == target.lowercase())
-			) {
-				val currentProgress = playerQuest.objectiveProgress.getOrDefault(i, 0)
-
-				// If the objective is already completed, skip it
-				if (currentProgress >= objective.required) {
-					continue
-				}
-
-				// Don't exceed the required amount
-				val newProgress = minOf(currentProgress + progress, objective.required)
-				playerQuest.objectiveProgress[i] = newProgress
-
-				currentQuest = quest
-
-				player.sendMessage("§7Quest progress: §e${objective.description} §7(§a$newProgress§7/§6${objective.required}§7)")
-
-				if (newProgress >= objective.required) {
-					objectiveFinished = true
-					player.sendMessage("§aObjective completed: §e${objective.description}")
-				}
-			}
-
-			// Check if objective is completed
-			val objectiveProgress = playerQuest.objectiveProgress.getOrDefault(i, 0)
-			if (objectiveProgress < objective.required) {
-				allCompleted = false
-			}
-		}
-
-		// check if the currentQuest is not null
-		currentQuest
-			?: return
-
-		// If all objectives are completed, complete the quest
-		if (allCompleted) {
-			completeQuest(player, questId)
-		} else {
-			savePlayerQuest(player.uniqueId, playerQuest)
-			// Print next objective
-			val nextObjectiveIndex =
-				quest.objectives.indexOfFirst {
-					it.required >
-						playerQuest.objectiveProgress.getOrDefault(quest.objectives.indexOf(it), 0)
-				}
-
-			val nextObjective = nextObjectiveIndex?.let { quest.objectives[it] }
-			if (nextObjective != null && objectiveFinished) {
-				player.sendSuccess(
-					"<gray>Next objective: <yellow>${nextObjective.description} <gray>(<green>${playerQuest.objectiveProgress.getOrDefault(
-						nextObjectiveIndex,
-						0,
-					)}<gray>/<gold>${nextObjective.required}<gray>)",
+		if (currentObjective == null) return
+		if (target == null) finalTarget = currentObjective.target
+		if (objectiveType == null) finalObjectiveType = currentObjective.type
+		// Only update if the current objective matches the type and target
+		if (currentObjective.type == finalObjectiveType &&
+			(currentObjective.target.isEmpty() || currentObjective.target.lowercase() == finalTarget.lowercase())
+		) {
+			val newProgress =
+				minOf(
+					playerQuest.objectiveProgress.getOrDefault(currentObjectiveIndex, 0) + progress,
+					currentObjective.required,
 				)
+			playerQuest.objectiveProgress[currentObjectiveIndex] = newProgress
+
+			player.sendRaw(
+				"<gray>Quest progress: <yellow>${currentObjective.description}</yellow> (<green>$newProgress</green>/" +
+					"<gold>${currentObjective.required}</gold>)",
+			)
+			val mm = plugin.miniMessage
+			if (newProgress >= currentObjective.required) {
+				player.sendRaw("<green>Objective completed: <yellow>${currentObjective.description}")
+				val audience = Audience.audience(player)
+				val title =
+					Title.title(
+						mm.deserialize("<gold><b>${currentObjective.description}</b>"),
+						mm.deserialize("<green>Objective Completed"),
+						Title.Times.times(Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ofSeconds(1)),
+					)
+
+				player.playSound(player, "entity.player.levelup", 1f, 1f)
+
+				audience.showTitle(title)
+
+				// Check if all objectives are complete
+				val allObjectivesComplete =
+					quest.objectives.indices.all { index ->
+						playerQuest.objectiveProgress.getOrDefault(index, 0) >= quest.objectives[index].required
+					}
+
+				if (allObjectivesComplete) {
+					completeQuest(player, questId)
+				} else {
+					val nextObjective = getCurrentObjective(player, questId)!!.values.first()
+					plugin.playerManager.setPlayerQuest(player, quest.title, nextObjective?.description ?: "")
+					savePlayerQuest(player.uniqueId, playerQuest)
+					player.sendSuccess(
+						"<gray>Next objective: <yellow>${nextObjective?.description} <gray>(<green>0<gray>/<gold>${nextObjective?.required}<gray>)",
+					)
+				}
+			} else {
+				savePlayerQuest(player.uniqueId, playerQuest)
 			}
 		}
 	}
 
-	fun updatePlaceholders(
-		player: Player,
-		quest: Quest,
-	) {
+	// Helper method to get the next objective after the current one
+	private fun getNextObjective(player: Player, questId: String): QuestObjective? {
+		val currentObjectiveMap = getCurrentObjective(player, questId) ?: return null
+		val currentObjectiveIndex = currentObjectiveMap.keys.firstOrNull() ?: return null
+		val quest = getQuest(questId) ?: return null
+
+		// Return the next objective if it exists
+		return if (currentObjectiveIndex + 1 < quest.objectives.size) {
+			quest.objectives[currentObjectiveIndex + 1]
+		} else {
+			null
+		}
+	}
+
+	fun updatePlaceholders(player: Player, quest: Quest) {
 		val currentObjectiveMap = quest.id.let { plugin.questManager.getCurrentObjective(player, it) }
 		val currentObjectiveIndex = currentObjectiveMap?.keys?.firstOrNull()
 		val currentObjective = currentObjectiveIndex?.let { currentObjectiveMap[it] }
@@ -382,15 +416,20 @@ class QuestManager private constructor(
 		}
 	}
 
-	fun completeQuest(
-		player: Player,
-		questId: String,
-	) {
+	fun completeQuest(player: Player, questId: String) {
 		val mm = plugin.miniMessage
 		val playerQuestMap = getPlayerQuests(player.uniqueId)
 		val playerQuest = playerQuestMap[questId] ?: return
 
 		val quest = getQuest(questId) ?: return
+
+		// Run QuestCompleteEvent and check if it is cancelled
+		val event = QuestCompleteEvent(player, quest)
+		Bukkit.getPluginManager().callEvent(event)
+		if (event.isCancelled) {
+			plugin.logger.info("Quest completion cancelled for player ${player.name} on quest ${quest.title}")
+			return
+		}
 
 		playerQuest.status = QuestStatus.COMPLETED
 		playerQuest.completionDate = System.currentTimeMillis()
@@ -406,6 +445,9 @@ class QuestManager private constructor(
 				mm.deserialize("<gray>${quest.title}"),
 				Title.Times.times(Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ofSeconds(1)),
 			)
+
+		player.playSound(player, "ui.toast.challenge_complete", 1f, 1f)
+
 		audience.showTitle(title)
 		plugin.logger.info("Player ${player.name} completed quest: ${quest.title}")
 		plugin.playerManager.clearPlayerQuest(player)
@@ -419,12 +461,92 @@ class QuestManager private constructor(
 		}
 
 		savePlayerQuest(player.uniqueId, playerQuest)
+
+		// Get Questgiver NPC (npc id stored in quest id) ex: npc_[npcId]_[questUniqueId]
+		val parts = quest.id.split("_")
+		val npcId = if (parts.size >= 2) parts[1] else return
+		val npcName =
+			if (npcId.matches(Regex("\\d+"))) {
+				CitizensAPI.getNPCRegistry().getById(npcId.toInt())?.name
+			} else {
+				// If not numeric, we don't care and will simply return
+				null
+			} ?: return
+		val contextPrompt =
+			"""
+			You have heard that ${EssentialsUtils.getNickname(player.name)} has completed the quest you gave: ${quest.title}.
+			""".trimIndent()
+		plugin.npcResponseService.generateNPCMemory(npcName, "event", contextPrompt)
 	}
 
-	private fun giveRewards(
-		player: Player,
-		quest: Quest,
-	) {
+	// OfflinePlayer completeQuest
+	fun completeQuest(player: OfflinePlayer, questId: String) {
+		val playerQuestMap = getPlayerQuests(player.uniqueId)
+		val playerQuest = playerQuestMap[questId] ?: return
+
+		val quest = getQuest(questId) ?: return
+
+		playerQuest.status = QuestStatus.COMPLETED
+		playerQuest.completionDate = System.currentTimeMillis()
+
+		savePlayerQuest(player.uniqueId, playerQuest)
+	}
+
+	/**
+	 * Fails a quest for a player, removing it from their active quests
+	 * @param player The player receiving the quest
+	 * @param quest The quest being assigned
+	 */
+	fun failQuest(player: Player, quest: Quest) {
+		val playerQuestMap = getPlayerQuests(player.uniqueId)
+		val playerQuest = playerQuestMap[quest.id] ?: return
+
+		playerQuest.status = QuestStatus.FAILED
+		playerQuest.completionDate = System.currentTimeMillis()
+
+		savePlayerQuest(player.uniqueId, playerQuest)
+
+		val audience = Audience.audience(player)
+		val mm = plugin.miniMessage
+		val title =
+			Title.title(
+				mm.deserialize("<red><b>Quest Failed</b>"),
+				mm.deserialize("<gray>${quest.title}"),
+				Title.Times.times(Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ofSeconds(1)),
+			)
+
+		audience.showTitle(title)
+		plugin.playerManager.clearPlayerQuest(player)
+		player.playSound(player, "entity.ender_dragon.growl", 1f, 1f)
+		player.sendRaw("<red>Quest <yellow>${quest.title} <red>has been failed.")
+	}
+
+	fun failQuest(player: OfflinePlayer, quest: Quest) {
+		val playerQuestMap = getPlayerQuests(player.uniqueId)
+		val playerQuest = playerQuestMap[quest.id] ?: return
+
+		playerQuest.status = QuestStatus.FAILED
+		playerQuest.completionDate = System.currentTimeMillis()
+
+		savePlayerQuest(player.uniqueId, playerQuest)
+	}
+
+	// info message
+	fun newQuest(player: Player, quest: Quest) {
+		val audience = Audience.audience(player)
+		val title =
+			Title.title(
+				plugin.miniMessage.deserialize("<gold><b>New Quest</b>"),
+				plugin.miniMessage.deserialize("<gray>${quest.title}"),
+				Title.Times.times(Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ofSeconds(1)),
+			)
+
+		player.playSound(player, "entity.player.levelup", 1f, 1f)
+		player.sendSuccess("New quest received: <yellow>${quest.title}")
+		audience.showTitle(title)
+	}
+
+	private fun giveRewards(player: Player, quest: Quest) {
 		for (reward in quest.rewards) {
 			when (reward.type) {
 				RewardType.ITEM -> {
@@ -432,7 +554,7 @@ class QuestManager private constructor(
 					// player.inventory.addItem(reward.getItemStack())
 				}
 				RewardType.EXPERIENCE -> {
-					player.giveExp(reward.amount)
+					player.giveExp(reward.amount, true)
 					player.sendMessage("§7Received §a${reward.amount} §7experience")
 				}
 				RewardType.REPUTATION -> {
@@ -478,12 +600,72 @@ class QuestManager private constructor(
 
 		playerQuests[playerId] = playerQuestsMap
 
-		val currentQuest = playerQuestsMap.values.firstOrNull()
+		val currentQuest = playerQuestsMap.values.lastOrNull { it.status == QuestStatus.IN_PROGRESS }
 		if (currentQuest != null) {
 			val quest = getQuest(currentQuest.questId)
 			if (quest != null) {
 				Bukkit.getPlayer(playerId)?.let { updatePlaceholders(it, quest) }
 			}
+		}
+	}
+
+	fun getCurrentQuest(player: Player): Quest? {
+		val playerQuestMap = getPlayerQuests(player.uniqueId)
+		val currentQuest = playerQuestMap.values.lastOrNull { it.status == QuestStatus.IN_PROGRESS }
+		return if (currentQuest != null) {
+			getQuest(currentQuest.questId)
+		} else {
+			null
+		}
+	}
+
+	fun printQuest(
+		quest: Quest,
+		player: Player,
+		status: Pair<String, String> = Pair("<gold>", "In Progress"),
+		isAdmin: Boolean = false,
+		objectiveInfo: ObjectiveInfo? = null,
+	) {
+		// deconstruct status pair
+		val statusColor = status.first
+		val statusText = status.second
+
+		val objectiveInfo =
+			quest?.id?.let { questId ->
+				val objectiveMap = plugin.questManager.getCurrentObjective(player, questId)
+				val currentIndex = objectiveMap?.keys?.firstOrNull()
+				val currentObjective = currentIndex?.let { objectiveMap[it] }
+
+				ObjectiveInfo(objectiveMap, currentIndex, currentObjective)
+			} ?: ObjectiveInfo(null, null, null)
+
+		val map = objectiveInfo?.objectiveMap
+		val currentIndex = objectiveInfo?.currentIndex
+		val objective = objectiveInfo?.currentObjective
+
+		player.sendRaw(
+			"<yellow>===== <gold><green>${quest?.title}</green></gold> =====</yellow>",
+		)
+		if (isAdmin) {
+			player.sendRaw("<gray>ID:</gray> <white>${quest?.id}</white>")
+			player.sendRaw("")
+		}
+		player.sendRaw("<white>${quest?.description}")
+		player.sendRaw("${statusColor}$statusText")
+		player.sendRaw("<aqua>Tasks:")
+
+		quest?.objectives?.forEachIndexed { index, obj ->
+			val done =
+				when {
+					// Completed objectives (index less than current objective index)
+					currentIndex != null && index < currentIndex -> "<st><green>✔"
+					// Current objective
+					currentIndex != null && index == currentIndex -> "<yellow>⟳"
+					// Not yet reached objectives
+					else -> "<red>✘"
+				}
+
+			player.sendRaw("$done - ${obj.description} (${obj.required} ${obj.type} <gold>${obj.target}</gold>)")
 		}
 	}
 
@@ -493,10 +675,7 @@ class QuestManager private constructor(
 	 * @param questId The quest ID
 	 * @return The current objective, or null if the quest is completed or not found
 	 */
-	fun getCurrentObjective(
-		player: OfflinePlayer,
-		questId: String,
-	): Map<Int, QuestObjective>? {
+	fun getCurrentObjective(player: OfflinePlayer, questId: String): Map<Int, QuestObjective>? {
 		// Get player quest data
 		val playerQuestMap = getPlayerQuests(player.uniqueId)
 		val playerQuest = playerQuestMap[questId] ?: return null
@@ -525,10 +704,7 @@ class QuestManager private constructor(
 		return null
 	}
 
-	private fun savePlayerQuest(
-		playerId: UUID,
-		playerQuest: PlayerQuest,
-	) {
+	private fun savePlayerQuest(playerId: UUID, playerQuest: PlayerQuest) {
 		val playerFile = File(playerQuestFolder, "$playerId.yml")
 		val config =
 			if (playerFile.exists()) {
