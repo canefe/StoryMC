@@ -8,12 +8,16 @@ import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Service responsible for handling radiant conversations between NPCs and players
  */
 class RadiantConversationService(private val plugin: Story) {
 	private val npcManager = NPCManager.getInstance(plugin)
+
+	// Track players who recently witnessed a radiant conversation
+	private val playerWitnessedConversation = ConcurrentHashMap<UUID, Long>()
 
 	/**
 	 * Starts periodic proximity checks for radiant conversations
@@ -76,6 +80,10 @@ class RadiantConversationService(private val plugin: Story) {
 		// First check if player is a valid potential target
 		val isPlayerValid = !isPlayerInvalidTarget(player)
 
+		if (!isPlayerValid) {
+			return
+		}
+
 		// Then check if there are other valid NPC targets
 		val nearbyNPCs = plugin.getNearbyNPCs(initiator, plugin.config.radiantRadius)
 		val hasValidNPCTarget =
@@ -119,7 +127,8 @@ class RadiantConversationService(private val plugin: Story) {
 	 */
 	private fun isPlayerInvalidTarget(player: Player): Boolean = isVanished(player) ||
 		plugin.playerManager.isPlayerDisabled(player) ||
-		plugin.conversationManager.isInConversation(player)
+		plugin.conversationManager.isInConversation(player) ||
+		hasRecentlyWitnessedConversation(player)
 
 	/**
 	 * Check if a player is vanished
@@ -132,10 +141,44 @@ class RadiantConversationService(private val plugin: Story) {
 	}
 
 	/**
+	 * Check if a player has recently witnessed a radiant conversation
+	 */
+	private fun hasRecentlyWitnessedConversation(player: Player): Boolean {
+		val lastWitness = playerWitnessedConversation[player.uniqueId] ?: return false
+		val currentTime = System.currentTimeMillis()
+		val witnessDelay = plugin.config.radiantCooldown * 1000L // Convert seconds to milliseconds
+		return currentTime - lastWitness < witnessDelay
+	}
+
+	/**
+	 * Mark that a player has witnessed a radiant conversation
+	 */
+	private fun markPlayerWitnessedConversation(player: Player) {
+		playerWitnessedConversation[player.uniqueId] = System.currentTimeMillis()
+	}
+
+	/**
+	 * Get all players who might witness a conversation within a radius
+	 */
+	private fun getPlayersInRadius(location: org.bukkit.Location, radius: Double): List<Player> =
+		location.world.players.filter { player ->
+			!isPlayerInvalidTarget(player) && player.location.distance(location) <= radius
+		}
+
+	/**
 	 * Initiates a conversation between an NPC and a player
 	 */
 	private fun initiatePlayerConversation(initiator: NPC, player: Player) {
 		val initiatorName = initiator.name
+
+		// Mark the target player as having witnessed a conversation
+		markPlayerWitnessedConversation(player)
+
+		// Mark nearby players as having witnessed the conversation
+		val nearbyPlayers = getPlayersInRadius(player.location, plugin.config.radiantRadius)
+		nearbyPlayers.forEach { nearbyPlayer ->
+			markPlayerWitnessedConversation(nearbyPlayer)
+		}
 
 		CompletableFuture.runAsync {
 			try {
@@ -193,6 +236,12 @@ class RadiantConversationService(private val plugin: Story) {
 		val initiatorName = initiator.name
 
 		npcManager.setNPCCooldown(targetNPC)
+
+		// Mark nearby players as having witnessed the conversation
+		val nearbyPlayers = getPlayersInRadius(initiator.entity.location, plugin.config.radiantRadius)
+		nearbyPlayers.forEach { nearbyPlayer ->
+			markPlayerWitnessedConversation(nearbyPlayer)
+		}
 
 		CompletableFuture.runAsync {
 			try {
