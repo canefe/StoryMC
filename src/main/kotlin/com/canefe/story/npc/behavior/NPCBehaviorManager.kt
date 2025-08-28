@@ -217,16 +217,20 @@ class NPCBehaviorManager(private val plugin: Story) {
 
 				if (!npc.isSpawned) return@Runnable
 
-				// Get current yaw and calculate target yaw
-				val currentYaw =
-					NMS
-						.getHeadYaw(npc.entity)
+				// Get current yaw and calculate target yaw and pitch
+				val currentYaw = NMS.getHeadYaw(npc.entity)
+				val npcLocation = npc.entity.location
 				val targetLocation = target.location
 
-				// Calculate yaw to target
-				val dx = targetLocation.x - npc.entity.location.x
-				val dz = targetLocation.z - npc.entity.location.z
+				// Calculate yaw to target (horizontal rotation)
+				val dx = targetLocation.x - npcLocation.x
+				val dz = targetLocation.z - npcLocation.z
 				val targetYaw = Math.toDegrees(Math.atan2(-dx, dz)).toFloat()
+
+				// Calculate pitch to target (vertical rotation)
+				val dy = targetLocation.y - npcLocation.y
+				val horizontalDistance = Math.sqrt(dx * dx + dz * dz)
+				val targetPitch = -Math.toDegrees(Math.atan2(dy, horizontalDistance)).toFloat()
 
 				// Calculate yaw difference (normalized to -180 to 180)
 				var yawDiff = (targetYaw - currentYaw) % 360
@@ -242,7 +246,11 @@ class NPCBehaviorManager(private val plugin: Story) {
 						targetYaw
 					}
 
-				rot.physicalSession.rotateToHave(limitedYaw, 0f)
+				// Limit pitch to reasonable values (-90 to 90 degrees, but we'll use smaller range for natural look)
+				val maxPitch = 45f
+				val limitedPitch = Math.max(-maxPitch, Math.min(maxPitch, targetPitch))
+
+				rot.physicalSession.rotateToHave(limitedYaw, limitedPitch)
 			},
 		)
 	}
