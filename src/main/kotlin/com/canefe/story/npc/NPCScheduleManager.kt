@@ -2,6 +2,8 @@ package com.canefe.story.npc
 
 import com.canefe.story.Story
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.duty.DutyLibrary
+import com.canefe.story.npc.duty.DutyLoopRunner
 import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.trait.CurrentLocation
 import net.citizensnpcs.trait.EntityPoseTrait
@@ -88,6 +90,9 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 				val action = config.getString("schedule.$timeKey.action", "idle")
 				val random = config.getBoolean("schedule.$timeKey.random", false)
 
+				// NEW: Load duty field
+				val duty = config.getString("schedule.$timeKey.duty")
+
 				// Handle dialogue as a list or convert single string to list
 				val dialogue = if (config.isList("schedule.$timeKey.dialogue")) {
 					config.getStringList("schedule.$timeKey.dialogue")
@@ -96,7 +101,7 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 					if (singleDialogue.isNullOrEmpty()) null else listOf(singleDialogue)
 				}
 
-				val entry = ScheduleEntry(time, locationName, action, dialogue, random)
+				val entry = ScheduleEntry(time, locationName, action, dialogue, random, duty)
 				schedule.addEntry(entry)
 			} catch (e: NumberFormatException) {
 				plugin.logger.warning("Invalid time format in schedule for $npcName: $timeKey")
@@ -484,6 +489,10 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 			return
 		}
 
+		// Get duty loop runner instance
+		val dutyLoopRunner = DutyLoopRunner.getInstance(plugin)
+		val dutyLibrary = DutyLibrary.getInstance(plugin)
+
 		// Helper function to select random dialogue
 		fun selectRandomDialogue(): String? = if (entry.dialogue.isNullOrEmpty()) {
 			null
@@ -501,15 +510,62 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 				val isInConversation = plugin.conversationManager.isInConversation(npc)
 
 				// Check if the NPC needs to move
-				val shouldMove =
-					location.bukkitLocation?.let {
-						npcEntity.location.distanceSquared(it) >=
-							plugin.config.scheduleDestinationTolerance * plugin.config.scheduleDestinationTolerance
-					} ?: false
+				val shouldMove = location.bukkitLocation?.let { mainLocation ->
+					val npcLocation = npcEntity.location
+					val distanceToMain = npcLocation.distanceSquared(mainLocation)
+					val tolerance = plugin.config.scheduleDestinationTolerance * plugin.config.scheduleDestinationTolerance
+
+					// If NPC is close to main location, they don't need to move
+					if (distanceToMain <= tolerance) {
+						if (plugin.config.debugMessages) {
+							plugin.logger.info("${npc.name} is already at main location ${location.name}, no movement needed")
+						}
+						false
+					} else {
+						// Check if NPC is at any workstation within this location
+						val dutyData = dutyLibrary.loadLocationDutyData(location)
+
+						if (plugin.config.debugMessages) {
+							plugin.logger.info("Checking workstations for ${npc.name} at ${location.name}. Found ${dutyData.workstations.size} workstations")
+						}
+
+						val isAtWorkstation = dutyData.workstations.values.any { workstation ->
+							val workstationLocation = location.bukkitLocation?.world?.let { world ->
+								Location(world, workstation.x, workstation.y, workstation.z)
+							}
+							val isAtThisWorkstation = workstationLocation?.let { wsLoc ->
+								val distanceToWorkstation = npcLocation.distanceSquared(wsLoc)
+								val atWorkstation = distanceToWorkstation <= tolerance
+
+								if (plugin.config.debugMessages && atWorkstation) {
+									plugin.logger.info("${npc.name} is at workstation '${workstation.name}' (distance: ${Math.sqrt(distanceToWorkstation)})")
+								}
+
+								atWorkstation
+							} ?: false
+
+							isAtThisWorkstation
+						}
+
+						if (plugin.config.debugMessages) {
+							if (isAtWorkstation) {
+								plugin.logger.info("${npc.name} is at a workstation in ${location.name}, no movement needed")
+							} else {
+								plugin.logger.info("${npc.name} is not at any workstation in ${location.name}, movement required")
+							}
+						}
+
+						// Only move if not at main location AND not at any workstation
+						!isAtWorkstation
+					}
+				} ?: false
 
 				if (shouldMove) {
+					// Stop any existing duty loop while moving
+					dutyLoopRunner.stop(npc)
+
 					// if the entry.type is Work, make NPC say goodbye (unless they are already in the location)
-					if (entry.action == "work" && isInConversation) {
+					if ((entry.action == "work" || entry.duty != null) && isInConversation) {
 						val goodbyeContext =
 							mutableListOf(
 								"\"You have a work to do at ${location.name}. Tell the people in the conversation that you are leaving.\"",
@@ -522,10 +578,8 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 					// Use your existing NPC movement system or teleport WITH callback for action
 					val moveCallback =
 						Runnable {
-							// Execute action after reaching destination
-							if (entry.action != null) {
-								executeAction(npc, entry.action)
-							}
+							// After reaching destination, handle duty or action
+							handleDestinationArrival(npc, entry, location, dutyLibrary, dutyLoopRunner)
 
 							// Handle dialogue after reaching destination
 							if (!entry.dialogue.isNullOrEmpty()) {
@@ -577,10 +631,8 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 						moveNPCToLocation(npc, baseLocation, moveCallback)
 					}
 				} else {
-					// Execute action since NPC is already at destination
-					if (entry.action != null) {
-						executeAction(npc, entry.action)
-					}
+					// NPC is already at destination - handle duty or action immediately
+					handleDestinationArrival(npc, entry, location, dutyLibrary, dutyLoopRunner)
 
 					// Handle dialogue since NPC is already at destination
 					if (!entry.dialogue.isNullOrEmpty()) {
@@ -602,9 +654,15 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 				}
 			}
 		} else {
-			// No location change, just execute the action
-			if (entry.action != null) {
-				executeAction(npc, entry.action)
+			// No location change - handle duty/action where they are
+			val currentLocation = plugin.locationManager.getLocationByPosition(npcEntity.location, 200.0)
+			if (currentLocation != null) {
+				handleDestinationArrival(npc, entry, currentLocation, dutyLibrary, dutyLoopRunner)
+			} else {
+				// Fallback to basic action execution
+				if (entry.action != null) {
+					executeAction(npc, entry.action)
+				}
 			}
 
 			// Select a random dialogue from the entry
@@ -620,6 +678,57 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 					},
 					randomDelay,
 				)
+			}
+		}
+	}
+
+	/**
+	 * Handle what happens when an NPC arrives at their scheduled destination
+	 */
+	private fun handleDestinationArrival(
+		npc: NPC,
+		entry: ScheduleEntry,
+		location: StoryLocation,
+		dutyLibrary: DutyLibrary,
+		dutyLoopRunner: DutyLoopRunner
+	) {
+		// teleport npc to absolute location just in case
+		npc.teleport(location.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
+
+		// Determine what duty to start (if any)
+		val dutyToStart = when {
+			// Priority 1: Explicit duty specified in schedule entry
+			entry.duty != null -> entry.duty
+
+			// Priority 2: Action is "work" and location has a default duty
+			entry.action == "work" -> dutyLibrary.getDefaultDuty(location)
+
+			// Priority 3: No duty
+			else -> null
+		}
+
+		if (dutyToStart != null) {
+			// Try to start the duty loop
+			val dutyScript = dutyLibrary.getDutyScript(location, dutyToStart)
+			if (dutyScript != null) {
+				dutyLoopRunner.start(npc, dutyScript, location)
+				if (plugin.config.debugMessages) {
+					plugin.logger.info("Started duty '$dutyToStart' for ${npc.name} at ${location.name}")
+				}
+			} else {
+				plugin.logger.warning("Duty script '$dutyToStart' not found for location ${location.name}")
+				// Fallback to basic action
+				if (entry.action != null) {
+					executeAction(npc, entry.action)
+				}
+			}
+		} else {
+			// Stop any existing duty loop
+			dutyLoopRunner.stop(npc)
+
+			// Execute basic action if specified
+			if (entry.action != null) {
+				executeAction(npc, entry.action)
 			}
 		}
 	}
@@ -642,6 +751,7 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 		if (debugMessages) {
 			plugin.logger.info("Moving NPC ${npc.name} to $location")
 			plugin.logger.info("Nearby players: ${nearbyPlayers.joinToString(", ") { it.name }}")
+			plugin.logger.info("Initial shouldTeleport: $shouldTeleport")
 		}
 
 		// If target location has players, do not teleport.
@@ -649,6 +759,9 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 			val nearbyPlayersInTargetLocation = plugin.getNearbyPlayers(location, range, ignoreY = true)
 			if (nearbyPlayersInTargetLocation.isNotEmpty()) {
 				shouldTeleport = false
+				if (debugMessages) {
+					plugin.logger.info("Target location has nearby players: ${nearbyPlayersInTargetLocation.joinToString(", ") { it.name }}, switching to walking")
+				}
 			}
 		}
 
@@ -657,11 +770,15 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 		npc.getOrAddTrait(SitTrait::class.java).setSitting(null)
 
 		if (shouldTeleport) {
+			if (debugMessages) {
+				plugin.logger.info("Teleporting ${npc.name} to $location")
+			}
 			npc.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN)
-			// plugin.logger.info("Teleporting NPC ${npc.name} to $location")
 			callback?.run() // Execute callback after teleporting
 		} else {
-			// plugin.logger.info("Walking NPC ${npc.name} to $location")
+			if (debugMessages) {
+				plugin.logger.info("Walking ${npc.name} to $location")
+			}
 			// Pass the callback to the walkToLocation method
 			val teleportOnFail =
 				Runnable {
@@ -700,7 +817,6 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 				// Make NPC sit
 				// npc.getOrAddTrait(EntityPoseTrait::class.java).pose = EntityPoseTrait.EntityPose.STANDING
 				// npc.getOrAddTrait(SitTrait::class.java).setSitting(null)
-
 				if (!sitTrait.isSitting) {
 					sitTrait.setSitting(npc.entity.location)
 				}
@@ -886,6 +1002,7 @@ class NPCScheduleManager private constructor(private val plugin: Story) {
 		val action: String?,
 		val dialogue: List<String>? = null,
 		val random: Boolean = false,
+		val duty: String? = null, // NEW: Duty field
 	)
 
 	companion object {
