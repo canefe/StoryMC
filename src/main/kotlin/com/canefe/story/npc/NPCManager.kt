@@ -21,6 +21,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import java.io.File
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.text.set
 
@@ -33,6 +34,44 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 
 	// Scaled NPCs Mapping (NPC UUID to scale)
 	val scaledNPCs = HashMap<UUID, Double>()
+
+	// Navigation tracking system
+	private val activeNavigationTasks = ConcurrentHashMap<String, NavigationTask>()
+	private val navigationHistory = LinkedList<NavigationEvent>()
+	private val maxHistorySize = 100
+
+	// Navigation task data class
+	data class NavigationTask(
+		val npcName: String,
+		val npcId: Int,
+		val startTime: Long,
+		var targetLocation: Location,
+		val targetType: String, // "location", "entity", "waypoint"
+		val distanceMargin: Double,
+		val timeout: Int,
+		var taskId: Int,
+		var lastPosition: Location,
+		var stuckCounter: Int = 0,
+		var retryAttempts: Int = 0,
+		var status: NavigationStatus = NavigationStatus.ACTIVE
+	)
+
+	// Navigation event for history tracking
+	data class NavigationEvent(
+		val timestamp: Long,
+		val npcName: String,
+		val event: String, // "started", "completed", "failed", "stuck", "timeout"
+		val details: String
+	)
+
+	enum class NavigationStatus {
+		ACTIVE,
+		STUCK,
+		COMPLETED,
+		FAILED,
+		CANCELLED,
+		TIMEOUT
+	}
 
 	companion object {
 		private var instance: NPCManager? = null
@@ -346,7 +385,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 		val totalDistance = npcLocation.distanceSquared(targetLocation)
 
 		// If total distance larger than 75, use waypoints
-		if (totalDistance > 75 * 75) { // Using distanceSquared, so compare with square of 75
+		if (totalDistance > 50 * 50) { // Using distanceSquared, so compare with square of 75
 			// Generate waypoints between current location and target
 			val waypoints = generateWaypoints(npcLocation, targetLocation)
 
@@ -420,19 +459,39 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 	 */
 	private fun adjustWaypointHeight(waypoint: Location) {
 		val world = waypoint.world ?: return
+		val x = waypoint.blockX
+		val z = waypoint.blockZ
+		val startY = waypoint.blockY
 
-		// Check if the waypoint is in a solid block, move up if needed
-		var y = waypoint.y.toInt()
-		while (y < world.maxHeight && !world.getBlockAt(waypoint.blockX, y, waypoint.blockZ).isPassable) {
-			y++
+		// Try to find solid ground within a reasonable range
+		for (yOffset in -5..5) {
+			val y = startY + yOffset
+
+			// Don't check below world or above world height
+			if (y <= 0 || y >= world.maxHeight - 2) continue
+
+			// Check if there's solid ground to stand on (block below feet)
+			val groundBlock = world.getBlockAt(x, y - 1, z)
+
+			// Check if there's space for the NPC's body (at feet and head level)
+			val feetBlock = world.getBlockAt(x, y, z)
+			val headBlock = world.getBlockAt(x, y + 1, z)
+
+			// Valid if: solid ground below, passable space for body
+			if (groundBlock.type.isSolid && !feetBlock.type.isSolid && !headBlock.type.isSolid) {
+				waypoint.y = y.toDouble()
+				return
+			}
 		}
 
-		// Check if there's air beneath, move down if needed
-		while (y > 1 && world.getBlockAt(waypoint.blockX, y - 1, waypoint.blockZ).isPassable) {
-			y--
+		// If no valid position found, try to find the highest solid block
+		for (y in world.maxHeight - 1 downTo 1) {
+			val block = world.getBlockAt(x, y, z)
+			if (block.type.isSolid) {
+				waypoint.y = (y + 1).toDouble() // Stand on top of the solid block
+				return
+			}
 		}
-
-		waypoint.y = y.toDouble()
 	}
 
 	/**
@@ -529,6 +588,13 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 			return -1
 		}
 
+		// Validate path before starting
+		if (!validatePath(npc, targetLocation)) {
+			addNavigationEvent(npc.name, "failed", "Path validation failed")
+			onFailed?.run()
+			return -1
+		}
+
 		// Set up navigation parameters
 		val navigator = npc.navigator
 		navigator.defaultParameters
@@ -542,6 +608,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 
 		// Check if navigation actually started
 		if (!navigator.isNavigating) {
+			addNavigationEvent(npc.name, "failed", "Navigation failed to start")
 			onFailed?.let {
 				Bukkit.getScheduler().runTask(plugin, it)
 			}
@@ -551,7 +618,12 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 		// Variables for tracking movement
 		var lastLocation = npc.entity.location
 		var stuckCounter = 0
+		var retryAttempts = 0
+		val maxRetries = 3
 		val taskIdHolder = intArrayOf(-1)
+
+		// Register navigation task for tracking
+		val task = registerNavigationTask(npc, targetLocation, "location", distanceMargin, timeout, -1)
 
 		// Navigation monitoring task
 		taskIdHolder[0] =
@@ -559,6 +631,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				// Check if NPC is still valid and spawned
 				if (!npc.isSpawned) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
+					completeNavigationTask(npc.name, false, "NPC despawned")
 					onFailed?.run()
 					return@scheduleSyncRepeatingTask
 				}
@@ -567,6 +640,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				if (plugin.conversationManager.isInConversation(npc)) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
+					completeNavigationTask(npc.name, false, "NPC entered conversation")
 					return@scheduleSyncRepeatingTask
 				}
 
@@ -577,32 +651,64 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				if (distanceToTarget <= distanceMargin) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
+					completeNavigationTask(npc.name, true, "Reached destination")
 					onArrival?.run()
 					return@scheduleSyncRepeatingTask
 				}
 
-				// Check if NPC is stuck (hasn't moved significantly)
-				if (currentLocation.distance(lastLocation) < 0.5) {
+				// Improved stuck detection
+				val hasMovedSignificantly = currentLocation.distance(lastLocation) >= 0.5
+				if (!hasMovedSignificantly) {
 					stuckCounter++
-					if (stuckCounter >= 3) { // If stuck for 3 seconds
-						// Try to reestablish navigation
+					updateNavigationTask(npc.name, currentLocation, stuck = true)
+
+					if (stuckCounter >= 5) { // If stuck for 5 seconds
+						retryAttempts++
+
+						if (retryAttempts >= maxRetries) {
+							// Max retries reached, fail the navigation
+							Bukkit.getScheduler().cancelTask(taskIdHolder[0])
+							navigator.cancelNavigation()
+							completeNavigationTask(npc.name, false, "Max retries reached (${maxRetries})")
+							onFailed?.run()
+							return@scheduleSyncRepeatingTask
+						}
+
+						// Try to reestablish navigation with slightly adjusted target
 						navigator.cancelNavigation()
-						navigator.setTarget(targetLocation)
+
+						// Create a slightly offset target to avoid exact same path
+						val offsetTarget = targetLocation.clone().add(
+							(Math.random() - 0.5) * 2, // ±1 block X
+							0.0,
+							(Math.random() - 0.5) * 2  // ±1 block Z
+						)
+
+						// Find safe ground for offset target
+						val safeTarget = findSafeLocation(offsetTarget) ?: targetLocation
+						navigator.setTarget(safeTarget)
+
 						stuckCounter = 0 // Reset counter after attempting to fix
+						addNavigationEvent(npc.name, "retry", "Attempt ${retryAttempts}/${maxRetries}")
 					}
 				} else {
 					stuckCounter = 0 // Reset counter if NPC is moving
+					updateNavigationTask(npc.name, currentLocation, stuck = false)
 				}
 
 				// Check if navigation stopped and reestablish if needed
-				if (!navigator.isNavigating) {
+				if (!navigator.isNavigating && stuckCounter < 3) {
 					navigator.cancelNavigation()
 					navigator.setTarget(targetLocation)
+					addNavigationEvent(npc.name, "restarted", "Navigation stopped, restarting")
 				}
 
 				// Update last location
 				lastLocation = currentLocation
 			}, 20L, 20L) // Check every second
+
+		// Update task with actual task ID
+		task.taskId = taskIdHolder[0]
 
 		// Set timeout if specified
 		if (timeout > 0) {
@@ -613,7 +719,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
-
+					completeNavigationTask(npc.name, false, "Timeout after ${timeout}s")
 					onFailed?.run()
 				}
 			}, timeout * 20L) // Convert seconds to ticks
@@ -640,6 +746,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 		}
 
 		if (target == null || !target.isValid) {
+			addNavigationEvent(npc.name, "failed", "Target entity is invalid")
 			onFailed?.run()
 			return -1
 		}
@@ -657,6 +764,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 
 		// Check if navigation actually started
 		if (!navigator.isNavigating) {
+			addNavigationEvent(npc.name, "failed", "Navigation to entity failed to start")
 			onFailed?.let {
 				Bukkit.getScheduler().runTask(plugin, it)
 			}
@@ -666,7 +774,12 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 		// Variables for tracking movement
 		var lastLocation = npc.entity.location
 		var stuckCounter = 0
+		var retryAttempts = 0
+		val maxRetries = 3
 		val taskIdHolder = intArrayOf(-1)
+
+		// Register navigation task for tracking
+		val task = registerNavigationTask(npc, target.location, "entity", distanceMargin, timeout, -1)
 
 		// Navigation monitoring task
 		taskIdHolder[0] =
@@ -674,6 +787,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				// Check if NPC is still valid and spawned
 				if (!npc.isSpawned) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
+					completeNavigationTask(npc.name, false, "NPC despawned")
 					onFailed?.run()
 					return@scheduleSyncRepeatingTask
 				}
@@ -682,6 +796,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				if (plugin.conversationManager.isInConversation(npc)) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
+					completeNavigationTask(npc.name, false, "NPC entered conversation")
 					return@scheduleSyncRepeatingTask
 				}
 
@@ -689,43 +804,69 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				if (!target.isValid) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
+					completeNavigationTask(npc.name, false, "Target entity became invalid")
 					onFailed?.run()
 					return@scheduleSyncRepeatingTask
 				}
 
 				val currentLocation = npc.entity.location
 
+				// Update task target location to entity's current position
+				task.targetLocation = target.location.clone()
+
 				// Check if reached destination (use consistent distance margin)
 				val distanceToTarget = currentLocation.distance(target.location)
 				if (distanceToTarget <= distanceMargin) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
+					completeNavigationTask(npc.name, true, "Reached entity target")
 					onArrival?.run()
 					return@scheduleSyncRepeatingTask
 				}
 
-				// Check if NPC is stuck (hasn't moved significantly)
-				if (currentLocation.distance(lastLocation) < 0.5) {
+				// Improved stuck detection
+				val hasMovedSignificantly = currentLocation.distance(lastLocation) >= 0.5
+				if (!hasMovedSignificantly) {
 					stuckCounter++
-					if (stuckCounter >= 3) { // If stuck for 3 seconds
+					updateNavigationTask(npc.name, currentLocation, stuck = true)
+
+					if (stuckCounter >= 5) { // If stuck for 5 seconds
+						retryAttempts++
+
+						if (retryAttempts >= maxRetries) {
+							// Max retries reached, fail the navigation
+							Bukkit.getScheduler().cancelTask(taskIdHolder[0])
+							navigator.cancelNavigation()
+							completeNavigationTask(npc.name, false, "Max retries reached for entity target")
+							onFailed?.run()
+							return@scheduleSyncRepeatingTask
+						}
+
 						// Try to reestablish navigation
 						navigator.cancelNavigation()
 						navigator.setTarget(target, false)
+
 						stuckCounter = 0 // Reset counter after attempting to fix
+						addNavigationEvent(npc.name, "retry", "Entity target attempt ${retryAttempts}/${maxRetries}")
 					}
 				} else {
 					stuckCounter = 0 // Reset counter if NPC is moving
+					updateNavigationTask(npc.name, currentLocation, stuck = false)
 				}
 
 				// Check if navigation stopped and reestablish if needed
-				if (!navigator.isNavigating) {
+				if (!navigator.isNavigating && stuckCounter < 3) {
 					navigator.cancelNavigation()
 					navigator.setTarget(target, false)
+					addNavigationEvent(npc.name, "restarted", "Entity navigation stopped, restarting")
 				}
 
 				// Update last location
 				lastLocation = currentLocation
 			}, 20L, 20L) // Check every second
+
+		// Update task with actual task ID
+		task.taskId = taskIdHolder[0]
 
 		// Set timeout if specified
 		if (timeout > 0) {
@@ -736,7 +877,7 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 				) {
 					Bukkit.getScheduler().cancelTask(taskIdHolder[0])
 					navigator.cancelNavigation()
-
+					completeNavigationTask(npc.name, false, "Entity navigation timeout after ${timeout}s")
 					onFailed?.run()
 				}
 			}, timeout * 20L) // Convert seconds to ticks
@@ -965,5 +1106,287 @@ class NPCManager private constructor(private val plugin: Story) : Listener {
 		// Fallback: just return a point 10 blocks behind the NPC
 		val direction = npcLocation.direction.multiply(-1)
 		return npcLocation.clone().add(direction.multiply(10))
+	}
+
+	/**
+	 * Navigation Tracking and Debugging Methods
+	 */
+
+	/**
+	 * Get all currently active navigation tasks
+	 */
+	fun getActiveNavigationTasks(): Map<String, NavigationTask> {
+		return activeNavigationTasks.toMap()
+	}
+
+	/**
+	 * Get navigation history
+	 */
+	fun getNavigationHistory(): List<NavigationEvent> {
+		return navigationHistory.toList()
+	}
+
+	/**
+	 * Print all active navigation tasks for debugging
+	 */
+	fun printActiveNavigationTasks(player: CommandSender) {
+		if (activeNavigationTasks.isEmpty()) {
+			player.sendInfo("No active navigation tasks.")
+			return
+		}
+
+		player.sendInfo("Active Navigation Tasks (${activeNavigationTasks.size}):")
+		activeNavigationTasks.values.sortedBy { it.startTime }.forEach { task ->
+			val duration = (System.currentTimeMillis() - task.startTime) / 1000
+
+			// Use NPCUtils to get NPC asynchronously
+			val npcUtils = com.canefe.story.npc.util.NPCUtils.getInstance(plugin)
+			npcUtils.getNPCByNameAsync(task.npcName).thenAccept { npc ->
+				val distance = if (npc?.isSpawned == true) {
+					val currentDistance = npc.entity.location.distance(task.targetLocation)
+					String.format("%.1f", currentDistance)
+				} else "N/A"
+
+				player.sendInfo(" • ${task.npcName} (${task.status})")
+				player.sendInfo("   Target: ${task.targetType} at ${formatLocation(task.targetLocation)}")
+				player.sendInfo("   Duration: ${duration}s, Distance: ${distance}m, Retries: ${task.retryAttempts}")
+				if (task.status == NavigationStatus.STUCK) {
+					player.sendInfo("   Stuck counter: ${task.stuckCounter}/5")
+				}
+			}
+		}
+	}
+
+	/**
+	 * Print navigation history for debugging
+	 */
+	fun printNavigationHistory(player: Player, limit: Int = 10) {
+		if (navigationHistory.isEmpty()) {
+			player.sendInfo("No navigation history.")
+			return
+		}
+
+		player.sendInfo("Recent Navigation History (last $limit events):")
+		navigationHistory.takeLast(limit).forEach { event ->
+			val timeAgo = (System.currentTimeMillis() - event.timestamp) / 1000
+			player.sendInfo(" • ${event.npcName}: ${event.event} (${timeAgo}s ago)")
+			if (event.details.isNotEmpty()) {
+				player.sendInfo("   ${event.details}")
+			}
+		}
+	}
+
+	/**
+	 * Cancel all navigation tasks for a specific NPC
+	 */
+	fun cancelNavigationForNPC(npcName: String): Boolean {
+		val task = activeNavigationTasks[npcName.lowercase()]
+		if (task != null) {
+			// Cancel the Bukkit task
+			Bukkit.getScheduler().cancelTask(task.taskId)
+
+			// Cancel the NPC navigation using NPCUtils
+			val npcUtils = com.canefe.story.npc.util.NPCUtils.getInstance(plugin)
+			npcUtils.getNPCByNameAsync(npcName).thenAccept { npc ->
+				if (npc?.isSpawned == true) {
+					npc.navigator.cancelNavigation()
+				}
+			}
+
+			// Update task status and remove from active tasks
+			task.status = NavigationStatus.CANCELLED
+			activeNavigationTasks.remove(npcName.lowercase())
+
+			// Add to history
+			addNavigationEvent(npcName, "cancelled", "Navigation cancelled manually")
+
+			return true
+		}
+		return false
+	}
+
+	/**
+	 * Cancel all active navigation tasks
+	 */
+	fun cancelAllNavigationTasks(): Int {
+		val count = activeNavigationTasks.size
+		val npcUtils = com.canefe.story.npc.util.NPCUtils.getInstance(plugin)
+
+		activeNavigationTasks.values.forEach { task ->
+			// Cancel the Bukkit task
+			Bukkit.getScheduler().cancelTask(task.taskId)
+
+			// Cancel the NPC navigation using NPCUtils
+			npcUtils.getNPCByNameAsync(task.npcName).thenAccept { npc ->
+				if (npc?.isSpawned == true) {
+					npc.navigator.cancelNavigation()
+				}
+			}
+
+			// Add to history
+			addNavigationEvent(task.npcName, "cancelled", "Navigation cancelled (bulk cancel)")
+		}
+
+		activeNavigationTasks.clear()
+		return count
+	}
+
+	/**
+	 * Add a navigation event to history
+	 */
+	private fun addNavigationEvent(npcName: String, event: String, details: String = "") {
+		navigationHistory.add(NavigationEvent(System.currentTimeMillis(), npcName, event, details))
+
+		// Keep history size manageable
+		while (navigationHistory.size > maxHistorySize) {
+			navigationHistory.removeFirst()
+		}
+	}
+
+	/**
+	 * Register a navigation task for tracking
+	 */
+	private fun registerNavigationTask(
+		npc: NPC,
+		targetLocation: Location,
+		targetType: String,
+		distanceMargin: Double,
+		timeout: Int,
+		taskId: Int
+	): NavigationTask {
+		// Cancel any existing navigation for this NPC
+		cancelNavigationForNPC(npc.name)
+
+		val task = NavigationTask(
+			npcName = npc.name,
+			npcId = npc.id,
+			startTime = System.currentTimeMillis(),
+			targetLocation = targetLocation.clone(),
+			targetType = targetType,
+			distanceMargin = distanceMargin,
+			timeout = timeout,
+			taskId = taskId,
+			lastPosition = npc.entity.location.clone()
+		)
+
+		activeNavigationTasks[npc.name.lowercase()] = task
+		addNavigationEvent(npc.name, "started", "Target: $targetType at ${formatLocation(targetLocation)}")
+
+		return task
+	}
+
+	/**
+	 * Complete a navigation task
+	 */
+	private fun completeNavigationTask(npcName: String, success: Boolean, reason: String = "") {
+		val task = activeNavigationTasks.remove(npcName.lowercase())
+		if (task != null) {
+			task.status = if (success) NavigationStatus.COMPLETED else NavigationStatus.FAILED
+			val event = if (success) "completed" else "failed"
+			addNavigationEvent(npcName, event, reason)
+		}
+	}
+
+	/**
+	 * Update navigation task status
+	 */
+	private fun updateNavigationTask(npcName: String, newPosition: Location, stuck: Boolean = false) {
+		val task = activeNavigationTasks[npcName.lowercase()]
+		if (task != null) {
+			task.lastPosition = newPosition.clone()
+			if (stuck) {
+				task.stuckCounter++
+				task.status = NavigationStatus.STUCK
+				if (task.stuckCounter >= 5) { // After 5 stuck attempts, mark as failed
+					addNavigationEvent(npcName, "failed", "NPC stuck for too long (${task.stuckCounter} attempts)")
+					completeNavigationTask(npcName, false, "Stuck for too long")
+				}
+			} else {
+				task.stuckCounter = 0
+				task.status = NavigationStatus.ACTIVE
+			}
+		}
+	}
+
+	/**
+	 * Format location for display
+	 */
+	private fun formatLocation(loc: Location): String {
+		return "${loc.world?.name}(${loc.blockX}, ${loc.blockY}, ${loc.blockZ})"
+	}
+
+	/**
+	 * Improved pathfinding validation
+	 */
+	private fun validatePath(npc: NPC, targetLocation: Location): Boolean {
+		if (!npc.isSpawned) return false
+
+		val startLoc = npc.entity.location
+		val distance = startLoc.distance(targetLocation)
+
+		// Check if target is too far
+		if (distance > 200) {
+			return false
+		}
+
+		// Check if target is in same world
+		if (startLoc.world != targetLocation.world) {
+			return false
+		}
+
+		// Check if target location is safe using proper ground validation
+		val world = targetLocation.world ?: return false
+		val x = targetLocation.blockX
+		val y = targetLocation.blockY
+		val z = targetLocation.blockZ
+
+		// Check if there's solid ground to stand on (block below feet)
+		val groundBlock = world.getBlockAt(x, y - 1, z)
+
+		// Check if there's space for the NPC's body (at feet and head level)
+		val feetBlock = world.getBlockAt(x, y, z)
+		val headBlock = world.getBlockAt(x, y + 1, z)
+
+		// Valid if: solid ground below, passable space for body
+		return groundBlock.type.isSolid && !feetBlock.type.isSolid && !headBlock.type.isSolid
+	}
+
+	/**
+	 * Find a safe location near the target for navigation
+	 */
+	private fun findSafeLocation(location: Location): Location? {
+		val world = location.world ?: return null
+		val x = location.blockX
+		val z = location.blockZ
+
+		// Check the original location first
+		for (y in (location.blockY - 2)..(location.blockY + 2)) {
+			val testLoc = Location(world, x.toDouble(), y.toDouble(), z.toDouble())
+			val block = world.getBlockAt(testLoc)
+			val blockAbove = world.getBlockAt(x, y + 1, z)
+
+			if (block.type.isSolid && blockAbove.isPassable) {
+				return testLoc.add(0.5, 1.0, 0.5) // Center and raise to standing position
+			}
+		}
+
+		// Try nearby blocks
+		for (xOffset in -1..1) {
+			for (zOffset in -1..1) {
+				if (xOffset == 0 && zOffset == 0) continue
+
+				for (y in (location.blockY - 2)..(location.blockY + 2)) {
+					val testLoc = Location(world, (x + xOffset).toDouble(), y.toDouble(), (z + zOffset).toDouble())
+					val block = world.getBlockAt(testLoc)
+					val blockAbove = world.getBlockAt(x + xOffset, y + 1, z + zOffset)
+
+					if (block.type.isSolid && blockAbove.isPassable) {
+						return testLoc.add(0.5, 1.0, 0.5)
+					}
+				}
+			}
+		}
+
+		return null
 	}
 }
