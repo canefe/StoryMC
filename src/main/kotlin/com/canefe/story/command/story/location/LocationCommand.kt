@@ -14,10 +14,13 @@ class LocationCommand(private val plugin: Story) {
 		.withSubcommand(getCreateLocationCommand())
 		.withSubcommand(getFindLocationCommand())
 		.withSubcommand(getCallLocationCommand())
+		.withSubcommand(getMoveLocationCommand())
 
 	private fun getCreateLocationCommand(): CommandAPICommand = CreateLocationCommand(commandUtils).getCommand()
 
 	private fun getFindLocationCommand(): CommandAPICommand = FindLocationCommand(commandUtils).getCommand()
 
 	private fun getCallLocationCommand(): CommandAPICommand = CallLocationCommand(commandUtils).getCommand()
+
+	private fun getMoveLocationCommand(): CommandAPICommand = MoveLocationCommand(commandUtils).getCommand()
 }

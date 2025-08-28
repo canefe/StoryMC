@@ -49,7 +49,7 @@ class FindLocationCommand(private val commandUtils: LocationCommandUtils) {
 
 						val message = Component.text()
 							.append(Component.text("• ", NamedTextColor.YELLOW))
-							.append(Component.text(location.name, NamedTextColor.GOLD, TextDecoration.BOLD))
+							.append(Component.text(location.name, NamedTextColor.GOLD))
 							.append(Component.text(" - ", NamedTextColor.GRAY))
 							.append(Component.text("${distance}m", NamedTextColor.GREEN))
 							.append(Component.text(" [", NamedTextColor.GRAY))
