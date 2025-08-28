@@ -27,8 +27,19 @@ class NPCCommand(private val plugin: Story) {
 		.withSubcommand(getToggleCommand())
 		.withSubcommand(getDisguiseCommand())
 		.withSubcommand(getScaleCommand())
+		.withSubcommand(getDebugCommand())
 
 	private fun getScheduleCommand(): CommandAPICommand = ScheduleCommand(commandUtils).getCommand()
+
+	private fun getDebugCommand(): CommandAPICommand {
+		return CommandAPICommand("debug")
+			.withPermission("story.npc.debug")
+			.executes(
+				CommandExecutor { sender, _ ->
+					commandUtils.story.npcManager.printActiveNavigationTasks(sender)
+				},
+			)
+	}
 
 	// disguise command
 	private fun getDisguiseCommand(): CommandAPICommand {
