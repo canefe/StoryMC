@@ -651,12 +651,10 @@ class CommandManager(private val plugin: Story) {
 				}
 			}
 
-			// based on message, use npcresponseservice to generate a response
-			responseContext =
-				responseContext +
-				"[INSTRUCTION] The message '$message' is a draft of what $npcName is should say. Rewrite it into a fully fleshed-out line that reflects $npcName’s personality, tone, and the context. The message is as follows: '$message'. YOU MUST GENERATE A FULLY FLESHED MESSAGE BASED ON THIS DRAFT. YOU ARE NOT ANSWERING TO THE MESSAGE, YOU ARE GENERATING A NEW MESSAGE BASED ON IT. " +
-				"Example draft: 'You should leave.' " +
-				"Example final message: 'You should leave, stranger. You are not welcome here' (if thats what the context gives) "
+			// Use PromptService to get the talk as NPC prompt
+			val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npcName, message)
+			responseContext = responseContext + talkAsNpcPrompt
+
 			plugin.npcResponseService.generateNPCResponse(npc, responseContext, false).thenApply { response ->
 
 				if (!shouldStream) {

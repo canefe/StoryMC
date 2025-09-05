@@ -306,44 +306,35 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
 
 					sender.sendSuccess("Processing your question about: '$question'")
 
-					// Build the system prompt
-					val systemPrompt =
-						"""
-     You are the Game Master for a Minecraft RPG server. Your job is to provide detailed, informative answers to player questions about the game world, characters, lore, and events.
+					// Build the system prompt using prompt service
+					val characterInformation = if (relevantNPCs.isNotEmpty()) {
+						"""===CHARACTER INFORMATION===
+The question involves these characters: ${relevantNPCs.joinToString(", ")}
+${npcContexts.joinToString("\n")}"""
+					} else {
+						""
+					}
 
-     When responding:
-     - Answer as a knowledgeable narrator of the world
-     - Provide detailed explanations based on the available context
-     - Use MiniMessage formatting for better readability (<gold>, <italic>, <dark_gray>, <#hexcolor>, etc.)
-     - Format important names and places with <yellow> tags
-     - Break longer responses into paragraphs for readability
-     - When explaining character relationships or motivations, provide depth and nuance
-     - Maintain the fantasy medieval setting's tone and atmosphere
-	 - No emojis or excessive punctuation
+					val loreInformationContent = if (loreContexts.isNotEmpty()) {
+						"""===LORE INFORMATION===
+$loreInfo"""
+					} else {
+						""
+					}
 
-     ${if (relevantNPCs.isNotEmpty()) {
-							"""===CHARACTER INFORMATION===
-      The question involves these characters: ${relevantNPCs.joinToString(", ")}
-      ${npcContexts.joinToString("\n")}"""
-						} else {
-							""
-						}}
+					val locationInformationContent = if (relevantLocations.isNotEmpty()) {
+						"""===LOCATION INFORMATION===
+The question involves these locations: ${relevantLocations.joinToString(", ")}
+${locationContexts.joinToString("\n")}"""
+					} else {
+						""
+					}
 
-     ${if (loreContexts.isNotEmpty()) {
-							"""===LORE INFORMATION===
-      $loreInfo"""
-						} else {
-							""
-						}}
-
-     ${if (relevantLocations.isNotEmpty()) {
-							"""===LOCATION INFORMATION===
-      The question involves these locations: ${relevantLocations.joinToString(", ")}
-      ${locationContexts.joinToString("\n")}"""
-						} else {
-							""
-						}}
-     """.trimIndent()
+					val systemPrompt = plugin.promptService.getGameMasterResponsePrompt(
+						characterInformation,
+						loreInformationContent,
+						locationInformationContent
+					)
 
 					prompts.add(ConversationMessage("system", systemPrompt))
 					prompts.add(ConversationMessage("user", question))

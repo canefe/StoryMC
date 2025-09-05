@@ -115,38 +115,20 @@ class QuestBookCommand(
 					player.sendSuccess(npcInfo)
 
 					// Create messages for AI prompt
+					val questBookPrompt = story.promptService.getQuestBookPrompt(
+						loreContext,
+						locationInfo,
+						if (relevantNPCs.isNotEmpty()) {
+							"Relevant NPCs found: ${relevantNPCs.joinToString(", ")}\n" +
+								npcContexts.joinToString("\n")
+						} else {
+							""
+						}
+					)
+
 					val messages =
 						mutableListOf(
-							ConversationMessage(
-								"system",
-								"""
-                        Generate a short narrative passage that could be found in a medieval fantasy book.
-
-                        The passage should be:
-                        - Written in a style appropriate for a fantasy medieval world
-                        - Maximum 5000 characters total
-                        - Written in-character as if it's a book, personal notes, or letter
-                        - Include relevant details from the provided context and lore
-
-                        IMPORTANT: Format your response as a valid JSON object with this structure:
-                        {"title":"EXAMPLE TITLE (TWO WORDS MAX)", "content": "The actual book content goes here..."}
-
-                        Wrap words in <b></b> tags to make them bold.
-                        Use <i></i> tags for italicized text.
-						Use <#hexcolor></#hexcolor> tags for colored text.
-                        Use these where appropriate in the text.
-
-                        Don't add any explanations or other text outside the JSON.
-                        $loreContext
-						$locationInfo
-						${if (relevantNPCs.isNotEmpty()) {
-									"Relevant NPCs found: ${relevantNPCs.joinToString(", ")}\n" +
-										npcContexts.joinToString("\n")
-								} else {
-									""
-								}}
-						""".trimIndent(),
-							),
+							ConversationMessage("system", questBookPrompt),
 							ConversationMessage("user", context),
 						)
 

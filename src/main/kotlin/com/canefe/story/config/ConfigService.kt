@@ -96,6 +96,7 @@ class ConfigService(private val plugin: Story) {
 		loadConfigValues()
 
 		try {
+			plugin.promptService.reload()
 			plugin.npcContextGenerator.loadConfig()
 			plugin.lorebookManager.loadConfig()
 			plugin.scheduleManager.reloadSchedules()

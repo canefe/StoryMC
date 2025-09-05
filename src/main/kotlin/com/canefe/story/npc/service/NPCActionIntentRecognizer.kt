@@ -24,32 +24,7 @@ class NPCActionIntentRecognizer(private val plugin: Story) {
 	): CompletableFuture<ActionIntent> {
 		val messages = mutableListOf<ConversationMessage>()
 
-		val systemPrompt = """
-        Analyze ${npc.name}'s message for action intents. You MUST respond with ONLY a single JSON object and nothing else.
-        Format:
-        {
-          "follow": 0.0,
-          "attack": 0.0,
-          "stopFollowing": 0.0,
-		  "stopAttacking": 0.0,
-		  "target": "target_name_if_specified_in_the_message"
-        }
-
-        Examples of follow intent: "I'll follow you", "Let's go", "Lead the way", "I'm coming with you", "After you", "I'll accompany you", "Right behind you", "*follows you*", "*walks alongside*", "Show me the way", "You lead", "I'm with you"
-        Examples of attack intent: "I'll kill them", "Let's attack", "We must fight", "They must die", "Prepare to die!", "*draws weapon*", "*charges forward*", "Time to end this", "You'll pay for that", "I'll make you regret that", "Attack!", "Die!", "*readies for combat*"
-        Examples of stop following intent: "I'll wait here", "This is far enough", "I should stay", "Go on without me", "I'll remain here", "*stops walking*", "I can't go any further", "I'll stay behind", "This is where I stop", "You continue alone", "I must part ways here", "*stands still*", "*stops*"
-		Examples of stop attacking intent: "I won't fight anymore", "Let's not do this", "I can't attack anymore", "Stop fighting", "This is enough", "*puts away weapon*", "*ceases combat*", "No more violence", "I give up", "Let's end this peacefully", "I'm done fighting", "*surrenders*"
-
-		If the player expresses discomfort, resistance, or directly questions being followed (e.g., "Why are you following me?", "Stop following me", "Leave me alone"), and the response does not explicitly override or ignore this objection with authority or a strong reason (like being a guard, arresting the player, or needing to protect them), then the NPC’s intent MUST be interpreted as stopFollowing, even if their language is soft, ambiguous, or indirectly tries to justify it.
-
-		If a character responds to being questioned for following with anything other than clear resistance or justification, treat it as them backing off.
-
-		Prioritize player discomfort as a hard stop unless overridden by narrative context.
-
-		CRITICAL: Ensure that all JSON objects are properly closed with matching braces. Do not cut off any part of the JSON structure.
-
-		Return ONLY valid, complete JSON with no additional text before or after.
-        """
+		val systemPrompt = plugin.promptService.getNpcActionIntentPrompt(npc.name)
 
 		// Stricter system instruction
 		messages.add(
@@ -178,45 +153,14 @@ class NPCActionIntentRecognizer(private val plugin: Story) {
 		val validLocations = plugin.questManager.getValidLocations().joinToString(", ")
 		val validTalkTargets = plugin.questManager.getValidTalkTargets(npc).joinToString(", ")
 
-		val systemPrompt = """
-        Analyze ${npc.name}'s message to determine if they are giving a quest or task to $playerName.
-
-        CRITICAL RULES:
-        1. The quest MUST be something the ${npc.name} wants the $playerName to do FOR the ${npc.name}.
-        2. The objectives MUST be actions for the $playerName to complete, not actions the ${npc.name} plans to do.
-        3. DO NOT include objectives about "finding out what they need" or "talking to self" or similar self-references.
-        4. Quest objectives should ALWAYS be directed at the $playerName's actions, never the ${npc.name}'s internal thoughts.
-        5. If the message does not contain a clear quest assignment FROM the ${npc.name} TO the player, return isQuestGiving: false. AND leave questDetails empty.
-		Quest title must be two words max.
-        You MUST respond with ONLY a single JSON object and nothing else:
-		DO NOT use '_' for target name spaces. Allowed: Location Name - Not: Location_Name
-        {
-            "isQuestGiving": true/false,
-            "questDetails": {
-                "title": "Brief Title (TWO WORDS MAX)",
-                "description": "First person perspective from $playerName of brief quest description that explains the backstory and motivation (2 sentences MAX)",
-                "questType": "SIDE",
-                "objectives": [
-                    {"description": "Action for $playerName to complete (3-4 WORDS MAX)", "type": "EXPLORE", "target": "Location", "required": 1},
-                    {"description": "Another $playerName action (3-4 WORDS MAX)", "type": "KILL", "target": "Enemy", "required": 1}
-                ],
-				"rewards": [
-					{"type": "EXPERIENCE", "amount": 100-1000}
-				]
-            }
-        }
-
-        Valid objective types: KILL, COLLECT, TALK, EXPLORE, CRAFT, USE
-
-        Valid collection targets: $validCollectibles
-        Valid kill targets: $validKillTargets
-        Valid location targets: $validLocations
-        Valid talk targets: $validTalkTargets
-
-        CRITICAL: DO NOT GENERATE UNKNOWN TARGETS. USE ONLY THE VALID TARGETS PROVIDED ABOVE.
-        CRITICAL: If no valid quest is being given, set isQuestGiving to false and leave questDetails empty.
-        CRITICAL: Only generate a quest if the ${npc.name} is EXPLICITLY asking the ${npc.name} to do something FOR them.
-    """
+		val systemPrompt = plugin.promptService.getNpcQuestGivingIntentPrompt(
+			npc.name,
+			playerName,
+			validCollectibles,
+			validKillTargets,
+			validLocations,
+			validTalkTargets
+		)
 
 		messages.add(
 			ConversationMessage(

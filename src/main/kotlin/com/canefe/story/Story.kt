@@ -8,6 +8,7 @@ import com.canefe.story.character.skill.SkillManager
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.config.ConfigService
+import com.canefe.story.config.PromptService
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.dm.AIDungeonMaster
@@ -83,6 +84,8 @@ class Story :
 
 	// Plugin configuration
 	val configService = ConfigService(this)
+	lateinit var promptService: PromptService
+		private set
 
 	// gson
 	val gson = com.google.gson.Gson()
@@ -247,6 +250,9 @@ class Story :
 	}
 
 	private fun initializeManagers() {
+		// Initialize the prompt service early since other services depend on it
+		promptService = PromptService(this)
+
 		// Initialize the time service
 		timeService = TimeService(this)
 

@@ -307,39 +307,17 @@ class NPCResponseService(private val plugin: Story) {
 				)
 		}
 
-		val directivePrompt =
-			listOf(
-				"""You are a behavioral analysis agent responsible for generating actionable roleplay directives.
+		// Use PromptService to get the behavioral directive prompt
+		val directivePrompt = plugin.promptService.getBehavioralDirectivePrompt(
+			recentMessages,
+			relationshipContext,
+			npc.name
+		)
 
-Your job is to decide how the NPC should act **in this exact moment**, and generate a short system instruction to guide the LLM generating their response.
-
-FORMAT:
-"Make [NPC_NAME] [clear emotional or behavioral instruction]. [Optional elaboration or motive.]"
-
-Examples:
-- Make Omaloa recoil in betrayal and accuse James of treason. She should speak with hurt and disbelief.
-- Make Varcar act smug and dismissive. He should mock the speaker's concerns and flex his authority.
-- Make Arin act cautious but probing. She suspects the speaker knows something and wants to test them.
-
-RULES:
-- Analyze the recent conversation history, do not be repetitive, and advance the conversation through your directive.
-- Always generate one single instruction. No narration, no explanation.
-- Keep it short. Max 3 sentences.
-- Use emotionally charged verbs: accuse, lash out, demand, beg, tremble, break, mock, etc.
-- Always reference specific NPC names.
-- Never summarize memories. Your job is to produce a **directive**, not exposition.
-- Treat the situation as if it's unfolding live — you are the director calling the emotional shot for this scene.
-
-Current conversation:
-$recentMessages
-${if (!relationshipContext.isEmpty()) "Relationships:\n$relationshipContext" else ""}
-
-Generate a behavioral directive for ${npc.name} in this exact moment.
-Respond only with the directive. No extra commentary.""",
-			)
+		val directivePromptList = listOf(directivePrompt)
 
 		// Use the existing generateNPCResponse method with broadcast set to false
-		return generateNPCResponse(npc, directivePrompt, false)
+		return generateNPCResponse(npc, directivePromptList, false)
 	}
 
 	fun determineNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
@@ -363,21 +341,16 @@ Respond only with the directive. No extra commentary.""",
 				recentHistory.size,
 			)
 
-		// Add system prompt for NPC selection
-		speakerSelectionPrompt.add(
-			ConversationMessage(
-				"system",
-				"""
-				Based on the conversation history below, determine which character should speak next. Consider: who was addressed in the last message, who has relevant information, and who hasn't spoken recently. Available characters: ${
-					java.lang.String.join(
-						", ",
-						conversation.npcs.filterNot { conversation.mutedNPCs.contains(it) }.map { it.name },
-					)
-				}
-				Respond with ONLY the name of who should speak next. No explanation or additional text.
-				""".trimIndent(),
-			),
+		// Use PromptService to get the speaker selection prompt
+		val availableCharacters = java.lang.String.join(
+			", ",
+			conversation.npcs.filterNot { conversation.mutedNPCs.contains(it) }.map { it.name },
 		)
+
+		val speakerPrompt = plugin.promptService.getSpeakerSelectionPrompt(availableCharacters)
+
+		// Add system prompt for NPC selection
+		speakerSelectionPrompt.add(ConversationMessage("system", speakerPrompt))
 
 		// Add conversation context
 		speakerSelectionPrompt.addAll(contextMessages)
@@ -411,11 +384,11 @@ Respond only with the directive. No extra commentary.""",
 	}
 
 	fun generateNPCGreeting(npc: NPC, target: String, greetingContext: List<String>? = null): String? {
-		val prompt =
-			"You are ${npc.name}. You've noticed $target nearby and decided to initiate a conversation. Your greeting must reflect your personality, your relationship and recent memories, especially with the target. Generate a brief greeting."
+		// Use PromptService to get the NPC greeting prompt
+		val greetingPrompt = plugin.promptService.getNpcGreetingPrompt(npc.name, target)
 
 		val prompts: MutableList<String> = ArrayList()
-		prompts.add(prompt)
+		prompts.add(greetingPrompt)
 		prompts.addAll(greetingContext ?: emptyList())
 
 		val response =
@@ -426,12 +399,12 @@ Respond only with the directive. No extra commentary.""",
 	}
 
 	fun generateNPCGoodbye(npc: NPC, goodbyeContext: List<String>? = null): CompletableFuture<String?> {
-		val prompt =
-			"You are ${npc.name}. The conversation is ending—whether naturally, awkwardly, or abruptly. Generate a closing remark that reflects your personality, your relationship with the target, and any relevant recent events or emotions. This may be a farewell, a final jab, silence, or walking away mid-sentence—whatever fits."
+		// Use PromptService to get the NPC goodbye prompt
+		val goodbyePrompt = plugin.promptService.getNpcGoodbyePrompt(npc.name)
 
 		val prompts: MutableList<String> = ArrayList()
 		prompts.addAll(goodbyeContext ?: emptyList())
-		prompts.add(prompt)
+		prompts.add(goodbyePrompt)
 
 		val response =
 			generateNPCResponse(npc, listOf(prompts.joinToString(separator = "\n")), false)
@@ -701,23 +674,10 @@ Respond only with the directive. No extra commentary.""",
 	fun evaluateMemorySignificance(memoryContent: String): CompletableFuture<Double> {
 		val prompt = mutableListOf<ConversationMessage>()
 
-		prompt.add(
-			ConversationMessage(
-				"system",
-				"""
-        Evaluate the emotional significance of this memory on a scale from 1.0 (ordinary, mundane) to 5.0 (deeply emotional, traumatic, or life-changing).
+		// Use PromptService to get the memory significance prompt
+		val significancePrompt = plugin.promptService.getMemorySignificancePrompt()
 
-        Consider these factors:
-        - Emotional intensity (anger, joy, sorrow, etc.)
-        - Long-term impact on relationships
-        - Contains betrayal, heartbreak, or pivotal information
-        - Personal importance to the character
-
-        Respond ONLY with a number between 1.0 and 5.0.
-        """,
-			),
-		)
-
+		prompt.add(ConversationMessage("system", significancePrompt))
 		prompt.add(ConversationMessage("user", memoryContent))
 
 		return plugin.getAIResponse(prompt, lowCost = true).thenApply { response ->
@@ -768,21 +728,11 @@ Respond only with the directive. No extra commentary.""",
 			syntheticConversation.add(ConversationMessage("system", npcContext))
 		}
 
+		// Use PromptService to get the NPC memory generation prompt
+		val memoryPrompt = plugin.promptService.getNpcMemoryGenerationPrompt(npcName)
+
 		// Third message: Instruction
-		syntheticConversation.add(
-			ConversationMessage(
-				"system",
-				"\"Create a detailed first-person memory based on the following input. The memory should:\n" +
-					"1. Clearly describe what happened from $npcName's perspective\n" +
-					"2. Include specific details about events, people, and places mentioned\n" +
-					"3. Express $npcName's emotional reaction to these events\n" +
-					"4. Mention plans or intentions resulting from these events\n" +
-					"5. Be written in past tense as a personal recollection\n" +
-					"6. Stay true to $npcName's character voice and personality\n" +
-					"\n" +
-					"Your memory should be comprehensive but focused on the most important aspects of what occurred. Avoid vague statements or roleplaying actions like '*narrows eyes*' - instead focus on concrete events and feelings.\",",
-			),
-		)
+		syntheticConversation.add(ConversationMessage("system", memoryPrompt))
 
 		// Add the player-provided context
 		syntheticConversation.add(ConversationMessage("user", context))
