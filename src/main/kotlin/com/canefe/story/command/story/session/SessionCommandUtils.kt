@@ -5,7 +5,7 @@ import com.canefe.story.session.SessionManager
 import net.kyori.adventure.text.minimessage.MiniMessage
 
 class SessionCommandUtils {
-	val story: Story = Story.instance
-	val mm: MiniMessage = story.miniMessage
-	val sessionManager: SessionManager = story.sessionManager
+    val story: Story = Story.instance
+    val mm: MiniMessage = story.miniMessage
+    val sessionManager: SessionManager = story.sessionManager
 }

@@ -20,7 +20,9 @@ import kotlin.collections.get
 import kotlin.compareTo
 import kotlin.text.get
 
-class StoryCommand(private val plugin: Story) : BaseCommand {
+class StoryCommand(
+    private val plugin: Story,
+) : BaseCommand {
     override fun register() {
         CommandAPICommand("story")
             .withAliases("st", "sto")
@@ -28,13 +30,13 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
             // executes help command too
             .executes(
                 CommandExecutor { sender, _ ->
-                    val helpMessage = """
-						${listCommands()}
-					""".trimIndent()
+                    val helpMessage =
+                        """
+                        ${listCommands()}
+                        """.trimIndent()
                     sender.sendRaw(helpMessage)
                 },
-            )
-            .withSubcommand(getLocationCommand())
+            ).withSubcommand(getLocationCommand())
             .withSubcommand(getQuestCommand())
             .withSubcommand(getHelpCommand())
             .withSubcommand(getReloadCommand())
@@ -81,7 +83,8 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                     prompt.add(ConversationMessage("user", context))
 
                     // Get AI response
-                    plugin.getAIResponse(prompt)
+                    plugin
+                        .getAIResponse(prompt)
                         .thenAccept { response ->
                             if (response.isNullOrEmpty()) {
                                 sender.sendSuccess(
@@ -104,8 +107,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                                 plugin.server.consoleSender.sendRaw(response)
                                 sender.sendSuccess("Message broadcast to all players.")
                             }
-                        }
-                        .exceptionally { e ->
+                        }.exceptionally { e ->
                             sender.sendSuccess("Error generating message: ${e.message}")
                             null
                         }
@@ -146,8 +148,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                         if (simpleName.length > 3) {
                             // Check for exact matches with word boundaries using regex
                             val pattern = "\\b${Regex.escape(simpleName)}\\b"
-                            if (question.contains(Regex(pattern, RegexOption.IGNORE_CASE))
-                            ) {
+                            if (question.contains(Regex(pattern, RegexOption.IGNORE_CASE))) {
                                 relevantLocations.add(location.name)
                                 location.context.forEach { ctx ->
                                     locationContexts.add("${location.name}: $ctx")
@@ -190,17 +191,16 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                     // extracted context
                     val combinedLocations =
                         (
-                                relevantLocations +
-                                        extractedContext.locationContexts.map {
-                                            it.name
-                                        }
-                                )
-                            .distinct()
+                            relevantLocations +
+                                extractedContext.locationContexts.map {
+                                    it.name
+                                }
+                        ).distinct()
                     val combinedLocationContexts =
                         locationContexts +
-                                extractedContext.locationContexts.map {
-                                    "${it.name}: ${it.context}"
-                                }
+                            extractedContext.locationContexts.map {
+                                "${it.name}: ${it.context}"
+                            }
 
                     // Create a combined context that includes both extracted context and
                     // complex location logic
@@ -236,7 +236,8 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                     prompts.add(ConversationMessage("user", question))
 
                     // Get AI response
-                    plugin.getAIResponse(prompts)
+                    plugin
+                        .getAIResponse(prompts)
                         .thenAccept { response ->
                             if (response.isNullOrEmpty()) {
                                 sender.sendSuccess(
@@ -252,9 +253,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                                         .replace("\n", " ")
                                 }",
                                 onAccept = {
-                                    plugin.server.onlinePlayers.forEach {
-                                            player,
-                                        ->
+                                    plugin.server.onlinePlayers.forEach { player ->
                                         player.sendRaw(response)
                                     }
                                     plugin.server.consoleSender.sendRaw(response)
@@ -269,8 +268,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                                     )
                                 },
                             )
-                        }
-                        .exceptionally { e ->
+                        }.exceptionally { e ->
                             sender.sendSuccess(
                                 "Error processing your question: ${e.message}",
                             )
@@ -280,52 +278,58 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
             )
     }
 
-    private fun getTaskCommand(): CommandAPICommand = CommandAPICommand("task")
-        .withAliases("tasks")
-        .withPermission("story.command.task")
-        .withUsage(
-            "<gray>Usage: /story task <accept|deny|list> [taskId]</gray>",
-        )
-        .withSubcommand(getTaskAcceptCommand())
-        .withSubcommand(getTaskDenyCommand())
-        .withSubcommand(getTaskListCommand())
+    private fun getTaskCommand(): CommandAPICommand =
+        CommandAPICommand("task")
+            .withAliases("tasks")
+            .withPermission("story.command.task")
+            .withUsage(
+                "<gray>Usage: /story task <accept|deny|list> [taskId]</gray>",
+            ).withSubcommand(getTaskAcceptCommand())
+            .withSubcommand(getTaskDenyCommand())
+            .withSubcommand(getTaskListCommand())
 
-    private fun getTaskAcceptCommand(): CommandAPICommand = CommandAPICommand("accept")
-        .withPermission("story.task.respond")
-        .withArguments(dev.jorel.commandapi.arguments.IntegerArgument("taskId"))
-        .executes(
-            CommandExecutor { sender, args ->
-                val taskId = args["taskId"] as Int
-                val success = plugin.taskManager.acceptTask(taskId, sender)
+    private fun getTaskAcceptCommand(): CommandAPICommand =
+        CommandAPICommand("accept")
+            .withPermission("story.task.respond")
+            .withArguments(
+                dev.jorel.commandapi.arguments
+                    .IntegerArgument("taskId"),
+            ).executes(
+                CommandExecutor { sender, args ->
+                    val taskId = args["taskId"] as Int
+                    val success = plugin.taskManager.acceptTask(taskId, sender)
 
-                if (success) {
-                    // sender.sendSuccess("Task #$taskId accepted.")
-                } else {
-                    sender.sendSuccess(
-                        "Task #$taskId not found or already completed.",
-                    )
-                }
-            },
-        )
+                    if (success) {
+                        // sender.sendSuccess("Task #$taskId accepted.")
+                    } else {
+                        sender.sendSuccess(
+                            "Task #$taskId not found or already completed.",
+                        )
+                    }
+                },
+            )
 
-    private fun getTaskDenyCommand(): CommandAPICommand = CommandAPICommand("deny")
-        .withAliases("refuse")
-        .withPermission("story.task.respond")
-        .withArguments(dev.jorel.commandapi.arguments.IntegerArgument("taskId"))
-        .executes(
-            CommandExecutor { sender, args ->
-                val taskId = args["taskId"] as Int
-                val success = plugin.taskManager.refuseTask(taskId, sender)
+    private fun getTaskDenyCommand(): CommandAPICommand =
+        CommandAPICommand("deny")
+            .withAliases("refuse")
+            .withPermission("story.task.respond")
+            .withArguments(
+                dev.jorel.commandapi.arguments
+                    .IntegerArgument("taskId"),
+            ).executes(
+                CommandExecutor { sender, args ->
+                    val taskId = args["taskId"] as Int
+                    val success = plugin.taskManager.refuseTask(taskId, sender)
 
-                if (success) {
-                    sender.sendSuccess("Task #$taskId refused.")
-                } else {
-                    sender.sendSuccess(
-                        "Task #$taskId not found or already completed.",
-                    )
-                }
-            },
-        )
+                    if (success) {
+                        sender.sendSuccess("Task #$taskId refused.")
+                    } else {
+                        sender.sendSuccess(
+                            "Task #$taskId not found or already completed.",
+                        )
+                    }
+                },
+            )
 
     private fun getTaskListCommand(): CommandAPICommand {
         return CommandAPICommand("list")
@@ -346,7 +350,7 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
                             if (task.timeoutAt > 0) {
                                 val remainingSeconds =
                                     (task.timeoutAt - System.currentTimeMillis()) /
-                                            1000
+                                        1000
                                 if (remainingSeconds <= 0) {
                                     " <red>(Expiring...)</red>"
                                 } else {
@@ -399,7 +403,10 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
     }
 
     // Helper function to add NPC context
-    private fun addNpcContext(npcName: String, npcContexts: MutableList<String>) {
+    private fun addNpcContext(
+        npcName: String,
+        npcContexts: MutableList<String>,
+    ) {
         val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
         val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 5)
         if (npcContext != null) {
@@ -463,38 +470,43 @@ class StoryCommand(private val plugin: Story) : BaseCommand {
         return parts
     }
 
-    private fun listCommands(): String = """<yellow>=========================</yellow>
-		<yellow>Story Plugin Commands</yellow>
-		<yellow>=========================</yellow>
-		<gold>/story</gold> help <gray><italic>- Show this help message</italic></gray>
-		<gold>/story</gold> reload <gray><italic>- Reload the plugin configuration</italic></gray>
-		<gold>/story</gold> location <gray><italic>- Manage locations</italic></gray>
-		<gold>/story</gold> npc <gray><italic>- Manage NPCs</italic></gray>
-		<gold>/conv</gold> list <gray><italic>- List all conversations and control panel</italic></gray>
-		<gold>/story</gold> gm <question> [broadcast] <gray><italic>- Ask the Game Master a question about the world</italic></gray>
-		<gold>/story</gold> task <gray><italic>- Manage AI permission requests</italic></gray>
-	""".trimIndent()
+    private fun listCommands(): String =
+        """
+        <yellow>=========================</yellow>
+        <yellow>Story Plugin Commands</yellow>
+        <yellow>=========================</yellow>
+        <gold>/story</gold> help <gray><italic>- Show this help message</italic></gray>
+        <gold>/story</gold> reload <gray><italic>- Reload the plugin configuration</italic></gray>
+        <gold>/story</gold> location <gray><italic>- Manage locations</italic></gray>
+        <gold>/story</gold> npc <gray><italic>- Manage NPCs</italic></gray>
+        <gold>/conv</gold> list <gray><italic>- List all conversations and control panel</italic></gray>
+        <gold>/story</gold> gm <question> [broadcast] <gray><italic>- Ask the Game Master a question about the world</italic></gray>
+        <gold>/story</gold> task <gray><italic>- Manage AI permission requests</italic></gray>
+        """.trimIndent()
 
-    private fun getHelpCommand(): CommandAPICommand = CommandAPICommand("help")
-        .withPermission("story.command.help")
-        .executes(
-            CommandExecutor { sender, _ -> sender.sendRaw(listCommands()) },
-        )
+    private fun getHelpCommand(): CommandAPICommand =
+        CommandAPICommand("help")
+            .withPermission("story.command.help")
+            .executes(
+                CommandExecutor { sender, _ -> sender.sendRaw(listCommands()) },
+            )
 
-    private fun getReloadCommand(): CommandAPICommand = CommandAPICommand("reload")
-        .withPermission("story.command.reload")
-        .executes(
-            CommandExecutor { sender, _ ->
-                plugin.reloadConfig()
-                plugin.configService.reload()
-                sender.sendSuccess("Plugin reloaded successfully.")
-            },
-        )
+    private fun getReloadCommand(): CommandAPICommand =
+        CommandAPICommand("reload")
+            .withPermission("story.command.reload")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    plugin.reloadConfig()
+                    plugin.configService.reload()
+                    sender.sendSuccess("Plugin reloaded successfully.")
+                },
+            )
 
     private fun getLocationCommand(): CommandAPICommand = LocationCommand(plugin).getCommand()
 
     private fun getQuestCommand(): CommandAPICommand = QuestCommand(plugin).getCommand()
 
     private fun getNPCCommand(): CommandAPICommand = NPCCommand(plugin).getCommand()
+
     private fun getSessionCommand(): CommandAPICommand = SessionCommand(plugin).getCommand()
 }

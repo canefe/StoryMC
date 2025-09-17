@@ -20,7 +20,9 @@ import kotlin.compareTo
 import kotlin.text.get
 import kotlin.toString
 
-class AIResponseService(private val plugin: Story) {
+class AIResponseService(
+    private val plugin: Story,
+) {
     private val gson = Gson()
     private val apiKey: String
         get() = plugin.config.openAIKey
@@ -36,7 +38,8 @@ class AIResponseService(private val plugin: Story) {
 
     // Shared HTTP client for better connection pooling
     private val httpClient =
-        OkHttpClient.Builder()
+        OkHttpClient
+            .Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
@@ -119,7 +122,8 @@ class AIResponseService(private val plugin: Story) {
                         .toRequestBody("application/json".toMediaTypeOrNull())
 
                 val request =
-                    Request.Builder()
+                    Request
+                        .Builder()
                         .url("https://openrouter.ai/api/v1/chat/completions")
                         .addHeader("Authorization", "Bearer $apiKey")
                         .addHeader("Content-Type", "application/json")
@@ -165,7 +169,8 @@ class AIResponseService(private val plugin: Story) {
                                         choice.getAsJsonObject("delta").has("content")
                                     ) {
                                         val token =
-                                            choice.getAsJsonObject("delta")
+                                            choice
+                                                .getAsJsonObject("delta")
                                                 .get("content")
                                                 .asString
                                         resultBuilder.append(token)
@@ -210,11 +215,12 @@ class AIResponseService(private val plugin: Story) {
         useStreaming: Boolean = false,
         streamHandler: (String) -> Unit = {},
         lowCost: Boolean = false,
-    ): String? = if (useStreaming) {
-        getAIResponseStreaming(conversation, streamHandler, lowCost)
-    } else {
-        getAIResponseNonStreaming(conversation, lowCost)
-    }
+    ): String? =
+        if (useStreaming) {
+            getAIResponseStreaming(conversation, streamHandler, lowCost)
+        } else {
+            getAIResponseNonStreaming(conversation, lowCost)
+        }
 
     /**
      * Gets an AI response from OpenRouter.ai with improved concurrency handling (non-streaming)
@@ -222,7 +228,10 @@ class AIResponseService(private val plugin: Story) {
      * @param conversation The conversation history to send
      * @return The AI response or null if an error occurred
      */
-    private fun getAIResponseNonStreaming(conversation: List<ConversationMessage>, lowCost: Boolean = false): String? {
+    private fun getAIResponseNonStreaming(
+        conversation: List<ConversationMessage>,
+        lowCost: Boolean = false,
+    ): String? {
         if (apiKey.isEmpty()) {
             plugin.logger.warning("OpenAI API Key is not set!")
             return null
@@ -265,7 +274,6 @@ class AIResponseService(private val plugin: Story) {
                 reasoningObject.addProperty("enabled", false)
                 requestObject.add("reasoning", reasoningObject)
 
-
                 val messagesArray = JsonArray()
                 for (message in conversation) {
                     val messageObject = JsonObject()
@@ -282,7 +290,8 @@ class AIResponseService(private val plugin: Story) {
                         .toRequestBody("application/json".toMediaTypeOrNull())
 
                 val request =
-                    Request.Builder()
+                    Request
+                        .Builder()
                         .url("https://openrouter.ai/api/v1/chat/completions")
                         .addHeader("Authorization", "Bearer $apiKey")
                         .addHeader("Content-Type", "application/json")
@@ -343,7 +352,11 @@ class AIResponseService(private val plugin: Story) {
     private fun buildConversationContext(conversation: List<ConversationMessage>): String {
         val contextBuilder = StringBuilder()
         for (msg in conversation) {
-            contextBuilder.append(msg.role).append(": ").append(msg.content).append("\n")
+            contextBuilder
+                .append(msg.role)
+                .append(": ")
+                .append(msg.content)
+                .append("\n")
         }
         return contextBuilder.toString()
     }

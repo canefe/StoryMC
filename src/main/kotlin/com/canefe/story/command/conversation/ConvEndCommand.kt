@@ -6,27 +6,27 @@ import dev.jorel.commandapi.arguments.IntegerArgument
 import dev.jorel.commandapi.executors.CommandExecutor
 
 class ConvEndCommand(
-	private val commandUtils: ConvCommandUtils,
+    private val commandUtils: ConvCommandUtils,
 ) {
-	fun getCommand(): CommandAPICommand {
-		return CommandAPICommand("end")
-			.withArguments(IntegerArgument("conversation_id"))
-			.executes(
-				CommandExecutor { sender, args ->
-					val id = args.get("conversation_id") as Int
+    fun getCommand(): CommandAPICommand {
+        return CommandAPICommand("end")
+            .withArguments(IntegerArgument("conversation_id"))
+            .executes(
+                CommandExecutor { sender, args ->
+                    val id = args.get("conversation_id") as Int
 
-					// Get conversation
-					val conversation =
-						commandUtils.getConversation(id, sender)
-							?: return@CommandExecutor
+                    // Get conversation
+                    val conversation =
+                        commandUtils.getConversation(id, sender)
+                            ?: return@CommandExecutor
 
-					sender.sendInfo("Ending conversation with ID $id...")
+                    sender.sendInfo("Ending conversation with ID $id...")
 
-					// Generate goodbye
-					commandUtils.conversationManager.endConversationWithGoodbye(
-						conversation,
-					)
-				},
-			)
-	}
+                    // Generate goodbye
+                    commandUtils.conversationManager.endConversationWithGoodbye(
+                        conversation,
+                    )
+                },
+            )
+    }
 }

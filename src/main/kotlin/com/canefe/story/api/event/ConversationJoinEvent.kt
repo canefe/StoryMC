@@ -9,37 +9,37 @@ import org.bukkit.event.HandlerList
 
 // Define a sealed interface for conversation participants
 sealed interface ConversationParticipant {
-	// Common properties or methods could go here
+    // Common properties or methods could go here
 }
 
 // Implement the interface for both types
 data class PlayerParticipant(
-	val player: Player,
+    val player: Player,
 ) : ConversationParticipant
 
 data class NPCParticipant(
-	val npc: NPC,
+    val npc: NPC,
 ) : ConversationParticipant
 
 class ConversationJoinEvent(
-	val conversation: Conversation,
-	val participant: ConversationParticipant,
+    val conversation: Conversation,
+    val participant: ConversationParticipant,
 ) : Event(),
-	Cancellable {
-	private var cancelled = false
+    Cancellable {
+    private var cancelled = false
 
-	override fun isCancelled(): Boolean = cancelled
+    override fun isCancelled(): Boolean = cancelled
 
-	override fun setCancelled(cancel: Boolean) {
-		this.cancelled = cancel
-	}
+    override fun setCancelled(cancel: Boolean) {
+        this.cancelled = cancel
+    }
 
-	companion object {
-		private val HANDLERS = HandlerList()
+    companion object {
+        private val HANDLERS = HandlerList()
 
-		@JvmStatic
-		fun getHandlerList(): HandlerList = HANDLERS
-	}
+        @JvmStatic
+        fun getHandlerList(): HandlerList = HANDLERS
+    }
 
-	override fun getHandlers(): HandlerList = HANDLERS
+    override fun getHandlers(): HandlerList = HANDLERS
 }

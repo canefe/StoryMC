@@ -69,7 +69,9 @@ import java.util.Collections.emptyList
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
-class Story : JavaPlugin(), Listener {
+class Story :
+    JavaPlugin(),
+    Listener {
     // Singleton instance
     companion object {
         lateinit var instance: Story
@@ -185,7 +187,8 @@ class Story : JavaPlugin(), Listener {
         PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this))
         // On Bukkit, calling this here is essential, hence the name "load"
         PacketEvents.getAPI().load()
-        PacketEvents.getAPI()
+        PacketEvents
+            .getAPI()
             .getEventManager()
             .registerListener(PacketEventsPacketListener(), PacketListenerPriority.NORMAL)
     }
@@ -462,26 +465,37 @@ class Story : JavaPlugin(), Listener {
     }
 
     // TODO: This method should be moved to a dedicated NPC service
-    fun getNearbyNPCs(player: Player, radius: Double): List<NPC> = CitizensAPI.getNPCRegistry().filter { npc ->
-        npc.isSpawned &&
+    fun getNearbyNPCs(
+        player: Player,
+        radius: Double,
+    ): List<NPC> =
+        CitizensAPI.getNPCRegistry().filter { npc ->
+            npc.isSpawned &&
                 npc.entity.location.world == player.location.world &&
                 npc.entity.location.distanceSquared(player.location) <= radius * radius
-    }
+        }
 
     // TODO: This method should be moved to a dedicated NPC service
-    fun getNearbyNPCs(npc: NPC, radius: Double): List<NPC> {
+    fun getNearbyNPCs(
+        npc: NPC,
+        radius: Double,
+    ): List<NPC> {
         if (!npc.isSpawned) return emptyList()
 
         return CitizensAPI.getNPCRegistry().filter { otherNpc ->
             otherNpc.isSpawned &&
-                    otherNpc != npc &&
-                    otherNpc.entity.location.world == npc.entity.location.world &&
-                    otherNpc.entity.location.distanceSquared(npc.entity.location) <= radius * radius
+                otherNpc != npc &&
+                otherNpc.entity.location.world == npc.entity.location.world &&
+                otherNpc.entity.location.distanceSquared(npc.entity.location) <= radius * radius
         }
     }
 
     // TODO: This method should be moved to a dedicated Player service
-    fun getNearbyPlayers(player: Player, radius: Double, ignoreY: Boolean = false): List<Player> {
+    fun getNearbyPlayers(
+        player: Player,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
         val radiusSquared = radius * radius
         val playerLoc = player.location
 
@@ -499,7 +513,11 @@ class Story : JavaPlugin(), Listener {
         }
     }
 
-    fun getNearbyPlayers(npc: NPC, radius: Double, ignoreY: Boolean = false): List<Player> {
+    fun getNearbyPlayers(
+        npc: NPC,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
         if (!npc.isSpawned) return emptyList()
 
         val radiusSquared = radius * radius
@@ -519,7 +537,11 @@ class Story : JavaPlugin(), Listener {
         }
     }
 
-    fun getNearbyPlayers(location: Location, radius: Double, ignoreY: Boolean = false): List<Player> {
+    fun getNearbyPlayers(
+        location: Location,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
         val radiusSquared = radius * radius
 
         return Bukkit.getOnlinePlayers().filter { player ->
@@ -582,23 +604,29 @@ class Story : JavaPlugin(), Listener {
         timeoutSeconds: Int = 300,
         limitToSender: Boolean = false,
         sender: CommandSender? = null,
-    ): Int = taskManager.createTask(
-        description = description,
-        permission = permission,
-        onAccept = onAccept,
-        onRefuse = onRefuse,
-        timeoutSeconds = timeoutSeconds,
-        limitToSender = limitToSender,
-        sender = sender,
-    )
+    ): Int =
+        taskManager.createTask(
+            description = description,
+            permission = permission,
+            onAccept = onAccept,
+            onRefuse = onRefuse,
+            timeoutSeconds = timeoutSeconds,
+            limitToSender = limitToSender,
+            sender = sender,
+        )
 
     /** Simplified version that only requires description and callbacks. */
-    fun askForPermission(description: String, onAccept: Runnable, onRefuse: Runnable): Int = askForPermission(
-        description = description,
-        permission = "story.task.respond",
-        onAccept = onAccept,
-        onRefuse = onRefuse,
-    )
+    fun askForPermission(
+        description: String,
+        onAccept: Runnable,
+        onRefuse: Runnable,
+    ): Int =
+        askForPermission(
+            description = description,
+            permission = "story.task.respond",
+            onAccept = onAccept,
+            onRefuse = onRefuse,
+        )
 
     /**
      * Creates a dialogue path selection task with three options for DMs to choose from. This is
@@ -626,15 +654,16 @@ class Story : JavaPlugin(), Listener {
         onOption3: Runnable,
         permission: String = "story.dm",
         timeoutSeconds: Int = 120,
-    ): Int = taskManager.createDialoguePathTask(
-        description = description,
-        option1 = option1,
-        option2 = option2,
-        option3 = option3,
-        onOption1 = onOption1,
-        onOption2 = onOption2,
-        onOption3 = onOption3,
-        permission = permission,
-        timeoutSeconds = timeoutSeconds,
-    )
+    ): Int =
+        taskManager.createDialoguePathTask(
+            description = description,
+            option1 = option1,
+            option2 = option2,
+            option3 = option3,
+            onOption1 = onOption1,
+            onOption2 = onOption2,
+            onOption3 = onOption3,
+            permission = permission,
+            timeoutSeconds = timeoutSeconds,
+        )
 }
