@@ -1,3 +1,5 @@
+package com.canefe.story.conversation
+
 import com.canefe.story.Story
 import com.canefe.story.api.event.*
 import com.canefe.story.audio.VoiceManager

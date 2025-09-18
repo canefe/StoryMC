@@ -1,6 +1,5 @@
 package com.canefe.story
 
-import ConversationManager
 import com.canefe.story.api.StoryAPI
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
@@ -10,6 +9,7 @@ import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.config.ConfigService
 import com.canefe.story.config.PromptService
 import com.canefe.story.context.ContextExtractor
+import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.dm.AIDungeonMaster
