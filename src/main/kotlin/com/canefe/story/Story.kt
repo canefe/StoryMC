@@ -62,7 +62,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.*
 import java.util.concurrent.CompletableFuture
 
-class Story :
+open class Story :
     JavaPlugin(),
     Listener {
     // Singleton instance
@@ -81,7 +81,6 @@ class Story :
     // Plugin configuration
     val configService = ConfigService(this)
     lateinit var promptService: PromptService
-        private set
 
     // gson
     val gson = com.google.gson.Gson()
@@ -98,7 +97,6 @@ class Story :
     lateinit var contextExtractor: ContextExtractor
 
     lateinit var npcDataManager: NPCDataManager
-        private set
 
     lateinit var npcBehaviorManager: NPCBehaviorManager
         private set
@@ -106,16 +104,13 @@ class Story :
     lateinit var questManager: QuestManager
 
     lateinit var conversationManager: ConversationManager
-        private set
     lateinit var locationManager: LocationManager
-        private set
     lateinit var npcUtils: NPCUtils
     lateinit var npcManager: NPCManager
         private set
     lateinit var playerManager: PlayerManager
         private set
     lateinit var npcMessageService: NPCMessageService
-        private set
     lateinit var radiantConversationService: RadiantConversationService
         private set
 
@@ -132,7 +127,7 @@ class Story :
     lateinit var sessionManager: SessionManager
     lateinit var taskManager: TaskManager
 
-    private lateinit var commandManager: CommandManager
+    lateinit var commandManager: CommandManager
 
     private lateinit var eventManager: EventManager
 
@@ -176,7 +171,9 @@ class Story :
         CommandAPI.onLoad(CommandAPIBukkitConfig(this).silentLogs(true))
         commandManager = CommandManager(this)
         commandManager.onLoad()
-        configService.reload()
+        if (System.getProperty("mockbukkit") == "true") {
+            return // skip CommandAPI init in tests
+        }
         PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this))
         // On Bukkit, calling this here is essential, hence the name "load"
         PacketEvents.getAPI().load()
@@ -204,6 +201,9 @@ class Story :
 
         // Register commands
         commandManager.registerCommands()
+        if (System.getProperty("mockbukkit") != "true") {
+            PacketEvents.getAPI().init()
+        }
 
         // Start radiant conversation service
         radiantConversationService.startProximityTask()
@@ -212,7 +212,6 @@ class Story :
         // initializeWebUIServer()
         // Load configuration
         configService.reload()
-        PacketEvents.getAPI().init()
         StoryAPI.initialize(this)
     }
 
@@ -359,7 +358,9 @@ class Story :
 
     override fun onDisable() {
         logger.info("Story has been disabled.")
-        PacketEvents.getAPI().terminate()
+        if (System.getProperty("mockbukkit") != "true") {
+            PacketEvents.getAPI().terminate()
+        }
         // Cancel all tasks first to prevent new ones from being registered
         Bukkit.getScheduler().cancelTasks(this)
         webUIServer?.shutdown()

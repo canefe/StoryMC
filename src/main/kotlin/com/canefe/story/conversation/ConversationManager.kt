@@ -3,7 +3,6 @@ package com.canefe.story.conversation
 import com.canefe.story.Story
 import com.canefe.story.api.event.*
 import com.canefe.story.audio.VoiceManager
-import com.canefe.story.conversation.*
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
@@ -79,7 +78,16 @@ class ConversationManager private constructor(
 
         // Call StartConversationEvent
         val startEvent = ConversationStartEvent(player, npcs, conversation)
-        Bukkit.getPluginManager().callEvent(startEvent)
+        if (System.getProperty("mockbukkit") == "true") {
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable {
+                    Bukkit.getPluginManager().callEvent(startEvent)
+                },
+            )
+        } else {
+            Bukkit.getPluginManager().callEvent(startEvent)
+        }
 
         // Check if cancelled
         if (startEvent.isCancelled) {
@@ -97,7 +105,7 @@ class ConversationManager private constructor(
 
     // start conversation, no players
     fun startConversation(npcs: List<NPC>): CompletableFuture<Conversation> {
-        // Empty playerl ist
+        // Empty player ist
         val participants = mutableListOf<UUID>()
 
         // Create a new conversation
@@ -347,47 +355,46 @@ class ConversationManager private constructor(
         greetingMessage: String? = null,
     ): CompletableFuture<Boolean> {
         val result = CompletableFuture<Boolean>()
-
+        val joinEvent = ConversationJoinEvent(conversation, PlayerParticipant(player))
         // Run event on the main thread
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
                 // Fire the ConversationJoinEvent first
-                val joinEvent = ConversationJoinEvent(conversation, PlayerParticipant(player))
                 Bukkit.getPluginManager().callEvent(joinEvent)
-
-                // Check if event was cancelled
-                if (joinEvent.isCancelled) {
-                    plugin.logger.info(
-                        "Player ${player.name} was prevented from joining conversation ${conversation.id} due to cancelled event",
-                    )
-                    result.complete(false)
-                    return@Runnable
-                }
-
-                // Add player to conversation
-                if (!conversation.addPlayer(player)) {
-                    result.complete(false)
-                    return@Runnable
-                }
-
-                // Handle optional greeting message
-                if (greetingMessage != null) {
-                    addPlayerMessage(player, conversation, greetingMessage)
-                }
-
-                // Notify players
-                conversation.players.forEach { uuid ->
-                    Bukkit.getPlayer(uuid)?.sendInfo("<yellow>${player.name}</yellow> joined the conversation.")
-                }
-
-                conversation.addSystemMessage(
-                    "${EssentialsUtils.getNickname(player.name)} has joined the conversation.",
-                )
-
-                result.complete(true)
             },
         )
+
+        // Check if event was cancelled
+        if (joinEvent.isCancelled) {
+            plugin.logger.info(
+                "Player ${player.name} was prevented from joining conversation ${conversation.id} due to cancelled event",
+            )
+            result.complete(false)
+            return result
+        }
+
+        // Add player to conversation
+        if (!conversation.addPlayer(player)) {
+            result.complete(false)
+            return result
+        }
+
+        // Handle optional greeting message
+        if (greetingMessage != null) {
+            addPlayerMessage(player, conversation, greetingMessage)
+        }
+
+        // Notify players
+        conversation.players.forEach { uuid ->
+            Bukkit.getPlayer(uuid)?.sendInfo("<yellow>${player.name}</yellow> joined the conversation.")
+        }
+
+        conversation.addSystemMessage(
+            "${EssentialsUtils.getNickname(player.name)} has joined the conversation.",
+        )
+
+        result.complete(true)
 
         return result
     }
@@ -456,7 +463,7 @@ class ConversationManager private constructor(
     }
 
     // Method to schedule proximity check for a conversation
-    private fun scheduleProximityCheck(conversation: Conversation) {
+    fun scheduleProximityCheck(conversation: Conversation) {
         val checkDelay = 10 // Check every 10 seconds
         val maxDistance = plugin.config.chatRadius
 
@@ -1017,7 +1024,8 @@ class ConversationManager private constructor(
                                     "====CURRENT CONVERSATION====\n" +
                                         recentMessages.joinToString("\n") +
                                         "\n=========================\n" +
-                                        "Respond in character as $nextSpeaker. This is an active conversation and you are talking to ${
+                                        "Respond in character as $nextSpeaker. This is an active conversation and" +
+                                        " you are talking to ${
                                             conversation.players?.joinToString(
                                                 ", ",
                                             ) {
@@ -1233,20 +1241,19 @@ class ConversationManager private constructor(
             worldInformationManager: WorldInformationManager,
         ): ConversationManager {
             if (instance == null) {
-                instance =
-                    ConversationManager(
-                        plugin,
-                        npcContextGenerator,
-                        npcResponseService,
-                        worldInformationManager,
-                    )
+                instance = ConversationManager(plugin, npcContextGenerator, npcResponseService, worldInformationManager)
             }
             return instance!!
         }
 
-        // Overloaded method for getting existing instance
         @JvmStatic
         fun getInstance(plugin: Story): ConversationManager =
             instance ?: throw IllegalStateException("ConversationManager has not been initialized")
+
+        // Only for tests
+        @JvmStatic
+        fun reset() {
+            instance = null
+        }
     }
 }

@@ -1,6 +1,8 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.util.*
+
 
 val serverPluginsDir: String? =
     System.getenv("SERVER_PLUGINS_DIR")
@@ -14,6 +16,7 @@ plugins {
     id("xyz.jpenilla.run-paper") version "2.3.1"
     id("com.gradleup.shadow") version "8.3.3"
     id("org.jlleitschuh.gradle.ktlint") version "13.1.0"
+    id("jacoco")
 }
 
 group = "com.canefe"
@@ -46,6 +49,12 @@ repositories {
 }
 
 dependencies {
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.15.0")
+
+    testImplementation("dev.jorel:commandapi-bukkit-test-toolkit:10.0.0")
+
+    // shade
+    implementation("dev.jorel:commandapi-bukkit-shade:10.0.0")
     // PaperMC
     compileOnly("io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT")
 
@@ -58,7 +67,6 @@ dependencies {
     compileOnly("org.mcmonkey:sentinel:2.9.1-SNAPSHOT")
     compileOnly("net.tnemc:EconomyCore:0.1.3.5-Release-1")
     implementation("net.kyori:adventure-api:4.21.0")
-    implementation("dev.jorel:commandapi-bukkit-shade:10.0.0")
     compileOnly("com.github.decentsoftware-eu:decentholograms:2.8.12")
     compileOnly("com.github.toxicity188:BetterHealthBar3:3.5.4")
     compileOnly("LibsDisguises:LibsDisguises:10.0.44")
@@ -87,14 +95,14 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
     // Testing
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
-    testImplementation("org.mockito:mockito-core:5.3.1")
+    // Use a single, up-to-date MockBukkit coordinate for 1.21 compatibility
+    testImplementation("io.mockk:mockk:1.14.5")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
     testImplementation("org.mockito:mockito-junit-jupiter:5.3.1")
-    testImplementation("com.github.seeseemelk:MockBukkit-v1.19:2.29.0")
-    testImplementation("commons-lang:commons-lang:2.6")
+
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
     testImplementation("org.mockito:mockito-inline:4.8.0")
+
     // Add Gson if used by the plugin
     implementation("com.google.code.gson:gson:2.10.1") // Or the latest version
 
@@ -105,10 +113,6 @@ dependencies {
 
     // Add Mockito-Kotlin for tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
-
-    // Update MockBukkit
-    // Replace testImplementation("com.github.seeseemelk:MockBukkit-v1.19:2.29.0") with:
-    testImplementation("com.github.MockBukkit:MockBukkit:v1.21-SNAPSHOT") // Find the latest version for 1.21
 }
 
 val targetJavaVersion = 21
@@ -136,7 +140,25 @@ tasks.withType<KotlinJvmCompile>().configureEach {
     }
 }
 
+val localProps =
+    Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) {
+            file.inputStream().use { load(it) }
+        }
+    }
+
 tasks.test {
+    doFirst {
+        val toolkit = classpath.filter { it.name.contains("commandapi-bukkit-test-toolkit") }
+        val shade = classpath.filter { it.name.contains("commandapi-bukkit-shade") }
+        val rest =
+            classpath.filter {
+                !it.name.contains("commandapi-bukkit-test-toolkit") &&
+                    !it.name.contains("commandapi-bukkit-shade")
+            }
+        classpath = files(toolkit, rest, shade)
+    }
     useJUnitPlatform()
 
     // Configure test logging
@@ -158,6 +180,29 @@ tasks.test {
             .availableProcessors()
             .div(2)
             .coerceAtLeast(1)
+
+    // Inject API key into test environment
+    environment("OPENROUTER_API_KEY", localProps["OPENROUTER_API_KEY"] ?: "")
+
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test) // tests must run before report
+
+    reports {
+        xml.required.set(true) // useful for CI
+        csv.required.set(false)
+        html.required.set(true) // human-readable in browser
+    }
+}
+
+// Fast check for pre-commit
+tasks.register("preCommit") {
+    group = "verification"
+    description = "Runs ktlintFormat and compile only (no tests)."
+
+    dependsOn("ktlintFormat", "compileKotlin")
 }
 
 tasks.withType<ShadowJar> {
@@ -170,6 +215,13 @@ sourceSets {
     main {
         java {
             setSrcDirs(listOf("src/main/java", "src/main/kotlin"))
+        }
+    }
+    test {
+        resources {
+            srcDir("src/test/resources")
+            // Exclude plugin.yml from main resources when testing
+            exclude("plugin.yml")
         }
     }
 }

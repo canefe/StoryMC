@@ -134,3 +134,6 @@ runs/
 out/
 bin/
 *.iml
+
+# local.properties
+local.properties

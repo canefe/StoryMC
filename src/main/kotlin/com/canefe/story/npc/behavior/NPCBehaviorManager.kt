@@ -10,11 +10,9 @@ import net.citizensnpcs.util.NMS
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
-import java.util.Collections
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.compareTo
 import kotlin.random.Random
-import kotlin.times
 
 class NPCBehaviorManager(
     private val plugin: Story,
@@ -39,6 +37,10 @@ class NPCBehaviorManager(
             plugin,
             Runnable {
                 try {
+                    if (System.getProperty("mockbukkit") == "true") {
+                        return@Runnable
+                    }
+
                     // Track update count for debugging
                     updateCounter++
 
