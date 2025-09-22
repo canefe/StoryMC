@@ -20,13 +20,7 @@ import java.io.File
 import java.io.IOException
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.collections.ArrayList
-import kotlin.collections.remove
-import kotlin.text.clear
-import kotlin.text.compareTo
-import kotlin.text.get
-import kotlin.text.toInt
-import kotlin.times
+import kotlin.math.sqrt
 
 class NPCScheduleManager private constructor(
     private val plugin: Story,
@@ -896,9 +890,11 @@ class NPCScheduleManager private constructor(
 
                                             if (plugin.config.debugMessages && atWorkstation) {
                                                 plugin.logger.info(
-                                                    "${npc.name} is at workstation '${workstation.name}' (distance: ${Math.sqrt(
-                                                        distanceToWorkstation,
-                                                    )})",
+                                                    "${npc.name} is at workstation '${workstation.name}' (distance: ${
+                                                        sqrt(
+                                                            distanceToWorkstation,
+                                                        )
+                                                    })",
                                                 )
                                             }
 

@@ -97,7 +97,8 @@ class NPCContextGenerator(
                     val canonicalName =
                         plugin.npcNameResolver.resolveCanonicalName(
                             displayName = npcName,
-                            entityId = actualEntityId ?: npcData.npcId ?: npcName, // Use actual entity ID first, then stored npcId, then fallback to name
+                            // Use actual entity ID first, then stored npcId, then fallback to name
+                            entityId = actualEntityId ?: npcData.npcId ?: npcName,
                             location = npcData.storyLocation?.name,
                         )
 
@@ -112,7 +113,10 @@ class NPCContextGenerator(
                                 // Get the alias that was generated
                                 val alias =
                                     plugin.npcNameManager.getOrCreateAlias(
-                                        npcId = actualEntityId ?: npcData.npcId ?: npcName, // Use actual entity ID first
+                                        npcId =
+                                            actualEntityId ?: npcData.npcId
+                                                ?: npcName,
+                                        // Use actual entity ID first
                                         anchorKey = npcData.anchorKey,
                                         nameBankName = npcData.nameBank!!,
                                         location = npcData.storyLocation?.name,

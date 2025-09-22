@@ -77,13 +77,17 @@ class NPCInteractionListener(
         // Handle conversation logic
         val currentConversation = plugin.conversationManager.getConversation(player)
         if (currentConversation != null) {
-            handleExistingConversation(
-                player,
-                message,
-                currentConversation,
-                nearbyEntities,
-                isWhispering,
-            )
+            if (!handleExistingConversation(
+                    player,
+                    message,
+                    currentConversation,
+                    nearbyEntities,
+                    isWhispering,
+                )
+            ) {
+                // Player left the conversation, try to start/join a new one
+                handleNoConversation(player, message, nearbyEntities)
+            }
         } else {
             handleNoConversation(player, message, nearbyEntities)
         }
@@ -178,11 +182,13 @@ class NPCInteractionListener(
                 "====CURRENT CONVERSATION====\n" +
                     recentMessages.joinToString("\n") +
                     "\n=========================\n" +
-                    "This is an active conversation and you are talking to multiple characters: ${conversation.players.joinToString(
-                        ", ",
-                    ) {
-                        Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: ""
-                    }}. " +
+                    "This is an active conversation and you are talking to multiple characters: ${
+                        conversation.players.joinToString(
+                            ", ",
+                        ) {
+                            Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: ""
+                        }
+                    }. " +
                     conversation.npcNames.joinToString("\n") +
                     "\n===APPEARANCES===\n" +
                     conversation.npcs.joinToString("\n") { npc ->
@@ -228,9 +234,6 @@ class NPCInteractionListener(
         // Generate AI response using player-specific method
         generatePlayerAIResponse(player, playerCharacterName, playerContext, responseContext)
             .thenApply { response ->
-                // Add player message to conversation
-                conversation.addPlayerMessage(player, response)
-
                 // Broadcast the fleshed-out response as if it's from the player
                 val shouldStream = plugin.config.streamMessages
 
@@ -261,13 +264,13 @@ class NPCInteractionListener(
                             if (currentConversation != null) {
                                 handleExistingConversation(
                                     player,
-                                    message,
+                                    response,
                                     currentConversation,
                                     nearbyEntities,
                                     isWhispering,
                                 )
                             } else {
-                                handleNoConversation(player, message, nearbyEntities)
+                                handleNoConversation(player, response, nearbyEntities)
                             }
                         },
                     )
@@ -337,14 +340,10 @@ class NPCInteractionListener(
                     return@run newConversationFuture.join()
                 }
 
-                val newConversationFuture =
-                    plugin.conversationManager.startConversation(nearbyNPCs)
-                newConversationFuture.thenAccept { newConv ->
-                    for (p in players) {
-                        newConv.addPlayer(p)
-                    }
-                }
-                newConversationFuture.join()
+                val newConversation =
+                    plugin.conversationManager.startConversation(player, nearbyNPCs)
+
+                newConversation
             }
     }
 
@@ -430,7 +429,7 @@ class NPCInteractionListener(
         // Add memories
         playerContext.getMemoriesForPrompt(plugin.timeService).let { memories ->
             if (memories.isNotEmpty()) {
-                prompts.add(ConversationMessage("system", "===MEMORY===\n" + memories))
+                prompts.add(ConversationMessage("system", "===MEMORY===\n$memories"))
             }
         }
 
@@ -450,7 +449,8 @@ class NPCInteractionListener(
             ConversationMessage(
                 "system",
                 "===CURRENT TIME===\n" +
-                    "The current time is ${plugin.timeService.getHours()}:${plugin.timeService.getMinutes()} at date ${plugin.timeService.getFormattedDate()} " +
+                    "The current time is ${plugin.timeService.getHours()}:${plugin.timeService.getMinutes()}" +
+                    " at date ${plugin.timeService.getFormattedDate()} " +
                     "in the ${plugin.timeService.getSeason()} season.",
             ),
         )
@@ -533,7 +533,23 @@ class NPCInteractionListener(
         conversation: com.canefe.story.conversation.Conversation,
         nearbyEntities: NearbyEntities,
         isWhispering: Boolean,
-    ) {
+    ): Boolean {
+        // First, check if another player in the conversation
+        if (conversation.players.any { it != player.uniqueId }) {
+            // Check if the player is away from all the other participants (npc+player)
+
+            val radius = plugin.config.chatRadius
+            val isAwayFromAll =
+                plugin.npcUtils.getNearbyNPCs(player, radius).none { it in conversation.npcs } &&
+                    plugin.npcUtils.getNearbyPlayers(player, radius).none { it.uniqueId in conversation.players }
+
+            // Then it is us that left the conversation
+            if (isAwayFromAll) {
+                plugin.conversationManager.removePlayer(player, conversation)
+            }
+            return false
+        }
+
         // Add the message to the conversation
         plugin.conversationManager.addPlayerMessage(player, conversation, message)
 
@@ -542,6 +558,8 @@ class NPCInteractionListener(
 
         // Manage players in the conversation
         managePlayersInConversation(conversation, nearbyEntities.players, isWhispering)
+
+        return true
     }
 
     /** Manages NPCs joining/leaving an existing conversation */
@@ -557,6 +575,7 @@ class NPCInteractionListener(
                     plugin.mythicMobConversation.isMythicMobNPC(npc.entity) -> false
                     !nearbyEntities.allInteractableNPCs.contains(npc) ||
                         plugin.npcManager.isNPCDisabled(npc) -> true
+
                     else -> false
                 }
             }
@@ -604,15 +623,15 @@ class NPCInteractionListener(
         message: String,
         nearbyEntities: NearbyEntities,
     ) {
-        tryJoinExistingConversation(
-            player,
-            message,
-            nearbyEntities.allInteractableNPCs,
-            nearbyEntities.players,
-        ).thenAccept { joined ->
-            if (!joined) {
-                startNewConversationIfPossible(player, message, nearbyEntities)
-            }
+        val joined =
+            tryJoinExistingConversation(
+                player,
+                message,
+                nearbyEntities.allInteractableNPCs,
+                nearbyEntities.players,
+            )
+        if (!joined) {
+            startNewConversationIfPossible(player, message, nearbyEntities)
         }
     }
 
@@ -622,14 +641,7 @@ class NPCInteractionListener(
         message: String,
         nearbyEntities: NearbyEntities,
     ) {
-        when {
-            nearbyEntities.allInteractableNPCs.isNotEmpty() -> {
-                tryStartNewConversation(player, message, nearbyEntities.allInteractableNPCs)
-            }
-            nearbyEntities.players.isNotEmpty() -> {
-                tryStartPlayerConversation(player, message, nearbyEntities.players)
-            }
-        }
+        tryStartNewConversation(player, message, nearbyEntities)
     }
 
     /** Attempts to join an existing conversation with any nearby NPC or player */
@@ -638,36 +650,24 @@ class NPCInteractionListener(
         message: String,
         nearbyNPCs: List<NPC>,
         nearbyPlayers: List<Player>,
-    ): CompletableFuture<Boolean> {
-        val result = CompletableFuture<Boolean>()
-
-        // Check NPCs first
+    ): Boolean {
+        // NPC conversations
         for (npc in nearbyNPCs) {
-            if (!plugin.npcManager.isNPCDisabled(npc) &&
-                plugin.conversationManager.isInConversation(npc)
-            ) {
-                val existingConvo = plugin.conversationManager.getConversation(npc) ?: continue
-                plugin.conversationManager
-                    .joinConversation(player, existingConvo, message)
-                    .thenAccept { success -> result.complete(success) }
-                return result
+            if (!plugin.npcManager.isNPCDisabled(npc) && plugin.conversationManager.isInConversation(npc)) {
+                val existing = plugin.conversationManager.getConversation(npc) ?: continue
+                return plugin.conversationManager.joinConversation(player, existing, message).join()
             }
         }
 
-        // Check players if no NPC conversation found
+        // Player conversations
         for (nearbyPlayer in nearbyPlayers) {
             if (plugin.conversationManager.isInConversation(nearbyPlayer)) {
-                val existingConvo =
-                    plugin.conversationManager.getConversation(nearbyPlayer) ?: continue
-                plugin.conversationManager
-                    .joinConversation(player, existingConvo, message)
-                    .thenAccept { success -> result.complete(success) }
-                return result
+                val existing = plugin.conversationManager.getConversation(nearbyPlayer) ?: continue
+                return plugin.conversationManager.joinConversation(player, existing, message).join()
             }
         }
 
-        result.complete(false)
-        return result
+        return false
     }
 
     /** Attempts to start a new conversation with nearby NPCs */
@@ -684,31 +684,27 @@ class NPCInteractionListener(
         if (availableNPCs.isNotEmpty()) {
             val npcsToAdd = ArrayList<NPC>(availableNPCs)
             val conversation = plugin.conversationManager.startConversation(player, npcsToAdd)
-            val startEvent = ConversationStartEvent(player, npcsToAdd, conversation)
-            Bukkit.getPluginManager().callEvent(startEvent)
-
-            if (startEvent.isCancelled) {
-                plugin.conversationManager.endConversation(conversation)
-                player.sendInfo("The conversation couldn't be started.")
-                return
-            }
 
             message?.let { plugin.conversationManager.addPlayerMessage(player, conversation, it) }
         }
-    }
 
-    /** Attempts to start a new conversation with nearby players */
-    private fun tryStartPlayerConversation(
-        player: Player,
-        message: String?,
-        nearbyPlayers: List<Player>,
-    ) {
         val availablePlayers = nearbyPlayers.filter { !plugin.playerManager.isPlayerDisabled(it) }
 
         if (availablePlayers.isNotEmpty()) {
-            val conversation =
-                plugin.conversationManager.startPlayerConversation(player, availablePlayers)
-            message?.let { plugin.conversationManager.addPlayerMessage(player, conversation, it) }
+            // check if conversation already exists
+            val existingConversation = plugin.conversationManager.getConversation(player)
+            if (existingConversation != null) {
+                // Add players to existing conversation
+                availablePlayers.forEach { p ->
+                    if (!existingConversation.players.contains(p.uniqueId)) {
+                        plugin.conversationManager.joinConversation(p, existingConversation)
+                    }
+                }
+            } else {
+                val conversation =
+                    plugin.conversationManager.startPlayerConversation(player, availablePlayers)
+                message?.let { plugin.conversationManager.addPlayerMessage(player, conversation, it) }
+            }
         }
     }
 
@@ -866,6 +862,7 @@ class NPCInteractionListener(
                     npc.entity.location.direction = direction
                 }
             }
+
             is PlayerParticipant -> {
                 // Any player-specific join handling could go here
             }

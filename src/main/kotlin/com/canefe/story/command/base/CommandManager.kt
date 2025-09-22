@@ -535,6 +535,7 @@ class CommandManager(
         ) {
             // Check if NPC exists
             var npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcUniqueId)
+            val npcUtils = plugin.npcUtils
 
             // Only check MythicMobs if the plugin is available
             val isMythicMob =
@@ -596,12 +597,13 @@ class CommandManager(
             val conversation =
                 plugin.conversationManager.getConversation(npcName) ?: run {
                     // create new conversation with nearby NPCs and players
-                    var nearbyNPCs = plugin.getNearbyNPCs(npc, chatRadius)
-                    var players = plugin.getNearbyPlayers(npc, chatRadius)
+                    var nearbyNPCs =
+                        npcUtils.getNearbyNPCs(npc, chatRadius)
+                    var players = npcUtils.getNearbyPlayers(npc, chatRadius)
 
                     if (isImpersonated && impersonator != null) {
-                        nearbyNPCs = plugin.getNearbyNPCs(impersonator, chatRadius)
-                        players = plugin.getNearbyPlayers(impersonator, chatRadius)
+                        nearbyNPCs = npcUtils.getNearbyNPCs(impersonator, chatRadius)
+                        players = npcUtils.getNearbyPlayers(impersonator, chatRadius)
                     }
 
                     // remove players that have their chat disabled
@@ -612,9 +614,7 @@ class CommandManager(
 
                     // Check if any nearby NPCs are already in a conversation
                     val existingConversation =
-                        nearbyNPCs
-                            .mapNotNull { plugin.conversationManager.getConversation(it.name) }
-                            .firstOrNull()
+                        nearbyNPCs.firstNotNullOfOrNull { plugin.conversationManager.getConversation(it.name) }
 
                     // Check if any nearby players are already in a conversation
                     val playerConversation =
@@ -735,6 +735,8 @@ class CommandManager(
 
             plugin.npcResponseService.generateNPCResponse(npc, responseContext, false).thenApply { response ->
 
+                conversation.addNPCMessage(npc, response)
+
                 if (!shouldStream) {
                     plugin.npcMessageService.broadcastNPCMessage(
                         message = response,
@@ -745,8 +747,6 @@ class CommandManager(
                 }
 
                 val typingSpeed = 4
-
-                conversation.addNPCMessage(npc, response)
 
                 // First, start the typing animation
                 plugin.typingSessionManager.startTyping(

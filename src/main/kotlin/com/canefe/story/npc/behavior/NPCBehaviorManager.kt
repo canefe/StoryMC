@@ -44,7 +44,9 @@ class NPCBehaviorManager(
 
                     // Every 100 updates (~5 seconds), check for NPCs that need initialization
                     if (updateCounter % 100 == 0) {
-                        plugin.logger.info("NPC Behavior Manager performing periodic check")
+                        if (plugin.config.debugMessages) {
+                            plugin.logger.info("NPC Behavior Manager performing periodic check")
+                        }
                         reinitializeAllNPCs()
                     }
 

@@ -13,7 +13,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import java.io.File
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
@@ -189,10 +189,12 @@ class AIDungeonMaster(
                 val nightOptions = options + listOf("mysterious", "danger", "creatures")
                 nightOptions.random()
             }
+
             worldTime in 0..1000 || worldTime in 11000..13000 -> { // Dawn/Dusk
                 val transitionOptions = options + listOf("transition", "beauty")
                 transitionOptions.random()
             }
+
             else -> options.random() // Day
         }
     }
@@ -692,7 +694,7 @@ class AIDungeonMaster(
                 sb.append("PLAYER ${player.name} is at location: $locationName\n")
 
                 // Add nearby NPCs
-                val nearbyNpcs = plugin.getNearbyNPCs(player, 30.0)
+                val nearbyNpcs = plugin.npcUtils.getNearbyNPCs(player, 30.0)
                 if (nearbyNpcs.isNotEmpty()) {
                     sb.append("Nearby NPCs: ${nearbyNpcs.joinToString(", ") { it.name }}\n")
 
@@ -1141,9 +1143,11 @@ class AIDungeonMaster(
         val playerJourney = worldNarrative.playerJourneys[player.uniqueId]
         if (playerJourney != null && playerJourney.personalStoryBeats.isNotEmpty()) {
             sb.append(
-                "PLAYER HISTORY: ${playerJourney.personalStoryBeats.takeLast(3).joinToString(". ") {
-                    it.description
-                }}\n",
+                "PLAYER HISTORY: ${
+                    playerJourney.personalStoryBeats.takeLast(3).joinToString(". ") {
+                        it.description
+                    }
+                }\n",
             )
         }
 
@@ -1191,9 +1195,11 @@ class AIDungeonMaster(
                     sb.append("- $npcName: ${npcData.context}\n")
                     if (npcData.memory.isNotEmpty()) {
                         sb.append(
-                            "  Recent memories: ${npcData.memory.takeLast(2).joinToString("; ") {
-                                it.content
-                            }}\n",
+                            "  Recent memories: ${
+                                npcData.memory.takeLast(2).joinToString("; ") {
+                                    it.content
+                                }
+                            }\n",
                         )
                     }
                 }
