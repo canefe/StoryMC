@@ -257,7 +257,11 @@ class NPCInteractionListenerTest {
 
         // Assert: Alice ended up in the existing convo (not a new one)
         waitUntil(server, 200) {
-            plugin.conversationManager.getConversation(alice) != null
+            val convo = plugin.conversationManager.getConversation(alice)
+            convo != null &&
+                convo == existingConversation &&
+                convo.players.contains(alice.uniqueId) &&
+                plugin.conversationManager.activeConversations.size == 1
         }
         Assertions.assertEquals(1, plugin.conversationManager.activeConversations.size)
 
