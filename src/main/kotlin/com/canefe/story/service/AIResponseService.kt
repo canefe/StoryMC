@@ -10,15 +10,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.logging.Level
-import kotlin.code
-import kotlin.collections.get
-import kotlin.compareTo
-import kotlin.text.get
-import kotlin.toString
 
 class AIResponseService(
     private val plugin: Story,
@@ -50,6 +46,9 @@ class AIResponseService(
 
     // Request queue tracking
     private val pendingRequests = AtomicInteger(0)
+
+    // Virtual thread executor for I/O-bound operations
+    private val virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()
 
     /**
      * Gets an AI response from OpenRouter.ai with streaming support
@@ -309,6 +308,7 @@ class AIResponseService(
 
                     // Parse response
                     val jsonResponse = response.body?.string() ?: return null
+
                     val responseObject = gson.fromJson(jsonResponse, JsonObject::class.java)
 
                     if (responseObject.has("choices") &&
@@ -318,7 +318,11 @@ class AIResponseService(
                         if (choice.has("message") &&
                             choice.getAsJsonObject("message").has("content")
                         ) {
-                            return choice.getAsJsonObject("message").get("content").asString
+                            val content = choice.getAsJsonObject("message").get("content").asString
+                            return content
+                                .trim()
+                                .replace(Regex("(?i)```json|```"), "")
+                                .trim()
                         }
                     }
 
@@ -338,7 +342,7 @@ class AIResponseService(
     }
 
     /**
-     * Gets an AI response asynchronously
+     * Gets an AI response asynchronously using virtual threads
      *
      * @param conversation The conversation history to send
      * @return A CompletableFuture with the AI response
@@ -346,7 +350,11 @@ class AIResponseService(
     fun getAIResponseAsync(
         conversation: List<ConversationMessage>,
         lowCost: Boolean = false,
-    ): CompletableFuture<String?> = CompletableFuture.supplyAsync { getAIResponse(conversation, lowCost = lowCost) }
+    ): CompletableFuture<String?> =
+        CompletableFuture.supplyAsync(
+            { getAIResponse(conversation, lowCost = lowCost) },
+            virtualThreadExecutor,
+        )
 
     // Helper method to build conversation context
     private fun buildConversationContext(conversation: List<ConversationMessage>): String {
@@ -359,6 +367,19 @@ class AIResponseService(
                 .append("\n")
         }
         return contextBuilder.toString()
+    }
+
+    /** Shuts down the virtual thread executor gracefully */
+    fun shutdown() {
+        virtualThreadExecutor.shutdown()
+        try {
+            if (!virtualThreadExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                virtualThreadExecutor.shutdownNow()
+            }
+        } catch (e: InterruptedException) {
+            virtualThreadExecutor.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
     }
 
     companion object {

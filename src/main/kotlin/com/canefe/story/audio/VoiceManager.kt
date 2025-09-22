@@ -4,13 +4,12 @@ import com.canefe.story.Story
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CompletableFuture
 
 /**
- * Manages voice synthesis and delivery for NPC conversations.
- * This class coordinates between the conversation system, ElevenLabs API,
- * and client mods to deliver spoken dialogue.
+ * Manages voice synthesis and delivery for NPC conversations. This class coordinates between the
+ * conversation system, ElevenLabs API, and client mods to deliver spoken dialogue.
  */
 class VoiceManager(
     private val plugin: Story,
@@ -20,9 +19,7 @@ class VoiceManager(
     // Track which NPC is currently speaking to which players
     private val activeSpeakers = mutableMapOf<UUID, String>() // NPC UUID -> Current message
 
-    /**
-     * Determines if voice features are enabled and properly configured
-     */
+    /** Determines if voice features are enabled and properly configured */
     fun isEnabled(): Boolean = plugin.config.voiceGenerationEnabled && audioManager.isConfigured()
 
     fun load() = audioManager.loadConfig()
@@ -87,7 +84,9 @@ class VoiceManager(
                             audioManager.sendAudioToPlayer(player, audioData)
                             successCount++
                         } catch (e: Exception) {
-                            plugin.logger.warning("Failed to send audio to player ${player.name}: ${e.message}")
+                            plugin.logger.warning(
+                                "Failed to send audio to player ${player.name}: ${e.message}",
+                            )
                         }
                     }
                     plugin.logger.info(
@@ -157,7 +156,9 @@ class VoiceManager(
                             audioManager.sendAudioToPlayer(p, audioData)
                             successCount++
                         } catch (e: Exception) {
-                            plugin.logger.warning("Failed to send audio to player ${p.name}: ${e.message}")
+                            plugin.logger.warning(
+                                "Failed to send audio to player ${p.name}: ${e.message}",
+                            )
                         }
                     }
                     plugin.logger.info(
@@ -169,14 +170,14 @@ class VoiceManager(
                     false
                 }
             }.exceptionally { e ->
-                plugin.logger.warning("Failed to generate speech for ${player.name}: ${e.message}")
+                plugin.logger.warning(
+                    "Failed to generate speech for ${player.name}: ${e.message}",
+                )
                 false
             }
     }
 
-    /**
-     * Generate speech for a single player (useful for private conversations)
-     */
+    /** Generate speech for a single player (useful for private conversations) */
     fun generateSpeechForSinglePlayer(
         npc: NPC,
         message: String,
@@ -215,9 +216,7 @@ class VoiceManager(
         )
     }
 
-    /**
-     * Determine the appropriate voice ID for an NPC based on their traits
-     */
+    /** Determine the appropriate voice ID for an NPC based on their traits */
     private fun determineNPCVoiceId(npc: NPC): String? {
         // Try to get NPC-specific voice mapping first
         val npcVoice = audioManager.getVoiceId(npc.name)
@@ -229,7 +228,9 @@ class VoiceManager(
         try {
             val npcData = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
             if (npcData?.customVoice != null) {
-                plugin.logger.info("Using custom voice '${npcData.customVoice}' for NPC ${npc.name}")
+                plugin.logger.info(
+                    "Using custom voice '${npcData.customVoice}' for NPC ${npc.name}",
+                )
                 return npcData.customVoice
             }
         } catch (e: Exception) {
@@ -240,9 +241,7 @@ class VoiceManager(
         return null
     }
 
-    /**
-     * Determine the appropriate voice ID for a player based on their traits
-     */
+    /** Determine the appropriate voice ID for a player based on their traits */
     private fun determinePlayerVoiceId(player: Player): String? {
         // Try to get player-specific voice mapping first
         val playerName = EssentialsUtils.getNickname(player.name)
@@ -255,7 +254,9 @@ class VoiceManager(
         try {
             val playerData = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)
             if (playerData?.customVoice != null) {
-                plugin.logger.info("Using custom voice '${playerData.customVoice}' for player ${player.name}")
+                plugin.logger.info(
+                    "Using custom voice '${playerData.customVoice}' for player ${player.name}",
+                )
                 return playerData.customVoice
             }
         } catch (e: Exception) {
@@ -263,13 +264,13 @@ class VoiceManager(
         }
 
         // Return null if no custom voice is set - this will skip voice generation
-        plugin.logger.info("No custom voice set for player ${player.name}, skipping voice generation")
+        plugin.logger.info(
+            "No custom voice set for player ${player.name}, skipping voice generation",
+        )
         return null
     }
 
-    /**
-     * Set a specific voice for an NPC
-     */
+    /** Set a specific voice for an NPC */
     fun setNPCVoice(
         npcName: String,
         voiceId: String,
@@ -277,38 +278,26 @@ class VoiceManager(
         audioManager.setVoiceMapping(npcName, voiceId)
     }
 
-    /**
-     * Get the current voice ID for an NPC
-     */
+    /** Get the current voice ID for an NPC */
     fun getNPCVoice(npcName: String): String = audioManager.getVoiceId(npcName)
 
-    /**
-     * Check if an NPC is currently speaking
-     */
+    /** Check if an NPC is currently speaking */
     fun isNPCSpeaking(npcUuid: UUID): Boolean = activeSpeakers.containsKey(npcUuid)
 
-    /**
-     * Stop speech for an NPC (remove from active speakers)
-     */
+    /** Stop speech for an NPC (remove from active speakers) */
     fun stopNPCSpeech(npcUuid: UUID) {
         activeSpeakers.remove(npcUuid)
     }
 
-    /**
-     * Get available voices from ElevenLabs
-     */
+    /** Get available voices from ElevenLabs */
     fun getAvailableVoices(): CompletableFuture<List<ElevenLabsAudioManager.Voice>> = audioManager.getAvailableVoices()
 
-    /**
-     * Clear audio cache
-     */
+    /** Clear audio cache */
     fun clearCache() {
         audioManager.clearCache()
     }
 
-    /**
-     * Cleans the message of formatting codes, emotes, etc.
-     */
+    /** Cleans the message of formatting codes, emotes, etc. */
     private fun sanitizeMessage(message: String): String {
         // Remove Minecraft formatting codes
         var cleaned = message.replace("§[0-9a-fk-or]".toRegex(), "")
@@ -326,11 +315,11 @@ class VoiceManager(
         return cleaned.trim()
     }
 
-    /**
-     * Shutdown cleanup - no longer needed since we don't have a server
-     */
+    /** Shutdown cleanup - no longer needed since we don't have a server */
     fun shutdown() {
         activeSpeakers.clear()
+        // Shutdown the ElevenLabsAudioManager's virtual thread executor
+        audioManager.shutdown()
         plugin.logger.info("VoiceManager shutdown complete")
     }
 }

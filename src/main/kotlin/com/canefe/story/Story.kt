@@ -401,6 +401,12 @@ class Story :
             eventManager.unregisterAll()
             sessionManager.shutdown()
 
+            // Shutdown AI response service (virtual thread executor)
+            aiResponseService.shutdown()
+
+            // Shutdown voice manager (includes ElevenLabsAudioManager virtual thread executor)
+            voiceManager.shutdown()
+
             logger.info("Story plugin has been successfully disabled.")
         } catch (e: Exception) {
             logger.severe("Error during plugin shutdown: ${e.message}")
@@ -444,6 +450,12 @@ class Story :
             scheduleManager.shutdown()
 
             sessionManager.shutdown()
+
+            // Shutdown AI response service (virtual thread executor)
+            aiResponseService.shutdown()
+
+            // Shutdown voice manager (includes ElevenLabsAudioManager virtual thread executor)
+            voiceManager.shutdown()
 
             // Unregister commands
             commandManager.onDisable()
