@@ -5,7 +5,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.command.CommandSender
 
 object Msg {
-    private val prefix = Story.instance.config.messagePrefix
+    private val prefix get() = Story.instance.config.messagePrefix
     private val mm = Story.instance.miniMessage
 
     fun format(message: String): Component = mm.deserialize(prefix + message)

@@ -1,133 +1,176 @@
+# Story Configuration File
+
+# OpenRouter Settings
 openrouter:
-  apikey: "your-api-key-here"
-  aiModel: "gryphe/mythomax-l2-13b:extended"
-
-# Conversation settings
+  apikey: ''
+  # google/gemini-flash-1.5
+  # meta-llama/llama-3.1-8b-instruct
+  # meta-llama/llama-3.3-70b-instruct
+  # mistralai/mistral-nemo
+  # anthropic/claude-3-haiku
+  # gryphe/mythomax-l2-13b
+  # nousresearch/hermes-3-llama-3.1-70b
+  # google/gemini-2.0-flash-001
+  # deepseek/deepseek-chat-v3-0324
+  aiModel: deepseek/deepseek-chat-v3-0324
+  aiConversationModel: deepseek/deepseek-chat-v3-0324
+  maxTokens: 1000
+# Conversation Settings
 conversation:
-  chatEnabled: true
-  radiantEnabled: true
-  radiantRadius: 5
+  chatEnabled: false # Chat conversation
+  radiantEnabled: false # Radiant conversation
+  radiantRadius: 15.0 # Also hearing distance
+  chatRadius: 5.0 # Chat distance to initiate conversation
+  responseDelay: 1.0
+  mythicMobsEnabled: true # MythicMobs conversation
+  streamMessages: false # Stream messages
   radiantCooldown: 30
-  chatRadius: 5
-  responseDelay: 2.0
-  mythicMobsEnabled: true
-  streamMessages: true
-  behavioralDirectivesEnabled: true  # Whether to generate behavioral directives for NPCs before responses
+  behavioralDirectivesEnabled: false
+  dialoguePathSelectionEnabled: false
+  delayedPlayerMessageProcessing: false
+# NPC Behavior
+npc:
+  headRotationDelay: 2
+  randomPathingEnabled: true
+  randomPathingChance: 1.0
+  scheduleEnabled: true
+  scheduleTaskPeriod: 10 # In seconds
+  maxVoiceFiles: 1
+  soundNameSpace: iamusic:npc
+  rangeBeforeTeleport: 400.0
+  scheduleDestinationTolerance: 1.0
+  randomLocationOffset: 3.0
+  teleportOnFail: false
+  randomPathingCooldown: 100
+  maxProcessPerTick: 3
 
-ai:
-  defaultContext: ""
-  chatFormat: "<gray>%npc_name% <italic>:</italic></gray> <white>%message%</white>"
-  emoteFormat: "<yellow><italic>$1</italic></yellow>"
-  radiantRadius: 5
-  chatRadius: 5
+# Faction Settings
+faction:
+  dailyEventsEnabled: false
+  dailyEventsChance: 0.15
+  followedSettlements:
+  - Ashwood
+  - Stormvale
+  - Eldershade
+  - Lysathara
+
+misc:
+  maxBookCharactersPerPage: 180
+  debugMessages: false
+  broadcastSessionEntries: true
+  skillProvider: MMOCore
+  voiceGenerationEnabled: true
+  elevenLabsApiKey: ''
+  scheduleVoiceGenerationEnabled: false
+  playerVoiceGenerationEnabled: true
+  maxLineWidth: 50
+  messagePrefix: ''
+  scheduleDialogueCooldown: 60
+
+# NPC Context Generator settings.
+context:
   traits:
-    - brave
-    - cunning
-    - cowardly
-    - loyal
-    - deceitful
-    - kind
-    - selfish
-    - compassionate
-    - apathetic
-    - hot-tempered
-    - calculating
-    - stubborn
-    - ambitious
-    - charismatic
-    - reserved
-    - resourceful
-    - daring
-    - pessimistic
-    - idealistic
-    - practical
-    - scheming
-    - patient
-    - impulsive
-    - optimistic
-  motivations:
-    - revenge
-    - greed
-    - self-preservation
-    - honor
-    - power
-    - freedom
-    - love
-    - curiosity
-    - survival
-    - recognition
-    - adventure
-    - family loyalty
-    - faith or religious duty
-    - justice
-    - chaos for chaos’s sake
-    - personal redemption
-    - knowledge
-    - glory in battle
-    - protecting their home
-    - escaping their past
-    - overcoming a curse or prophecy
-    - building a legacy
-    - fear of being forgotten
-  flaws:
-    - arrogance
-    - naivety
-    - paranoia
-    - laziness
-    - recklessness
-    - jealousy
-    - short-tempered
-    - greedy
-    - self-doubt
-    - overly trusting
-    - easily manipulated
-    - fearful
-    - stubborn to a fault
-    - vengeful
-    - prone to lying
-    - overly competitive
-    - prideful
-    - obsessive
-    - emotionally distant
-    - impulsive
-    - cruel under pressure
-    - haughty
-    - cowardly in danger
-    - judgmental
-  tones:
-    - sarcastic
-    - blunt
-    - formal
-    - playful
-    - serious
-    - melancholic
-    - cheerful
-    - apathetic
-    - arrogant
-    - cautious
-    - dismissive
-    - flirtatious
-    - mischievous
-    - pessimistic
-    - optimistic
-    - passionate
-    - calm
-    - distant
-    - mocking
-    - cryptic
-    - eager
-    - conflicted
-    - suspicious
-    - humorous
-    - desperate
-  quirks:
-    - always carries a lucky charm
-    - has a fear of heights
-    - speaks in rhyme
-    - has a habit of humming to themselves
+  - fiercely protective but struggles with self-doubt
+  - sharp-witted yet occasionally naive about people's intentions
+  - cautious survivor who dreams of heroic moments
+  - unwavering in loyalty but blind to loved ones' faults
+  - charming manipulator with genuine moments of vulnerability
+  - naturally empathetic but exhausted by others' pain
+  - self-serving yet capable of unexpected generosity
+  - deeply caring but afraid of being hurt again
+  - emotionally numb but desperately seeking connection
+  - quick to anger but equally quick to forgive
+  - methodical planner who panics when things go wrong
+  - determined idealist who compromises when cornered
+  - ruthlessly ambitious yet haunted by moral boundaries
+  - magnetically charismatic but craves genuine solitude
+  - quietly observant with hidden depths of passion
+  - brilliantly adaptive but struggles with indecision
+  - boldly adventurous yet terrified of meaningful relationships
+  - cynical realist who secretly hopes to be proven wrong
+  - naive optimist learning harsh truths about the world
+  - pragmatic survivor with buried romantic tendencies
+  - master manipulator who genuinely cares about the outcome
+  - patient mentor hiding deep wells of frustration
+  - impulsive risk-taker who agonizes over consequences later
+  - relentlessly cheerful while battling inner darkness
 
-# ElevenLabs voice integration settings
-elevenlabs:
-  api_key: "your-elevenlabs-api-key-here"
-  enabled: false  # Set to true to enable voice generation
-  # Voice mappings - use voice IDs from your ElevenLabs account
+  motivations:
+  - seeking vengeance while struggling to maintain their humanity
+  - accumulating wealth to feel secure but never feeling safe enough
+  - protecting themselves while learning to trust others
+  - upholding honor in a world that rewards dishonesty
+  - gaining influence to make meaningful change
+  - pursuing freedom while accepting responsibility for others
+  - finding true love despite past betrayals
+  - satisfying curiosity even when it leads to danger
+  - ensuring survival while maintaining dignity
+  - earning respect from those who once dismissed them
+  - seeking thrills to feel alive again
+  - preserving family bonds despite growing apart
+  - serving their faith while questioning its demands
+  - pursuing justice in an unjust world
+  - embracing chaos as a form of control
+  - finding redemption for sins both real and imagined
+  - gaining knowledge to prevent past mistakes
+  - achieving glory while staying true to principles
+  - defending home against forces they barely understand
+  - outrunning a past that defines them
+  - fulfilling destiny while maintaining free will
+  - creating something lasting in a temporary world
+  - being remembered for who they truly are
+
+  flaws:
+  - prideful but secretly insecure about their worth
+  - innocent but willfully blind to obvious dangers
+  - suspicious but desperately wanting to trust someone
+  - comfortable but afraid of necessary change
+  - bold but unable to consider consequences
+  - envious but genuinely happy for others' success
+  - explosive but immediately regretful of their outbursts
+  - acquisitive but generous when it truly matters
+  - uncertain but pretending to be confident
+  - faithful but repeatedly disappointed by betrayal
+  - malleable but resentful of being controlled
+  - anxious but forcing themselves to appear brave
+  - rigid but yearning for spontaneity
+  - vindictive but capable of forgiveness
+  - deceptive but hoping someone will see through their lies
+  - competitive but secretly collaborative
+  - vain but genuinely insecure about their appearance
+  - fixated but aware their obsession is unhealthy
+  - distant but craving emotional intimacy
+  - rash but trying to learn patience
+  - harsh but only when they feel cornered
+  - superior but lonely due to their attitude
+  - fearful but ashamed of their cowardice
+  - critical but holding themselves to even higher standards
+
+  tones:
+  - direct but surprisingly gentle when it matters
+  - tactful while hiding their true frustrations
+  - contemplative yet decisive when action is needed
+  - passionate but trying to contain their excitement
+  - careful with words but emotionally invested
+  - energetic but respectful of others' boundaries
+  - philosophical yet grounded in practical concerns
+  - laser-focused but aware of the bigger picture
+  - soft-spoken but carrying underlying strength
+  - fervent but controlled in their intensity
+  - systematic but allowing for human unpredictability
+  - sincere but struggling with complex emotions
+  - introspective while remaining engaged with others
+  - playful but sensitive to others' moods
+  - private but opening up to the right person
+  - worried but trying to be reassuring
+  - comforting while dealing with their own fears
+  - lively but respectful of serious moments
+  - steady but passionate about important issues
+  - understanding but maintaining clear boundaries
+  - empathetic while protecting their own emotional well-being
+  - factual but caring about the human impact
+  - honest but kind in their delivery
+  - determined but flexible in their methods
+  - nostalgic but hopeful about the future
+  quirks:
+  - no notable quirk
