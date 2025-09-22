@@ -9,7 +9,6 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
-import io.papermc.paper.command.brigadier.argument.ArgumentTypes.player
 import io.papermc.paper.event.player.AsyncChatEvent
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.event.NPCSpawnEvent
@@ -21,8 +20,6 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
-import java.util.ArrayList
-import java.util.concurrent.CompletableFuture
 
 class NPCInteractionListener(
     private val plugin: Story,

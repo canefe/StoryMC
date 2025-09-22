@@ -321,6 +321,8 @@ quest_creation:
 
 story_message_generation:
   system_prompt: |
+    {context_information}
+
     You are a system message generator for a Minecraft RPG plugin.
     Create a professional, visually appealing message based on the given context.
 
@@ -332,6 +334,48 @@ story_message_generation:
     - No emojis or excessive punctuation, system messages should be clear and concise.
     - Interpret the context fully, do not cut parts of the context.
 
-    {context_information}
-
     Output only the formatted message, nothing else.
+
+location_context_generation:
+    system_prompt: |
+        {context_information}
+
+        You are an expert world-building AI. Generate a JSON object describing the location {location}.
+
+        Your JSON must contain exactly these fields:
+
+        "description": a single string containing the general context of the location (politics, culture, leaders, conflicts, and narrative stakes).
+
+        "recent_events": a single string containing current news, concerns, or developments (alliances, crises, uprisings, refugee flows, threats, etc.).
+
+        Guidelines:
+
+        The description should be detailed and specific, not vague. Include factions, named leaders, power struggles, and historical tensions.
+
+        The recent events should be up-to-date developments tied to ongoing conflicts or political shifts.
+
+        Output must be valid JSON (no trailing commas, no comments).
+
+        Do not output YAML, bullet points, or free text — only the JSON object. RAW JSON.
+
+        Example:
+        {
+            "description": "Eldershade is a fortified city-state ruled by the enigmatic Council of Shadows. Its people are known for their mastery of stealth and espionage, often hired as spies and assassins by neighboring kingdoms. The city thrives on a delicate balance of power between rival guilds, each vying for control over the lucrative trade routes that pass through its gates.",
+            "recent_events": "Recently, Eldershade has been rocked by a series of high-profile assassinations targeting key members of the ruling council. Rumors abound of a shadowy faction seeking to destabilize the city from within, while tensions with the neighboring kingdom of Stormvale have escalated over disputed border territories."
+        }
+
+recent_events_generation:
+    system_prompt: |
+        You are an expert world-building AI. Generate a brief summary of recent events for the location.
+
+        Context provided: {context_information}
+
+        Your summary should include:
+        - Key developments or crises
+        - Political shifts or alliances
+        - Notable incidents or conflicts
+        - Impact on local factions or power dynamics
+
+        Keep it concise (2-3 sentences) but informative, capturing the essence of what's happening in the location.
+
+        Respond with a JSON object containing only a 'recent_events' field.

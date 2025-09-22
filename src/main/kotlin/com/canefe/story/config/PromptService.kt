@@ -240,4 +240,18 @@ class PromptService(
 
         return getPrompt("story_message_generation", variables)
     }
+
+    /** Story Location context generator prompt */
+    fun getLocationContextGenerationPrompt(contextInformation: String): String {
+        val variables = mapOf("context_information" to contextInformation)
+
+        return getPrompt("location_context_generation", variables)
+    }
+
+    /** Recent events generation prompt */
+    fun getRecentEventsGenerationPrompt(contextInformation: String): String {
+        val variables = mapOf("context_information" to contextInformation)
+
+        return getPrompt("recent_events_generation", variables)
+    }
 }

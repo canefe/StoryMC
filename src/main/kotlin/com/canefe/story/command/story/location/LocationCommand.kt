@@ -17,6 +17,8 @@ class LocationCommand(
             .withSubcommand(getFindLocationCommand())
             .withSubcommand(getCallLocationCommand())
             .withSubcommand(getMoveLocationCommand())
+            .withSubcommand(getUpdateLocationCommand())
+            .withSubcommand(getTeleportLocationCommand())
 
     private fun getCreateLocationCommand(): CommandAPICommand = CreateLocationCommand(commandUtils).getCommand()
 
@@ -25,4 +27,8 @@ class LocationCommand(
     private fun getCallLocationCommand(): CommandAPICommand = CallLocationCommand(commandUtils).getCommand()
 
     private fun getMoveLocationCommand(): CommandAPICommand = MoveLocationCommand(commandUtils).getCommand()
+
+    private fun getUpdateLocationCommand(): CommandAPICommand = UpdateLocationCommand(commandUtils).getCommand()
+
+    private fun getTeleportLocationCommand(): CommandAPICommand = TeleportLocationCommand(commandUtils).getCommand()
 }
