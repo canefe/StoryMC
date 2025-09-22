@@ -102,6 +102,7 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
     testImplementation("org.mockito:mockito-inline:4.8.0")
+    testImplementation(files("lib/RealisticSeasons.jar"))
 
     // Add Gson if used by the plugin
     implementation("com.google.code.gson:gson:2.10.1") // Or the latest version
@@ -212,15 +213,25 @@ tasks.withType<ShadowJar> {
 }
 
 sourceSets {
+    // make stubs for local jar files that we should not publish for CI
+    val stubs by creating {
+        java {
+            srcDir("src/stubs/kotlin")
+        }
+    }
+
     main {
         java {
             setSrcDirs(listOf("src/main/java", "src/main/kotlin"))
         }
+
+        compileClasspath += stubs.output
+        runtimeClasspath += stubs.output
     }
+
     test {
         resources {
             srcDir("src/test/resources")
-            // Exclude plugin.yml from main resources when testing
             exclude("plugin.yml")
         }
     }
