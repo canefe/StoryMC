@@ -11,129 +11,192 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Manager to track gameplay sessions and persist them to YAML files.
  */
-class SessionManager private constructor(private val plugin: Story) {
-	private val sessionFolder: File =
-		File(plugin.dataFolder, "sessions").apply { if (!exists()) mkdirs() }
+class SessionManager private constructor(
+    private val plugin: Story,
+) {
+    private val sessionFolder: File =
+        File(plugin.dataFolder, "sessions").apply { if (!exists()) mkdirs() }
 
-	private val current = AtomicReference<Session?>(null)
-	private var currentSessionFile: File? = null
-	private var lastSaveTime: Long = 0
-	private var lastFileModTime: Long = 0
+    private val current = AtomicReference<Session?>(null)
+    private var currentSessionFile: File? = null
+    private var lastSaveTime: Long = 0
+    private var lastFileModTime: Long = 0
 
-	init {
-		// Start autosave task (every 2 minutes)
-		plugin.server.scheduler.runTaskTimerAsynchronously(
-			plugin,
-			Runnable {
-				checkForExternalChanges()
-				autosaveCurrentSession()
-			},
-			20 * 30,
-			20 * 120,
-		) // 30s initial delay, 2min interval
-	}
+    init {
+        // Start autosave task (every 2 minutes)
+        plugin.server.scheduler.runTaskTimerAsynchronously(
+            plugin,
+            Runnable {
+                checkForExternalChanges()
+                autosaveCurrentSession()
+            },
+            20 * 30,
+            20 * 120,
+        ) // 30s initial delay, 2min interval
+    }
 
-	fun load() {
-		checkForExternalChanges()
-		autosaveCurrentSession()
-	}
+    fun load() {
+        checkForExternalChanges()
+        autosaveCurrentSession()
+    }
 
-	/** Start a new session if none is active. */
-	fun startSession() {
-		if (current.get() != null) return
+    /** Start a new session if none is active. */
+    fun startSession() {
+        if (current.get() != null) return
 
-		val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
-		val session = Session(plugin.timeService.getCurrentGameTime())
-		current.set(session)
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
+        val session = Session(plugin.timeService.getCurrentGameTime())
+        current.set(session)
 
-		// Create initial session file
-		currentSessionFile = File(sessionFolder, "session-$timestamp.yml")
-		saveSessionToFile(session, currentSessionFile!!)
+        // Create initial session file
+        currentSessionFile = File(sessionFolder, "session-$timestamp.yml")
+        saveSessionToFile(session, currentSessionFile!!)
 
-		plugin.logger.info("Started new session: ${currentSessionFile!!.name}")
-	}
+        // Let's add all currently online players to the session by default
+        plugin.server.onlinePlayers.forEach { player ->
+            session.players.add(player.name)
+        }
+        // Save changes immediately
+        autosaveCurrentSession()
 
-	/** Add a player name to the active session. */
-	fun addPlayer(name: String) {
-		current.get()?.players?.add(name)
-		// Save changes immediately
-		autosaveCurrentSession()
-	}
+        plugin.logger.info("Started new session: ${currentSessionFile!!.name}")
+    }
 
-	/**
-	 * Generate an AI response based on the input text enriched with relevant context,
-	 * then append the response to the session history.
-	 */
-	fun feed(text: String) {
-		val session = current.get() ?: return
+    /** Add a player name to the active session. */
+    fun addPlayer(name: String) {
+        current.get()?.players?.add(name)
+        // Save changes immediately
+        autosaveCurrentSession()
+    }
 
-		// Gather context from lore, NPCs, and locations
-		val contextBuilder = StringBuilder()
+    /**
+     * Generate an AI response based on the input text enriched with relevant context,
+     * then append the response to the session history.
+     */
+    fun feed(text: String) {
+        val session = current.get() ?: return
 
-		// Find relevant lore
-		val loreContexts = plugin.lorebookManager.findLoresByKeywords(text)
-		if (loreContexts.isNotEmpty()) {
-			contextBuilder.append("RELEVANT LORE:\n")
-			loreContexts.take(3).forEach { lore ->
-				contextBuilder.append("- ${lore.loreName}: ${lore.context}\n")
-			}
-			contextBuilder.append("\n")
-		}
+        // Gather context from lore, NPCs, and locations
+        val contextBuilder = StringBuilder()
 
-		// Extract keywords for location and NPC matching
-		val keywords = text.split(" ")
-			.filter { it.length > 3 }
-			.map { it.lowercase().trim(',', '.', '?', '!', '\'', '"') }
-			.distinct()
+        // Find relevant lore
+        val loreContexts = plugin.lorebookManager.findLoresByKeywords(text)
+        if (loreContexts.isNotEmpty()) {
+            contextBuilder.append("RELEVANT LORE:\n")
+            loreContexts.take(3).forEach { lore ->
+                contextBuilder.append("- ${lore.loreName}: ${lore.context}\n")
+            }
+            contextBuilder.append("\n")
+        }
 
-		// Check for location references
-		val mentionedLocations = plugin.locationManager.getAllLocations().filter { location ->
-			text.contains(location.name, ignoreCase = true) ||
-				keywords.any { keyword -> location.name.contains(keyword, ignoreCase = true) }
-		}
+        // Extract keywords for location and NPC matching
+        val keywords =
+            text
+                .split(" ")
+                .filter { it.length > 3 }
+                .map { it.lowercase().trim(',', '.', '?', '!', '\'', '"') }
+                .distinct()
 
-		if (mentionedLocations.isNotEmpty()) {
-			contextBuilder.append("RELEVANT LOCATIONS:\n")
-			mentionedLocations.take(3).forEach { location ->
-				contextBuilder.append("- ${location.name}: ${location.context.joinToString(". ")}\n")
-			}
-			contextBuilder.append("\n")
-		}
+        // Determine which player is mentioned in the text and get their current location
+        var currentPlayerLocation: String? = null
+        for (playerName in session.players) {
+            val player = plugin.server.getPlayer(playerName)
+            if (player != null) {
+                // Check if this player is mentioned in the text
+                val nickname =
+                    com.canefe.story.util.EssentialsUtils
+                        .getNickname(player.name)
+                if (text.contains(player.name, ignoreCase = true) ||
+                    text.contains(nickname, ignoreCase = true) ||
+                    keywords.any { keyword ->
+                        keyword.equals(player.name, ignoreCase = true) ||
+                            keyword.equals(nickname, ignoreCase = true)
+                    }
+                ) {
+                    // Get the player's current location
+                    val actualLocation = plugin.locationManager.getLocationByPosition(player.location, 150.0)
+                    if (actualLocation != null) {
+                        currentPlayerLocation = "${player.name} is currently at ${actualLocation.name}.\n" +
+                            "Location context: ${actualLocation.getContextForPrompt(plugin.locationManager)}\n"
+                        break // Use the first mentioned player found
+                    }
+                }
+            }
+        }
 
-		// Check for NPC references
-		val mentionedNPCs = plugin.npcDataManager.getAllNPCNames().filter { npcName ->
-			text.contains(npcName, ignoreCase = true) ||
-				keywords.any { keyword ->
-					keyword.equals(npcName, ignoreCase = true) || npcName.contains(keyword, ignoreCase = true)
-				}
-		}
+        // If no specific player was mentioned, use the first online player from the session
+        if (currentPlayerLocation == null) {
+            for (playerName in session.players) {
+                val player = plugin.server.getPlayer(playerName)
+                if (player != null) {
+                    val actualLocation = plugin.locationManager.getLocationByPosition(player.location, 150.0)
+                    if (actualLocation != null) {
+                        currentPlayerLocation = "Current scene location: ${actualLocation.name}.\n" +
+                            "Location context: ${actualLocation.getContextForPrompt(plugin.locationManager)}\n"
+                        break
+                    }
+                }
+            }
+        }
 
-		if (mentionedNPCs.isNotEmpty()) {
-			contextBuilder.append("RELEVANT NPCS:\n")
-			mentionedNPCs.take(3).forEach { npcName ->
-				val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
-				val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 3)
-				if (npcContext != null) {
-					contextBuilder.append("- $npcName: ${npcContext.context}\n")
-					if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-						contextBuilder.append("  Recent memories: $lastFewMemories\n")
-					}
-				}
-			}
-			contextBuilder.append("\n")
-		}
+        // Add current location context if found
+        if (currentPlayerLocation != null) {
+            contextBuilder.append("CURRENT LOCATION:\n")
+            contextBuilder.append(currentPlayerLocation)
+            contextBuilder.append("\n")
+        }
 
-		// Current context
-		if (session.history.isNotEmpty()) {
-			contextBuilder.append("CURRENT SESSION HISTORY:\n")
-			contextBuilder.append(session.history.toString())
-			contextBuilder.append("\n")
-		}
-		// Create AI messages
-		val messages = mutableListOf(
-			ConversationMessage(
-				"system",
-				"""
+        // Check for location references
+        val mentionedLocations =
+            plugin.locationManager.getAllLocations().filter { location ->
+                text.contains(location.name, ignoreCase = true) ||
+                    keywords.any { keyword -> location.name.contains(keyword, ignoreCase = true) }
+            }
+
+        if (mentionedLocations.isNotEmpty()) {
+            contextBuilder.append("RELEVANT LOCATIONS:\n")
+            mentionedLocations.take(3).forEach { location ->
+                contextBuilder.append("- ${location.name}: ${location.context.joinToString(". ")}\n")
+            }
+            contextBuilder.append("\n")
+        }
+
+        // Check for NPC references
+        val mentionedNPCs =
+            plugin.npcDataManager.getAllNPCNames().filter { npcName ->
+                text.contains(npcName, ignoreCase = true) ||
+                    keywords.any { keyword ->
+                        keyword.equals(npcName, ignoreCase = true) || npcName.contains(keyword, ignoreCase = true)
+                    }
+            }
+
+        if (mentionedNPCs.isNotEmpty()) {
+            contextBuilder.append("RELEVANT NPCS:\n")
+            mentionedNPCs.take(3).forEach { npcName ->
+                val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+                val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 3)
+                if (npcContext != null) {
+                    contextBuilder.append("- $npcName: ${npcContext.context}\n")
+                    if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
+                        contextBuilder.append("  Recent memories: $lastFewMemories\n")
+                    }
+                }
+            }
+            contextBuilder.append("\n")
+        }
+
+        // Current context
+        if (session.history.isNotEmpty()) {
+            contextBuilder.append("CURRENT SESSION HISTORY:\n")
+            contextBuilder.append(session.history.toString())
+            contextBuilder.append("\n")
+        }
+        // Create AI messages
+        val messages =
+            mutableListOf(
+                ConversationMessage(
+                    "system",
+                    """
             You are a narrative storyteller in a medieval fantasy world. Convert the given input
             into a rich narrative description, incorporating any context about locations, NPCs,
             and lore provided below.
@@ -144,154 +207,160 @@ class SessionManager private constructor(private val plugin: Story) {
 
             $contextBuilder
             """,
-			),
-			ConversationMessage("user", text),
-		)
+                ),
+                ConversationMessage("user", text),
+            )
 
-		// Get AI response
-		plugin.getAIResponse(messages).thenAccept { aiResponse ->
-			if (aiResponse != null) {
-				plugin.askForPermission(
-					"<yellow>Following narrative response will be added to session" +
-						" history. Do you want to proceed?</yellow> \n\n $aiResponse",
-					onAccept = {
-						// Append AI response to session history
-						session.history.append(aiResponse)
-						var message = aiResponse
-						// use regex to wrap Quotes in <yellow> tags
-						message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
-						val formatted = plugin.npcMessageService.formatMessage(
-							message = message,
-							name = "",
-							formatColor = "<color:#e67e22>",
-							formatColorSuffix = "</color:#e67e22>",
-						)
-						if (plugin.config.broadcastSessionEntries) {
-							session.players.forEach { player ->
-								val ply = plugin.server.getPlayer(player)
-								for (messagePart in formatted) {
-									ply?.sendMessage(messagePart)
-								}
-							}
-						}
-						session.history.append("\n\n")
-						autosaveCurrentSession()
-					},
-					onRefuse = {
-						plugin.logger.info("Narrative response was not added to session history. Rejected.")
-					},
-				)
-			} else {
-				plugin.logger.warning("[ERROR] Failed to generate narrative response")
-			}
-		}.exceptionally { e ->
-			plugin.logger.warning("[ERROR] Failed to process narrative: ${e.message}")
-			null
-		}
-	}
+        // Get AI response
+        plugin
+            .getAIResponse(messages)
+            .thenAccept { aiResponse ->
+                if (aiResponse != null) {
+                    plugin.askForPermission(
+                        "<yellow>Following narrative response will be added to session" +
+                            " history. Do you want to proceed?</yellow> \n\n $aiResponse",
+                        onAccept = {
+                            // Append AI response to session history
+                            session.history.append(aiResponse)
+                            var message = aiResponse
+                            // use regex to wrap Quotes in <yellow> tags
+                            message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
+                            val formatted =
+                                plugin.npcMessageService.formatMessage(
+                                    message = message,
+                                    name = "",
+                                    formatColor = "<color:#e67e22>",
+                                    formatColorSuffix = "</color:#e67e22>",
+                                )
+                            if (plugin.config.broadcastSessionEntries) {
+                                session.players.forEach { player ->
+                                    val ply = plugin.server.getPlayer(player)
+                                    for (messagePart in formatted) {
+                                        ply?.sendMessage(messagePart)
+                                    }
+                                }
+                            }
+                            session.history.append("\n\n")
+                            autosaveCurrentSession()
+                        },
+                        onRefuse = {
+                            plugin.logger.info("Narrative response was not added to session history. Rejected.")
+                        },
+                    )
+                } else {
+                    plugin.logger.warning("[ERROR] Failed to generate narrative response")
+                }
+            }.exceptionally { e ->
+                plugin.logger.warning("[ERROR] Failed to process narrative: ${e.message}")
+                null
+            }
+    }
 
-	/** End the active session and persist it to disk. */
-	fun endSession() {
-		val session = current.getAndSet(null) ?: return
-		session.endTime = plugin.timeService.getCurrentGameTime()
+    /** End the active session and persist it to disk. */
+    fun endSession() {
+        val session = current.getAndSet(null) ?: return
+        session.endTime = plugin.timeService.getCurrentGameTime()
 
-		// Save the final state using the existing file
-		if (currentSessionFile != null) {
-			saveSessionToFile(session, currentSessionFile!!)
-			plugin.logger.info("Session ended and saved to: ${currentSessionFile!!.name}")
-		} else {
-			saveSession(session)
-		}
+        // Save the final state using the existing file
+        if (currentSessionFile != null) {
+            saveSessionToFile(session, currentSessionFile!!)
+            plugin.logger.info("Session ended and saved to: ${currentSessionFile!!.name}")
+        } else {
+            saveSession(session)
+        }
 
-		currentSessionFile = null
-	}
+        currentSessionFile = null
+    }
 
-	// Save current session without ending it
-	private fun autosaveCurrentSession() {
-		val session = current.get() ?: return
-		val file = currentSessionFile ?: return
+    // Save current session without ending it
+    private fun autosaveCurrentSession() {
+        val session = current.get() ?: return
+        val file = currentSessionFile ?: return
 
-		// Only save if there were actual changes since last save
-		if (System.currentTimeMillis() - lastSaveTime > 5000) { // Minimum 5s between saves
-			saveSessionToFile(session, file)
-			lastSaveTime = System.currentTimeMillis()
-			plugin.logger.info("Auto-saved active session to: ${file.name}")
-		}
-	}
+        // Only save if there were actual changes since last save
+        if (System.currentTimeMillis() - lastSaveTime > 5000) { // Minimum 5s between saves
+            saveSessionToFile(session, file)
+            lastSaveTime = System.currentTimeMillis()
+            plugin.logger.info("Auto-saved active session to: ${file.name}")
+        }
+    }
 
-	// Check if the session file was modified externally and load changes
-	private fun checkForExternalChanges() {
-		val file = currentSessionFile ?: return
-		if (!file.exists()) return
+    // Check if the session file was modified externally and load changes
+    private fun checkForExternalChanges() {
+        val file = currentSessionFile ?: return
+        if (!file.exists()) return
 
-		val modTime = file.lastModified()
-		if (modTime > lastFileModTime && modTime > lastSaveTime + 2000) {
-			// File was modified externally (allow 2s buffer to avoid detecting our own saves)
-			plugin.logger.info("Detected external changes to session file - reloading...")
-			loadSessionFromFile(file)
-		}
-	}
+        val modTime = file.lastModified()
+        if (modTime > lastFileModTime && modTime > lastSaveTime + 2000) {
+            // File was modified externally (allow 2s buffer to avoid detecting our own saves)
+            plugin.logger.info("Detected external changes to session file - reloading...")
+            loadSessionFromFile(file)
+        }
+    }
 
-	// Load session from file after external changes
-	private fun loadSessionFromFile(file: File) {
-		try {
-			val config = YamlConfiguration.loadConfiguration(file)
-			val session = current.get() ?: return
+    // Load session from file after external changes
+    private fun loadSessionFromFile(file: File) {
+        try {
+            val config = YamlConfiguration.loadConfiguration(file)
+            val session = current.get() ?: return
 
-			// Update player list
-			val playerList = config.getStringList("players")
-			session.players.clear()
-			session.players.addAll(playerList)
+            // Update player list
+            val playerList = config.getStringList("players")
+            session.players.clear()
+            session.players.addAll(playerList)
 
-			// Update history if changed externally
-			val fileHistory = config.getString("history") ?: ""
-			if (fileHistory != session.history.toString()) {
-				session.history.clear()
-				session.history.append(fileHistory)
-			}
+            // Update history if changed externally
+            val fileHistory = config.getString("history") ?: ""
+            if (fileHistory != session.history.toString()) {
+                session.history.clear()
+                session.history.append(fileHistory)
+            }
 
-			lastFileModTime = file.lastModified()
-			plugin.logger.info("Session updated from modified file")
-		} catch (e: Exception) {
-			plugin.logger.warning("Failed to load session from file: ${e.message}")
-		}
-	}
+            lastFileModTime = file.lastModified()
+            plugin.logger.info("Session updated from modified file")
+        } catch (e: Exception) {
+            plugin.logger.warning("Failed to load session from file: ${e.message}")
+        }
+    }
 
-	private fun saveSessionToFile(session: Session, file: File) {
-		val config = YamlConfiguration()
-		config.set("startTime", session.startTime)
-		session.endTime?.let { config.set("endTime", it) }
-		config.set("players", session.players.toList())
-		config.set("history", session.history.toString())
-		config.set("active", session.endTime == null) // Flag to identify active sessions
-		config.save(file)
-		lastFileModTime = file.lastModified()
-	}
+    private fun saveSessionToFile(
+        session: Session,
+        file: File,
+    ) {
+        val config = YamlConfiguration()
+        config.set("startTime", session.startTime)
+        session.endTime?.let { config.set("endTime", it) }
+        config.set("players", session.players.toList())
+        config.set("history", session.history.toString())
+        config.set("active", session.endTime == null) // Flag to identify active sessions
+        config.save(file)
+        lastFileModTime = file.lastModified()
+    }
 
-	private fun saveSession(session: Session) {
-		val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
-		val file = File(sessionFolder, "session-$timestamp.yml")
-		saveSessionToFile(session, file)
-	}
+    private fun saveSession(session: Session) {
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
+        val file = File(sessionFolder, "session-$timestamp.yml")
+        saveSessionToFile(session, file)
+    }
 
-	/** Persist and clear the current session. */
-	fun shutdown() {
-		current.getAndSet(null)?.let { session ->
-			session.endTime = plugin.timeService.getCurrentGameTime()
-			if (currentSessionFile != null) {
-				saveSessionToFile(session, currentSessionFile!!)
-			} else {
-				saveSession(session)
-			}
-		}
-		currentSessionFile = null
-	}
+    /** Persist and clear the current session. */
+    fun shutdown() {
+        current.getAndSet(null)?.let { session ->
+            session.endTime = plugin.timeService.getCurrentGameTime()
+            if (currentSessionFile != null) {
+                saveSessionToFile(session, currentSessionFile!!)
+            } else {
+                saveSession(session)
+            }
+        }
+        currentSessionFile = null
+    }
 
-	companion object {
-		private var instance: SessionManager? = null
+    companion object {
+        private var instance: SessionManager? = null
 
-		@JvmStatic
-		fun getInstance(plugin: Story): SessionManager =
-			instance ?: synchronized(this) { instance ?: SessionManager(plugin).also { instance = it } }
-	}
+        @JvmStatic
+        fun getInstance(plugin: Story): SessionManager =
+            instance ?: synchronized(this) { instance ?: SessionManager(plugin).also { instance = it } }
+    }
 }

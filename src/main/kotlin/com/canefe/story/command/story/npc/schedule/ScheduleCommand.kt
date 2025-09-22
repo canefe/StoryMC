@@ -13,227 +13,231 @@ import dev.jorel.commandapi.executors.PlayerCommandExecutor
 import java.io.File
 
 class ScheduleCommand(
-	private val commandUtils: ScheduleCommandUtils,
+    private val commandUtils: ScheduleCommandUtils,
 ) {
-	fun getCommand(): CommandAPICommand =
-		CommandAPICommand("schedule")
-			.withPermission("story.location")
-			.withSubcommand(getCreateScheduleCommand())
-			.withSubcommand(getSetScheduleCommand())
-			.withSubcommand(getEnableDisableCommands()[0]) // Add disable command
-			.withSubcommand(getEnableDisableCommands()[1]) // Add enable command
+    fun getCommand(): CommandAPICommand =
+        CommandAPICommand("schedule")
+            .withPermission("story.location")
+            .withSubcommand(getCreateScheduleCommand())
+            .withSubcommand(getSetScheduleCommand())
+            .withSubcommand(getEnableDisableCommands()[0]) // Add disable command
+            .withSubcommand(getEnableDisableCommands()[1]) // Add enable command
 
-	private fun getCreateScheduleCommand(): CommandAPICommand {
-		return CommandAPICommand("create")
-			.withArguments(GreedyStringArgument("npc_name"))
-			.executes(
-				CommandExecutor { sender, args ->
-					val npcName = args.get("npc_name") as String
+    private fun getCreateScheduleCommand(): CommandAPICommand {
+        return CommandAPICommand("create")
+            .withArguments(GreedyStringArgument("npc_name"))
+            .executes(
+                CommandExecutor { sender, args ->
+                    val npcName = args.get("npc_name") as String
 
-					// Check if the schedule already exists
-					if (commandUtils.scheduleManager.loadSchedule(npcName) != null) {
-						sender.sendError("Schedule for '$npcName' already exists.")
-						return@CommandExecutor
-					}
+                    // Check if the schedule already exists
+                    if (commandUtils.scheduleManager.loadSchedule(npcName) != null) {
+                        sender.sendError("Schedule for '$npcName' already exists.")
+                        return@CommandExecutor
+                    }
 
-					// Create the schedule
-					val schedule = commandUtils.scheduleManager.getEmptyScheduleTemplate(npcName)
-					commandUtils.scheduleManager.saveSchedule(schedule)
-					sender.sendSuccess("Schedule for '$npcName' created successfully.")
-				},
-			)
-	}
+                    // Create the schedule
+                    val schedule = commandUtils.scheduleManager.getEmptyScheduleTemplate(npcName)
+                    commandUtils.scheduleManager.saveSchedule(schedule)
+                    sender.sendSuccess("Schedule for '$npcName' created successfully.")
+                },
+            )
+    }
 
-	private fun getSetScheduleCommand(): CommandAPICommand {
-		return CommandAPICommand("set")
-			.withArguments(
-				IntegerArgument("hour")
-					.replaceSuggestions { info, builder ->
-						val suggestions = (0..23).map { it.toString() }
-						suggestions.forEach {
-							builder.suggest(it)
-						}
-						builder.buildFuture()
-					},
-			).withArguments(
-				TextArgument("location_name").replaceSuggestions(
-					ArgumentSuggestions.strings { _ ->
+    private fun getSetScheduleCommand(): CommandAPICommand {
+        return CommandAPICommand("set")
+            .withArguments(
+                IntegerArgument("hour")
+                    .replaceSuggestions { info, builder ->
+                        val suggestions = (0..23).map { it.toString() }
+                        suggestions.forEach {
+                            builder.suggest(it)
+                        }
+                        builder.buildFuture()
+                    },
+            ).withArguments(
+                TextArgument("location_name").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
 
-						val locations = commandUtils.locationManager.getAllLocations()
-						val locationNames = ArrayList<String>()
-						locations.forEach { location ->
-							locationNames.add("\"${location.name}\"")
-						}
-						locationNames.toTypedArray()
-					},
-				),
-			).withArguments(
-				GreedyStringArgument("npc_name").replaceSuggestions { info, builder ->
-					val schedules = commandUtils.scheduleManager.schedules
-					val suggestions =
-						schedules.keys
-							.distinct()
-					suggestions.forEach {
-						builder.suggest(it)
-					}
-					builder.buildFuture()
-				},
-			).executesPlayer(
-				PlayerCommandExecutor { player, args ->
-					val npcName = args.get("npc_name") as String
-					val locationName = args.get("location_name") as String
-					val hour = args.get("hour") as Int
+                        val locations = commandUtils.locationManager.getAllLocations()
+                        val locationNames = ArrayList<String>()
+                        locations.forEach { location ->
+                            locationNames.add("\"${location.name}\"")
+                        }
+                        locationNames.toTypedArray()
+                    },
+                ),
+            ).withArguments(
+                GreedyStringArgument("npc_name").replaceSuggestions { info, builder ->
+                    val schedules = commandUtils.scheduleManager.schedules
+                    val suggestions =
+                        schedules.keys
+                            .distinct()
+                    suggestions.forEach {
+                        builder.suggest(it)
+                    }
+                    builder.buildFuture()
+                },
+            ).executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val npcName = args.get("npc_name") as String
+                    val locationName = args.get("location_name") as String
+                    val hour = args.get("hour") as Int
 
-					// Check if the schedule exists
-					val schedule = commandUtils.scheduleManager.loadSchedule(npcName)
-					if (schedule == null) {
-						player.sendError("Schedule for '$npcName' does not exist.")
-						return@PlayerCommandExecutor
-					}
+                    // Check if the schedule exists
+                    val schedule = commandUtils.scheduleManager.loadSchedule(npcName)
+                    if (schedule == null) {
+                        player.sendError("Schedule for '$npcName' does not exist.")
+                        return@PlayerCommandExecutor
+                    }
 
-					// Check if location exists
-					val location =
-						commandUtils.locationManager.getLocation(locationName) ?: run {
-							// create new one
-							commandUtils.locationManager.createLocation(locationName, player.location)
-						}
+                    // Check if location exists
+                    val location =
+                        commandUtils.locationManager.getLocation(locationName) ?: run {
+                            // create new one
+                            commandUtils.locationManager.createLocation(locationName, player.location)
+                        }
 
-					// Return if location is null
-					if (location == null) {
-						player.sendError("Location '$locationName' does not exist.")
-						return@PlayerCommandExecutor
-					}
+                    // Return if location is null
+                    if (location == null) {
+                        player.sendError("Location '$locationName' does not exist.")
+                        return@PlayerCommandExecutor
+                    }
 
-					schedule.entries
-						.firstOrNull { it.time == hour }
-						?.let {
-							it.locationName = location.name
-						} ?: run {
-						// Create a new entry if it doesn't exist
-						val newEntry = NPCScheduleManager.ScheduleEntry(hour, location.name, "idle", null)
-						schedule.addEntry(newEntry)
-					}
+                    schedule.entries
+                        .firstOrNull { it.time == hour }
+                        ?.let {
+                            it.locationName = location.name
+                        } ?: run {
+                        // Create a new entry if it doesn't exist
+                        val newEntry = NPCScheduleManager.ScheduleEntry(hour, location.name, "idle", null)
+                        schedule.addEntry(newEntry)
+                    }
 
-					// Set the schedule
-					commandUtils.scheduleManager.saveSchedule(schedule)
-					player.sendSuccess("Schedule for '$npcName' set successfully.")
-				},
-			)
-	}
+                    // Set the schedule
+                    commandUtils.scheduleManager.saveSchedule(schedule)
+                    player.sendSuccess("Schedule for '$npcName' set successfully.")
+                },
+            )
+    }
 
-	private fun getEnableDisableCommands(): List<CommandAPICommand> {
-		val disableCommand =
-			CommandAPICommand("disable")
-				.withArguments(
-					GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
-						val schedules = commandUtils.scheduleManager.schedules
-						val suggestions = schedules.keys.distinct()
-						suggestions.forEach {
-							builder.suggest(it)
-						}
-						builder.buildFuture()
-					},
-				).executes(
-					CommandExecutor { sender, args ->
-						val npcName = args.get("npc_name") as String
+    private fun getEnableDisableCommands(): List<CommandAPICommand> {
+        val disableCommand =
+            CommandAPICommand("disable")
+                .withArguments(
+                    GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
+                        val schedules = commandUtils.scheduleManager.schedules
+                        val suggestions = schedules.keys.distinct()
+                        suggestions.forEach {
+                            builder.suggest(it)
+                        }
+                        builder.buildFuture()
+                    },
+                ).executes(
+                    CommandExecutor { sender, args ->
+                        val npcName = args.get("npc_name") as String
 
-						// Check if the schedule exists
-						val schedule = commandUtils.scheduleManager.getSchedule(npcName.lowercase())
-						if (schedule == null) {
-							sender.sendError("Schedule for '$npcName' does not exist or is already disabled.")
-							return@CommandExecutor
-						}
+                        // Check if the schedule exists
+                        val schedule = commandUtils.scheduleManager.getSchedule(npcName.lowercase())
+                        if (schedule == null) {
+                            sender.sendError("Schedule for '$npcName' does not exist or is already disabled.")
+                            return@CommandExecutor
+                        }
 
-						// Create disabled directory if it doesn't exist
-						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
-						if (!disabledFolder.exists()) {
-							disabledFolder.mkdirs()
-						}
+                        // Create disabled directory if it doesn't exist
+                        val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+                        if (!disabledFolder.exists()) {
+                            disabledFolder.mkdirs()
+                        }
 
-						// Source and destination files
-						val sourceFile = File(commandUtils.story.dataFolder, "schedules/$npcName.yml")
-						val destFile = File(disabledFolder, "$npcName.yml")
+                        // Source and destination files
+                        val sourceFile = File(commandUtils.story.dataFolder, "schedules/$npcName.yml")
+                        val destFile = File(disabledFolder, "$npcName.yml")
 
-						// Move the file
-						if (sourceFile.exists()) {
-							try {
-								sourceFile.copyTo(destFile, overwrite = true)
-								sourceFile.delete()
+                        // Move the file
+                        if (sourceFile.exists()) {
+                            try {
+                                sourceFile.copyTo(destFile, overwrite = true)
+                                sourceFile.delete()
 
-								// Reload schedules
-								commandUtils.scheduleManager.reloadSchedules()
+                                // Reload schedules
+                                commandUtils.scheduleManager.reloadSchedules()
 
-								sender.sendSuccess("Schedule for '$npcName' has been disabled.")
-							} catch (e: Exception) {
-								sender.sendError("Failed to disable schedule: ${e.message}")
-								commandUtils.story.logger.warning("Failed to disable schedule for $npcName: ${e.message}")
-							}
-						} else {
-							sender.sendError("Schedule file for '$npcName' not found.")
-						}
-					},
-				)
+                                sender.sendSuccess("Schedule for '$npcName' has been disabled.")
+                            } catch (e: Exception) {
+                                sender.sendError("Failed to disable schedule: ${e.message}")
+                                commandUtils.story.logger.warning(
+                                    "Failed to disable schedule for $npcName: ${e.message}",
+                                )
+                            }
+                        } else {
+                            sender.sendError("Schedule file for '$npcName' not found.")
+                        }
+                    },
+                )
 
-		val enableCommand =
-			CommandAPICommand("enable")
-				.withArguments(
-					GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
-						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
-						if (!disabledFolder.exists()) return@replaceSuggestions builder.buildFuture()
+        val enableCommand =
+            CommandAPICommand("enable")
+                .withArguments(
+                    GreedyStringArgument("npc_name").replaceSuggestions { _, builder ->
+                        val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+                        if (!disabledFolder.exists()) return@replaceSuggestions builder.buildFuture()
 
-						val suggestions =
-							disabledFolder
-								.listFiles()
-								?.filter { it.name.endsWith(".yml") }
-								?.map { it.name.replace(".yml", "") }
-								?: emptyList()
+                        val suggestions =
+                            disabledFolder
+                                .listFiles()
+                                ?.filter { it.name.endsWith(".yml") }
+                                ?.map { it.name.replace(".yml", "") }
+                                ?: emptyList()
 
-						suggestions.forEach { builder.suggest(it) }
-						builder.buildFuture()
-					},
-				).executes(
-					CommandExecutor { sender, args ->
-						val npcName = args.get("npc_name") as String
+                        suggestions.forEach { builder.suggest(it) }
+                        builder.buildFuture()
+                    },
+                ).executes(
+                    CommandExecutor { sender, args ->
+                        val npcName = args.get("npc_name") as String
 
-						// Check if the schedule is already enabled
-						if (commandUtils.scheduleManager.getSchedule(npcName.lowercase()) != null) {
-							sender.sendError("Schedule for '$npcName' is already enabled.")
-							return@CommandExecutor
-						}
+                        // Check if the schedule is already enabled
+                        if (commandUtils.scheduleManager.getSchedule(npcName.lowercase()) != null) {
+                            sender.sendError("Schedule for '$npcName' is already enabled.")
+                            return@CommandExecutor
+                        }
 
-						// Disabled directory and schedules directory
-						val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
-						val schedulesFolder = File(commandUtils.story.dataFolder, "schedules")
+                        // Disabled directory and schedules directory
+                        val disabledFolder = File(commandUtils.story.dataFolder, "schedules-disabled")
+                        val schedulesFolder = File(commandUtils.story.dataFolder, "schedules")
 
-						if (!disabledFolder.exists()) {
-							sender.sendError("No disabled schedules found.")
-							return@CommandExecutor
-						}
+                        if (!disabledFolder.exists()) {
+                            sender.sendError("No disabled schedules found.")
+                            return@CommandExecutor
+                        }
 
-						// Source and destination files
-						val sourceFile = File(disabledFolder, "$npcName.yml")
-						val destFile = File(schedulesFolder, "$npcName.yml")
+                        // Source and destination files
+                        val sourceFile = File(disabledFolder, "$npcName.yml")
+                        val destFile = File(schedulesFolder, "$npcName.yml")
 
-						// Move the file
-						if (sourceFile.exists()) {
-							try {
-								sourceFile.copyTo(destFile, overwrite = true)
-								sourceFile.delete()
+                        // Move the file
+                        if (sourceFile.exists()) {
+                            try {
+                                sourceFile.copyTo(destFile, overwrite = true)
+                                sourceFile.delete()
 
-								// Reload schedules
-								commandUtils.scheduleManager.reloadSchedules()
+                                // Reload schedules
+                                commandUtils.scheduleManager.reloadSchedules()
 
-								sender.sendSuccess("Schedule for '$npcName' has been enabled.")
-							} catch (e: Exception) {
-								sender.sendError("Failed to enable schedule: ${e.message}")
-								commandUtils.story.logger.warning("Failed to enable schedule for $npcName: ${e.message}")
-							}
-						} else {
-							sender.sendError("Disabled schedule file for '$npcName' not found.")
-						}
-					},
-				)
+                                sender.sendSuccess("Schedule for '$npcName' has been enabled.")
+                            } catch (e: Exception) {
+                                sender.sendError("Failed to enable schedule: ${e.message}")
+                                commandUtils.story.logger.warning(
+                                    "Failed to enable schedule for $npcName: ${e.message}",
+                                )
+                            }
+                        } else {
+                            sender.sendError("Disabled schedule file for '$npcName' not found.")
+                        }
+                    },
+                )
 
-		return listOf(enableCommand, disableCommand)
-	}
+        return listOf(enableCommand, disableCommand)
+    }
 }

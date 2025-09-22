@@ -8,25 +8,25 @@ import org.bukkit.event.Event
 import org.bukkit.event.HandlerList
 
 class ConversationEndEvent(
-	val player: Player,
-	val npcs: List<NPC>,
-	val conversation: Conversation,
+    val player: Player,
+    val npcs: List<NPC>,
+    val conversation: Conversation,
 ) : Event(),
-	Cancellable {
-	private var cancelled = false
+    Cancellable {
+    private var cancelled = false
 
-	override fun isCancelled(): Boolean = cancelled
+    override fun isCancelled(): Boolean = cancelled
 
-	override fun setCancelled(cancel: Boolean) {
-		this.cancelled = cancel
-	}
+    override fun setCancelled(cancel: Boolean) {
+        this.cancelled = cancel
+    }
 
-	companion object {
-		private val HANDLERS = HandlerList()
+    companion object {
+        private val HANDLERS = HandlerList()
 
-		@JvmStatic
-		fun getHandlerList(): HandlerList = HANDLERS
-	}
+        @JvmStatic
+        fun getHandlerList(): HandlerList = HANDLERS
+    }
 
-	override fun getHandlers(): HandlerList = HANDLERS
+    override fun getHandlers(): HandlerList = HANDLERS
 }

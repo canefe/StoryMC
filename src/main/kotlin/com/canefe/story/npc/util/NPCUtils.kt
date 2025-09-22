@@ -3,86 +3,173 @@ package com.canefe.story.npc.util
 import com.canefe.story.Story
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
+import org.bukkit.Bukkit
+import org.bukkit.Location
+import org.bukkit.entity.Player
 import java.awt.Color
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 class NPCUtils // Private constructor to prevent instantiation
-	private constructor(private val plugin: Story) {
-		// Cache for NPCs
-		private val npcCache: MutableMap<String, NPC> = ConcurrentHashMap()
+    private constructor(
+        private val plugin: Story,
+    ) {
+        // Cache for NPCs
+        private val npcCache: MutableMap<String, NPC> = ConcurrentHashMap()
 
-		private object InstanceHolder {
-			// Single instance of the class
-			lateinit var instance: NPCUtils
-				private set
+        // Virtual thread executor for I/O-bound operations
+        private val virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()
 
-			fun initialize(plugin: Story) {
-				if (!::instance.isInitialized) {
-					instance = NPCUtils(plugin)
-				}
-			}
-		}
+        private object InstanceHolder {
+            // Single instance of the class
+            lateinit var instance: NPCUtils
+                private set
 
-		// Asynchronous method to get an NPC by name, with caching
-		fun getNPCByNameAsync(npcName: String): CompletableFuture<NPC?> {
-			return CompletableFuture.supplyAsync {
-				// Check cache first
-				if (npcCache.containsKey(npcName.lowercase(Locale.getDefault()))) {
-					return@supplyAsync npcCache[npcName.lowercase(Locale.getDefault())]
-				}
+            fun initialize(plugin: Story) {
+                if (!::instance.isInitialized) {
+                    instance = NPCUtils(plugin)
+                }
+            }
+        }
 
-				// Search NPC registry if not in cache
-				for (npc in CitizensAPI.getNPCRegistry()) {
-					if (npc.name.equals(npcName, ignoreCase = true)) {
-						npcCache[npcName.lowercase(Locale.getDefault())] = npc
-						return@supplyAsync npc
-					}
-				}
+        // Asynchronous method to get an NPC by name, with caching
+        fun getNPCByNameAsync(npcName: String): CompletableFuture<NPC?> {
+            return CompletableFuture.supplyAsync(
+                {
+                    // Check cache first
+                    if (npcCache.containsKey(npcName.lowercase(Locale.getDefault()))) {
+                        return@supplyAsync npcCache[npcName.lowercase(Locale.getDefault())]
+                    }
 
-				null // NPC not found
-			}
-		}
+                    // Search NPC registry if not in cache
+                    for (npc in CitizensAPI.getNPCRegistry()) {
+                        if (npc.name.equals(npcName, ignoreCase = true)) {
+                            npcCache[npcName.lowercase(Locale.getDefault())] = npc
+                            return@supplyAsync npc
+                        }
+                    }
 
-		// GetOrCreateContextForNPC
+                    null // NPC not found
+                },
+                virtualThreadExecutor,
+            )
+        }
 
-		fun getNPCUUID(npcName: String?): UUID? {
-			var foundNPC: NPC? = null
-			for (npc in CitizensAPI.getNPCRegistry()) {
-				if (npc.name.equals(npcName, ignoreCase = true)) {
-					foundNPC = npc
-					break
-				}
-			}
-			return foundNPC?.uniqueId
-		}
+        fun getNPCUUID(npcName: String?): UUID? {
+            var foundNPC: NPC? = null
+            for (npc in CitizensAPI.getNPCRegistry()) {
+                if (npc.name.equals(npcName, ignoreCase = true)) {
+                    foundNPC = npc
+                    break
+                }
+            }
+            return foundNPC?.uniqueId
+        }
 
-		fun randomColor(npcName: String): String {
-			val hash = abs(npcName.hashCode().toDouble()).toInt() // Ensure non-negative value
+        fun randomColor(npcName: String): String {
+            val hash = abs(npcName.hashCode().toDouble()).toInt() // Ensure non-negative value
 
-			// Convert hash into an HSL-based color for better distribution
-			val hue = (hash % 360) / 360.0f // Keep within 0-1 range
-			val saturation = 0.7f // 70% saturation (not too gray)
-			val brightness = 0.8f // 80% brightness (not too dark)
+            // Convert hash into an HSL-based color for better distribution
+            val hue = (hash % 360) / 360.0f // Keep within 0-1 range
+            val saturation = 0.7f // 70% saturation (not too gray)
+            val brightness = 0.8f // 80% brightness (not too dark)
 
-			val color: Color = Color.getHSBColor(hue, saturation, brightness)
+            val color: Color = Color.getHSBColor(hue, saturation, brightness)
 
-			// Convert to hex format
-			return java.lang.String.format("#%02X%02X%02X", color.red, color.green, color.blue)
-		}
+            // Convert to hex format
+            return java.lang.String.format("#%02X%02X%02X", color.red, color.green, color.blue)
+        }
 
-		// Optional: Clear the cache (e.g., on reload)
-		fun clearCache() {
-			npcCache.clear()
-		}
+        fun getNearbyPlayers(
+            player: Player,
+            radius: Double,
+            ignoreY: Boolean = false,
+        ): List<Player> {
+            val radiusSquared = radius * radius
+            val playerLoc = player.location
 
-		companion object {
-			// Static method to get the single instance
-			fun getInstance(plugin: Story): NPCUtils {
-				InstanceHolder.initialize(plugin)
-				return InstanceHolder.instance
-			}
-		}
-	}
+            return nearbyPlayersInLocation(playerLoc, ignoreY, radiusSquared)
+        }
+
+        fun getNearbyNPCs(
+            npc: NPC,
+            radius: Double,
+        ): List<NPC> {
+            if (!npc.isSpawned) return Collections.emptyList()
+
+            return CitizensAPI.getNPCRegistry().filter { otherNpc ->
+                otherNpc.isSpawned &&
+                    otherNpc != npc &&
+                    otherNpc.entity.location.world == npc.entity.location.world &&
+                    otherNpc.entity.location.distanceSquared(npc.entity.location) <= radius * radius
+            }
+        }
+
+        fun getNearbyPlayers(
+            npc: NPC,
+            radius: Double,
+            ignoreY: Boolean = false,
+        ): List<Player> {
+            if (!npc.isSpawned) return Collections.emptyList()
+
+            val radiusSquared = radius * radius
+            val npcLoc = npc.entity.location
+
+            return nearbyPlayersInLocation(npcLoc, ignoreY, radiusSquared)
+        }
+
+        private fun nearbyPlayersInLocation(
+            npcLoc: Location,
+            ignoreY: Boolean,
+            radiusSquared: Double,
+        ): List<Player> {
+            return Bukkit.getOnlinePlayers().filter { player ->
+                val loc = player.location
+                if (loc.world != npcLoc.world) return@filter false
+
+                if (ignoreY) {
+                    val dx = loc.x - npcLoc.x
+                    val dz = loc.z - npcLoc.z
+                    (dx * dx + dz * dz) <= radiusSquared
+                } else {
+                    loc.distanceSquared(npcLoc) <= radiusSquared
+                }
+            }
+        }
+
+        fun getNearbyPlayers(
+            location: Location,
+            radius: Double,
+            ignoreY: Boolean = false,
+        ): List<Player> {
+            val radiusSquared = radius * radius
+
+            return nearbyPlayersInLocation(location, ignoreY, radiusSquared)
+        }
+
+        fun getNearbyNPCs(
+            player: Player,
+            radius: Double,
+        ): List<NPC> =
+            CitizensAPI.getNPCRegistry().filter { npc ->
+                npc.isSpawned &&
+                    npc.entity.location.world == player.location.world &&
+                    npc.entity.location.distanceSquared(player.location) <= radius * radius
+            }
+
+        // Optional: Clear the cache (e.g., on reload)
+        fun clearCache() {
+            npcCache.clear()
+        }
+
+        companion object {
+            // Static method to get the single instance
+            fun getInstance(plugin: Story): NPCUtils {
+                InstanceHolder.initialize(plugin)
+                return InstanceHolder.instance
+            }
+        }
+    }

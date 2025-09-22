@@ -1,0 +1,155 @@
+# quest_reference.yml - Reference data for quest generation
+
+collectibleItems:
+  # Basic Materials
+  - STONE
+  - DIRT
+  - GRASS_BLOCK
+  - COBBLESTONE
+  - OAK_LOG
+  - SPRUCE_LOG
+  - BIRCH_LOG
+  - JUNGLE_LOG
+  - ACACIA_LOG
+  - DARK_OAK_LOG
+  - SAND
+  - GRAVEL
+
+  # Ores and Minerals
+  - COAL
+  - IRON_ORE
+  - GOLD_ORE
+  - DIAMOND
+  - EMERALD
+  - LAPIS_LAZULI
+  - REDSTONE
+  - QUARTZ
+  - NETHERITE_SCRAP
+  - ANCIENT_DEBRIS
+
+  # Mob Drops
+  - BONE
+  - ROTTEN_FLESH
+  - STRING
+  - SPIDER_EYE
+  - GUNPOWDER
+  - SLIME_BALL
+  - ENDER_PEARL
+  - BLAZE_ROD
+  - GHAST_TEAR
+  - MAGMA_CREAM
+  - PHANTOM_MEMBRANE
+
+  # Plants and Foods
+  - WHEAT
+  - CARROT
+  - POTATO
+  - BEETROOT
+  - PUMPKIN
+  - MELON_SLICE
+  - APPLE
+  - SWEET_BERRIES
+  - GLOW_BERRIES
+  - SUGAR_CANE
+  - COCOA_BEANS
+
+  # Rare Items
+  - DRAGON_EGG
+  - NETHER_STAR
+  - ELYTRA
+  - HEART_OF_THE_SEA
+  - NAUTILUS_SHELL
+  - TOTEM_OF_UNDYING
+  - ENCHANTED_GOLDEN_APPLE
+
+  # Crafting Materials
+  - LEATHER
+  - FEATHER
+  - PAPER
+  - BOOK
+  - GLASS
+  - BRICK
+  - NETHER_BRICK
+  - CLAY_BALL
+  - GLOWSTONE_DUST
+  - PRISMARINE_SHARD
+  - PRISMARINE_CRYSTALS
+
+killableEntities:
+  # Hostile Mobs
+  - ZOMBIE
+  - SKELETON
+  - CREEPER
+  - SPIDER
+  - ENDERMAN
+  - WITCH
+  - SLIME
+  - MAGMA_CUBE
+  - BLAZE
+  - GHAST
+  - PHANTOM
+  - DROWNED
+  - HUSK
+  - STRAY
+  - WITHER_SKELETON
+  - PILLAGER
+  - VINDICATOR
+  - EVOKER
+  - RAVAGER
+
+  # Passive Mobs
+  - SHEEP
+  - COW
+  - PIG
+  - CHICKEN
+  - RABBIT
+  - FOX
+  - WOLF
+  - HORSE
+  - DONKEY
+  - LLAMA
+  - GOAT
+  - AXOLOTL
+
+  # Neutral Mobs
+  - ZOMBIE_PIGMAN
+  - ENDERMAN
+  - BEE
+  - DOLPHIN
+  - PANDA
+  - POLAR_BEAR
+
+  # Boss Mobs
+  - ENDER_DRAGON
+  - WITHER
+  - ELDER_GUARDIAN
+
+# Default locations that can be used for EXPLORE objectives
+# StoryLocations are loaded dynamically, so this list can be empty
+locations: []
+
+# NPC names that can be used for TALK objectives
+# These are only for additional flavor, as Story NPCs are generated dynamically
+npcs: []
+
+# Items that can be crafted for CRAFT objectives
+craftableItems:
+  - CRAFTING_TABLE
+  - FURNACE
+  - CHEST
+  - IRON_PICKAXE
+  - IRON_SWORD
+  - IRON_AXE
+  - BOW
+  - SHIELD
+  - FISHING_ROD
+  - TORCH
+  - LANTERN
+  - BREWING_STAND
+  - ENCHANTING_TABLE
+  - BOOKSHELF
+  - BOAT
+  - MINECART
+  - BEACON
+  - ARMOR_STAND
+  - CAMPFIRE

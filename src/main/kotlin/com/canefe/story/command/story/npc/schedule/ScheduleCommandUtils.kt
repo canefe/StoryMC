@@ -6,8 +6,8 @@ import com.canefe.story.npc.NPCScheduleManager
 import net.kyori.adventure.text.minimessage.MiniMessage
 
 class ScheduleCommandUtils {
-	val story: Story = Story.instance
-	val mm: MiniMessage = story.miniMessage
-	val scheduleManager: NPCScheduleManager = story.scheduleManager
-	val locationManager: LocationManager = story.locationManager
+    val story: Story = Story.instance
+    val mm: MiniMessage = story.miniMessage
+    val scheduleManager: NPCScheduleManager = story.scheduleManager
+    val locationManager: LocationManager = story.locationManager
 }
