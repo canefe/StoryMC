@@ -1,6 +1,7 @@
 package com.canefe.story.event
 
 import com.canefe.story.Story
+import org.bukkit.Bukkit
 import org.bukkit.event.Listener
 
 class EventManager private constructor(
@@ -10,9 +11,27 @@ class EventManager private constructor(
 
     fun registerEvents() {
         // Create and register all listeners
-        registerListener(NPCInteractionListener(plugin))
-        registerListener(PlayerEventListener(plugin))
-        registerListener(HealthBarListener())
+        if (Bukkit.getPluginManager().isPluginEnabled("Citizens")) {
+            registerListener(NPCInteractionListener(plugin))
+            plugin.logger.info("Citizens detected, NPCInteractionListener registered")
+        } else {
+            plugin.logger.info("Citizens not detected, skipping NPCInteractionListener registration")
+        }
+
+        if (Bukkit.getPluginManager().isPluginEnabled("ReviveMe")) {
+            registerListener(PlayerEventListener(plugin))
+            plugin.logger.info("ReviveMe detected, PlayerDownedListener registered")
+        } else {
+            plugin.logger.info("ReviveMe not detected, skipping PlayerDownedListener registration")
+        }
+
+        if (Bukkit.getPluginManager().isPluginEnabled("BetterHealthBar")) {
+            registerListener(HealthBarListener())
+            HealthBarListener().onEnable()
+            plugin.logger.info("HealthBar detected, HealthBarListener registered")
+        } else {
+            plugin.logger.info("HealthBar not detected, skipping HealthBarListener registration")
+        }
 
         plugin.logger.info("Registered ${listeners.size} event listeners")
     }

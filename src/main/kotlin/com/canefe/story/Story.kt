@@ -173,6 +173,7 @@ class Story :
         get() = configService
 
     override fun onLoad() {
+        CommandAPI.onLoad(CommandAPIBukkitConfig(this).silentLogs(true))
         commandManager = CommandManager(this)
         commandManager.onLoad()
         configService.reload()
@@ -187,6 +188,7 @@ class Story :
 
     override fun onEnable() {
         instance = this
+        CommandAPI.onEnable()
 
         // Plugin startup logic
         logger.info("Story has been enabled!")
@@ -210,28 +212,6 @@ class Story :
         // initializeWebUIServer()
         // Load configuration
         configService.reload()
-        PlaceholderContainer.STRING.addPlaceholder("disguise_name") { e ->
-            val bukkitEntity = e.entity.entity()
-
-            if (bukkitEntity !is Player) {
-                return@addPlaceholder bukkitEntity.name
-            }
-
-            if (DisguiseAPI.isDisguised(bukkitEntity)) {
-                var disguise = DisguiseAPI.getDisguise(bukkitEntity)
-
-                if (disguise.isPlayerDisguise) {
-                    disguise = disguise as PlayerDisguise
-                } else {
-                    val name = disguise.disguiseName
-                    return@addPlaceholder name
-                }
-
-                disguise.name ?: bukkitEntity.name
-            } else {
-                bukkitEntity.name
-            }
-        }
         PacketEvents.getAPI().init()
         StoryAPI.initialize(this)
     }

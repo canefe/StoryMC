@@ -13,7 +13,6 @@ import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPI
-import dev.jorel.commandapi.CommandAPIBukkitConfig
 import dev.jorel.commandapi.CommandAPICommand
 import dev.jorel.commandapi.arguments.*
 import dev.jorel.commandapi.executors.CommandArguments
@@ -28,9 +27,8 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.mcmonkey.sentinel.SentinelTrait
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CompletableFuture
-import kotlin.compareTo
 
 /**
  * Centralized command manager that registers and manages all plugin commands.
@@ -44,7 +42,6 @@ class CommandManager(
      * Called during plugin load to initialize CommandAPI
      */
     fun onLoad() {
-        CommandAPI.onLoad(CommandAPIBukkitConfig(plugin).silentLogs(true))
     }
 
     /**
@@ -59,13 +56,9 @@ class CommandManager(
      * Called during plugin disable to clean up commands
      */
     fun onDisable() {
-        CommandAPI.onDisable()
     }
 
     private fun registerCommandAPICommands() {
-        // Register CommandAPI
-        CommandAPI.onEnable()
-
         // Register structured commands
         ConvCommand(plugin).register()
         StoryCommand(plugin).register()
@@ -452,18 +445,22 @@ class CommandManager(
                                             )
                                             sender.sendInfo("Role: <yellow>${npcContext.role}</yellow>")
                                             sender.sendInfo(
-                                                "Context summary: <yellow>${if (context.length > 50) {
-                                                    context.substring(0, 50) + "..."
-                                                } else {
-                                                    context
-                                                }}</yellow>",
+                                                "Context summary: <yellow>${
+                                                    if (context.length > 50) {
+                                                        context.substring(0, 50) + "..."
+                                                    } else {
+                                                        context
+                                                    }
+                                                }</yellow>",
                                             )
                                             sender.sendInfo(
-                                                "Appearance: <yellow>${if (appearance.length > 50) {
-                                                    appearance.substring(0, 50) + "..."
-                                                } else {
-                                                    appearance
-                                                }}</yellow>",
+                                                "Appearance: <yellow>${
+                                                    if (appearance.length > 50) {
+                                                        appearance.substring(0, 50) + "..."
+                                                    } else {
+                                                        appearance
+                                                    }
+                                                }</yellow>",
                                             )
                                         } catch (e: Exception) {
                                             sender.sendError(
@@ -691,9 +688,11 @@ class CommandManager(
                     "====CURRENT CONVERSATION====\n" +
                         recentMessages.joinToString("\n") +
                         "\n=========================\n" +
-                        "This is an active conversation and you are talking to multiple characters: ${conversation.players?.joinToString(
-                            ", ",
-                        ) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }}. " +
+                        "This is an active conversation and you are talking to multiple characters: ${
+                            conversation.players?.joinToString(
+                                ", ",
+                            ) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }
+                        }. " +
                         conversation.npcNames.joinToString("\n") +
                         "\n===APPEARANCES===\n" +
                         conversation.npcs.joinToString("\n") { npc ->
