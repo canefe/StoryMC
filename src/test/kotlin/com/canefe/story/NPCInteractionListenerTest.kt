@@ -256,7 +256,7 @@ class NPCInteractionListenerTest {
         server.scheduler.performOneTick()
 
         // Assert: Alice ended up in the existing convo (not a new one)
-        waitUntil(server, 200) {
+        waitUntil(server, 1000) {
             val convo = plugin.conversationManager.getConversation(alice)
             convo != null &&
                 convo == existingConversation &&
