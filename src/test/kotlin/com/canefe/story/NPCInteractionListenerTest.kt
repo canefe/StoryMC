@@ -258,6 +258,9 @@ class NPCInteractionListenerTest {
         server.scheduler.performTicks(100)
 
         // Assert: Alice ended up in the existing convo (not a new one)
+        waitUntil(server, 200) {
+            plugin.conversationManager.getConversation(alice) != null
+        }
         Assertions.assertEquals(1, plugin.conversationManager.activeConversations.size)
 
         // Process scheduled sync task from onPlayerChat

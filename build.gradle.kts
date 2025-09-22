@@ -1,6 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.io.FileInputStream
 import java.util.*
 
 
@@ -9,6 +10,23 @@ val serverPluginsDir: String? =
 
 val prodServerPluginsDir: String? =
     System.getenv("PROD_SERVER_PLUGINS_DIR")
+
+// Load properties from local.properties file
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+
+// SSH deployment configuration - prefer environment variables over local.properties
+// This allows for secure, portable deployment configuration without hardcoded credentials
+val remoteUser: String? = System.getenv("REMOTE_USER") ?: localProperties.getProperty("REMOTE_USER")
+val remoteHost: String? = System.getenv("REMOTE_HOST") ?: localProperties.getProperty("REMOTE_HOST")
+val remotePath: String? = System.getenv("REMOTE_PATH") ?: localProperties.getProperty("REMOTE_PATH")
+
+// OpenRouter API key for testing
+val openRouterAPIKey: String? =
+    System.getenv("OPENROUTER_API_KEY") ?: localProperties.getProperty("OPENROUTER_API_KEY")
 
 plugins {
     kotlin("jvm") version "2.1.20"
@@ -141,14 +159,6 @@ tasks.withType<KotlinJvmCompile>().configureEach {
     }
 }
 
-val localProps =
-    Properties().apply {
-        val file = rootProject.file("local.properties")
-        if (file.exists()) {
-            file.inputStream().use { load(it) }
-        }
-    }
-
 tasks.test {
     doFirst {
         val toolkit = classpath.filter { it.name.contains("commandapi-bukkit-test-toolkit") }
@@ -183,7 +193,7 @@ tasks.test {
             .coerceAtLeast(1)
 
     // Inject API key into test environment
-    environment("OPENROUTER_API_KEY", localProps["OPENROUTER_API_KEY"] ?: "")
+    environment("OPENROUTER_API_KEY", openRouterAPIKey ?: "")
 
     finalizedBy(tasks.jacocoTestReport)
 }
@@ -279,14 +289,22 @@ tasks.register<Exec>("deployToSSH") {
         shadowJar.archiveFile
             .get()
             .asFile.absolutePath
-    val remoteUser = "ozgur"
-    val remoteHost = "192.168.1.34"
-    val remotePath = "~/minecraft/data/plugins/Story-0.2.0.jar"
 
-    commandLine("scp", localFile, "$remoteUser@$remoteHost:$remotePath")
+    // Use externalized configuration with validation
+    val user =
+        remoteUser
+            ?: throw GradleException("REMOTE_USER not set. Set it as environment variable or in local.properties")
+    val host =
+        remoteHost
+            ?: throw GradleException("REMOTE_HOST not set. Set it as environment variable or in local.properties")
+    val path =
+        remotePath
+            ?: throw GradleException("REMOTE_PATH not set. Set it as environment variable or in local.properties")
+
+    commandLine("scp", localFile, "$user@$host:$path")
 
     doLast {
-        println("✅ Deployed plugin JAR to $remoteUser@$remoteHost:$remotePath")
+        println("✅ Deployed plugin JAR to $user@$host:$path")
     }
 }
 
