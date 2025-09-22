@@ -4,7 +4,7 @@ on:
   push:
     branches: ["development"]         # run on every commit in dev
   pull_request:
-    branches: ["master"]      # run full suite on PRs to master
+    branches: ["master"]              # run full suite on PRs to master
 
 jobs:
   build:
@@ -12,6 +12,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download ReviveMe-API.jar
+        run: |
+          mkdir -p lib
+          curl -L \
+            -o lib/ReviveMe-API.jar \
+            https://github.com/FavioMc19/ReviveMe-API/releases/download/1.0.0/ReviveMe-API.jar
 
       - name: Set up JDK
         uses: actions/setup-java@v4
