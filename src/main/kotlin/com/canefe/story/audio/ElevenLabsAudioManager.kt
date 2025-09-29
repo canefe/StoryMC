@@ -49,13 +49,6 @@ class ElevenLabsAudioManager(
     // Virtual thread executor for I/O-bound operations
     private val virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()
 
-    // Cache for recently used voice IDs (last 5) to prevent deletion
-    private val recentlyUsedVoices = mutableListOf<String>()
-
-    // Cache for voice count to avoid unnecessary API calls
-    private var lastVoiceCount = 0
-    private var lastVoiceCountCheckTime = 0L
-
     // Base URL for ElevenLabs API
     private val baseUrl = "https://api.elevenlabs.io/v1/"
 
@@ -267,9 +260,6 @@ class ElevenLabsAudioManager(
     ): CompletableFuture<ByteArray?> {
         val future = CompletableFuture<ByteArray?>()
 
-        // Track this voice as recently used
-        trackRecentlyUsedVoice(voiceId)
-
         // Run the whole workflow asynchronously using virtual threads so we don't block the main
         // thread
         CompletableFuture.runAsync(
@@ -281,190 +271,7 @@ class ElevenLabsAudioManager(
                         return@runAsync
                     }
 
-                    // Check if we recently verified voice count and had plenty of room
-                    val currentTime = System.currentTimeMillis()
-                    val fiveMinutesAgo = currentTime - (5 * 60 * 1000) // 5 minutes
-
-                    if (lastVoiceCountCheckTime > fiveMinutesAgo && lastVoiceCount < 25) {
-                        plugin.logger.fine(
-                            "Skipping voice count check - recently verified $lastVoiceCount voices (< 25), plenty of room",
-                        )
-                        // Skip voice listing and proceed directly to TTS
-                    } else {
-                        // 1) List current voices using v2 endpoint
-                        val voicesRequest =
-                            Request
-                                .Builder()
-                                .url("https://api.elevenlabs.io/v2/voices?page_size=31")
-                                .get()
-                                .addHeader("xi-api-key", apiKey)
-                                .build()
-
-                        try {
-                            val voicesResponse = client.newCall(voicesRequest).execute()
-                            val voicesBody = voicesResponse.body?.string()
-                            voicesResponse.close()
-
-                            val voiceList = mutableListOf<String>()
-                            if (!voicesBody.isNullOrEmpty()) {
-                                try {
-                                    val root =
-                                        gson.fromJson(
-                                            voicesBody,
-                                            com.google.gson.JsonObject::class.java,
-                                        )
-                                    val array =
-                                        when {
-                                            root.has("voices") &&
-                                                root.get("voices").isJsonArray ->
-                                                root.getAsJsonArray("voices")
-
-                                            root.isJsonArray -> root.asJsonArray
-                                            else -> null
-                                        }
-
-                                    array?.forEach { elem ->
-                                        try {
-                                            val obj = elem.asJsonObject
-                                            val id =
-                                                when {
-                                                    obj.has("voice_id") ->
-                                                        obj.get("voice_id").asString
-
-                                                    obj.has("id") -> obj.get("id").asString
-                                                    else -> null
-                                                }
-                                            // Only add to list if voice has created_at_unix
-                                            // field
-                                            if (id != null && obj.has("created_at_unix")) {
-                                                voiceList.add(id)
-                                            }
-                                        } catch (_: Exception) {
-                                            // ignore malformed element
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    plugin.logger.warning(
-                                        "Failed to parse voices response: ${e.message}",
-                                    )
-                                }
-                            } else {
-                                plugin.logger.fine(
-                                    "Empty response when fetching voices or no voices present",
-                                )
-                            }
-
-                            // 2) If adding one would exceed 30, delete oldest/random voices via
-                            // v1
-                            // DELETE
-                            val currentCount = voiceList.size
-
-                            if (currentCount >= 30) {
-                                val toRemove =
-                                    currentCount -
-                                        24 // remove until we have <=24 so adding one
-                                // stays
-                                // under 30
-                                plugin.logger.info(
-                                    "ElevenLabs voices count = $currentCount, removing $toRemove to free space",
-                                )
-
-                                // Filter out recently used voices from deletion candidates
-                                val candidatesForDeletion =
-                                    synchronized(recentlyUsedVoices) {
-                                        voiceList.filter {
-                                            it !in recentlyUsedVoices
-                                        }
-                                    }.toMutableList()
-
-                                // Shuffle to pick random voices for deletion
-                                candidatesForDeletion.shuffle()
-
-                                plugin.logger.info(
-                                    "Voice cleanup: ${voiceList.size} total voices, ${recentlyUsedVoices.size} recently used (protected), " +
-                                        "${candidatesForDeletion.size} candidates for deletion",
-                                )
-
-                                // Take only the voices we need to delete
-                                val voicesToDelete = candidatesForDeletion.take(toRemove)
-
-                                // Create concurrent delete requests
-                                val deleteFutures =
-                                    voicesToDelete.map { voiceId ->
-                                        CompletableFuture.supplyAsync(
-                                            {
-                                                try {
-                                                    val deleteReq =
-                                                        Request
-                                                            .Builder()
-                                                            .url(
-                                                                "${baseUrl}voices/$voiceId",
-                                                            ).delete()
-                                                            .addHeader(
-                                                                "xi-api-key",
-                                                                apiKey,
-                                                            ).build()
-
-                                                    val deleteResp =
-                                                        client
-                                                            .newCall(deleteReq)
-                                                            .execute()
-                                                    val success =
-                                                        deleteResp.isSuccessful
-                                                    val respBody =
-                                                        deleteResp.body?.string()
-                                                    deleteResp.close()
-
-                                                    if (success) {
-                                                        plugin.logger.info(
-                                                            "Deleted voice $voiceId to free space",
-                                                        )
-                                                        Pair(voiceId, true)
-                                                    } else {
-                                                        plugin.logger.warning(
-                                                            "Failed to delete voice $voiceId: ${respBody ?: "no body"}",
-                                                        )
-                                                        Pair(voiceId, false)
-                                                    }
-                                                } catch (e: Exception) {
-                                                    plugin.logger.warning(
-                                                        "Error deleting voice $voiceId: ${e.message}",
-                                                    )
-                                                    Pair(voiceId, false)
-                                                }
-                                            },
-                                            virtualThreadExecutor,
-                                        )
-                                    }
-
-                                // Wait for all deletions to complete and count successes
-                                val results =
-                                    CompletableFuture
-                                        .allOf(*deleteFutures.toTypedArray())
-                                        .thenApply { deleteFutures.map { it.get() } }
-                                        .get()
-
-                                val removed = results.count { it.second }
-
-                                plugin.logger.info(
-                                    "Finished deletion pass, removed $removed voices",
-                                )
-
-                                // Update cache with final count after deletions
-                                lastVoiceCount = currentCount - removed
-                            } else {
-                                // No deletions needed, cache the current count
-                                lastVoiceCount = currentCount
-                            }
-
-                            // Update timestamp for when we last checked
-                            lastVoiceCountCheckTime = currentTime
-                        } catch (e: Exception) {
-                            plugin.logger.warning("Failed to list/delete voices: ${e.message}")
-                        }
-                    }
-
-                    // 3) Proceed with TTS request
+                    // Proceed with TTS request
                     val ttsBody =
                         JsonObject().apply {
                             addProperty("text", text)
@@ -477,7 +284,6 @@ class ElevenLabsAudioManager(
                                 },
                             )
                         }
-
                     val ttsRequest =
                         Request
                             .Builder()
@@ -657,20 +463,6 @@ class ElevenLabsAudioManager(
         val digest = MessageDigest.getInstance("MD5")
         val hashBytes = digest.digest(input.toByteArray())
         return hashBytes.joinToString("") { "%02x".format(it) }
-    }
-
-    /** Track a voice ID as recently used (keeps last 5) */
-    private fun trackRecentlyUsedVoice(voiceId: String) {
-        synchronized(recentlyUsedVoices) {
-            // Remove if already exists to move it to the front
-            recentlyUsedVoices.remove(voiceId)
-            // Add to the front
-            recentlyUsedVoices.add(0, voiceId)
-            // Keep only the last 5
-            while (recentlyUsedVoices.size > 5) {
-                recentlyUsedVoices.removeAt(recentlyUsedVoices.size - 1)
-            }
-        }
     }
 
     /** Voice data class for available voices */
