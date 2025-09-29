@@ -112,23 +112,27 @@ class ElevenLabsAudioManagerIntegrationTest {
         assertTrue(wavData.isNotEmpty(), "WAV data should not be empty")
 
         // Verify it's valid WAV data by trying to read it with AudioSystem
-        val audioInputStream = AudioSystem.getAudioInputStream(ByteArrayInputStream(wavData))
-        val audioFormat = audioInputStream.format
+        AudioSystem.getAudioInputStream(ByteArrayInputStream(wavData)).use { audioInputStream ->
+            val audioFormat = audioInputStream.format
 
-        // Verify WAV format properties
-        assertEquals(
-            AudioFormat.Encoding.PCM_SIGNED,
-            audioFormat.encoding,
-            "Should be PCM signed encoding",
-        )
-        assertEquals(44100f, audioFormat.sampleRate, 0.1f, "Should be 44.1kHz sample rate")
-        assertEquals(16, audioFormat.sampleSizeInBits, "Should be 16-bit")
-        assertTrue(audioFormat.channels in 1..2, "Should be mono or stereo")
-        assertFalse(audioFormat.isBigEndian, "Should be little endian")
+            // Verify WAV format properties
+            assertEquals(
+                AudioFormat.Encoding.PCM_SIGNED,
+                audioFormat.encoding,
+                "Should be PCM signed encoding",
+            )
+            assertEquals(
+                44100f,
+                audioFormat.sampleRate,
+                0.1f,
+                "Should be 44.1kHz sample rate",
+            )
+            assertEquals(16, audioFormat.sampleSizeInBits, "Should be 16-bit")
+            assertTrue(audioFormat.channels in 1..2, "Should be mono or stereo")
+            assertFalse(audioFormat.isBigEndian, "Should be little endian")
 
-        println("WAV format: $audioFormat")
-        println("WAV data size: ${wavData.size} bytes")
-
-        audioInputStream.close()
+            println("WAV format: $audioFormat")
+            println("WAV data size: ${wavData.size} bytes")
+        }
     }
 }

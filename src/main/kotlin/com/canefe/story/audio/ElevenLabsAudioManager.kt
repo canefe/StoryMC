@@ -358,6 +358,13 @@ class ElevenLabsAudioManager(
         }
     }
 
+    /**
+     * Converts MP3 audio data to WAV format using Java's AudioSystem.
+     * This method handles setting the context class loader to ensure the MP3 SPI is found.
+     *
+     * @param mp3Data The byte array containing the MP3 audio data.
+     * @return A byte array containing the converted WAV audio data, or null if conversion fails.
+     */
     private fun convertMp3ToWav(mp3Data: ByteArray): ByteArray? {
         val originalCl = Thread.currentThread().contextClassLoader
         Thread.currentThread().contextClassLoader = this::class.java.classLoader
