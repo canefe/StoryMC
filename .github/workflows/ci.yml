@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +47,13 @@ jobs:
       - name: Build and Test (full on PRs)
         if: github.event_name == 'pull_request'
         run: ./gradlew clean build
+
+      - name: Rename JAR with commit hash (dev builds only)
+        if: github.ref == 'refs/heads/development'
+        run: |
+          for f in build/libs/*.jar; do
+            mv "$f" "${f%.jar}-${GITHUB_SHA::7}.jar"
+          done
 
       - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
@@ -83,6 +92,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: plugin-jar
+          path: .
 
       - name: Update Dev Build Release
         uses: softprops/action-gh-release@v2
@@ -90,6 +100,6 @@ jobs:
           tag_name: devbuild
           name: Development Build
           prerelease: true
-          files: plugin-jar/*.jar
+          files: '*.jar'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
