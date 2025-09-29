@@ -113,7 +113,8 @@ jobs:
         id: get_version
         run: |
           JAR=$(ls ./*.jar | head -n 1)
-          VERSION=$(unzip -p "$JAR" plugin.yml | grep '^version:' | awk '{print $2}')
+          VERSION=$(unzip -p "$JAR" plugin.yml | grep '^version:' | awk '{print $2}' | tr -d "'")
+          VERSION=${VERSION/SNAPSHOT/devbuild}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Update Dev Build Release
