@@ -1,6 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.util.*
 
@@ -228,6 +229,19 @@ tasks.register("preCommit") {
     dependsOn("ktlintFormat", "compileKotlin")
 }
 
+// utility to grab the short commit hash
+fun gitCommitHash(): String =
+    try {
+        val stdout = ByteArrayOutputStream()
+        exec {
+            commandLine = listOf("git", "rev-parse", "--short=7", "HEAD")
+            standardOutput = stdout
+        }
+        stdout.toString().trim()
+    } catch (e: Exception) {
+        "unknown"
+    }
+
 tasks.withType<ShadowJar> {
     mergeServiceFiles {
         include("META-INF/services/javax.sound.sampled.spi.AudioFileReader")
@@ -235,7 +249,13 @@ tasks.withType<ShadowJar> {
     }
     relocate("dev.jorel.commandapi", "com.canefe.story.commandapi")
     relocate("com.github.stefvanschie.inventoryframework", "com.canefe.story.story.inventoryframework")
-    archiveClassifier.set("")
+
+    // append -devbuild-<commit> for SNAPSHOT builds
+    if (version.toString().endsWith("SNAPSHOT")) {
+        archiveClassifier.set("devbuild-${gitCommitHash()}")
+    } else {
+        archiveClassifier.set("") // clean release
+    }
 }
 
 sourceSets {
@@ -268,7 +288,11 @@ tasks.build {
 }
 
 tasks.processResources {
-    val props = mapOf("version" to version)
+    val commit = if (version.toString().endsWith("SNAPSHOT")) gitCommitHash() else ""
+    val props =
+        mapOf(
+            "version" to if (commit.isNotEmpty()) "$version+$commit" else version.toString(),
+        )
     inputs.properties(props)
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {

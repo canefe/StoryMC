@@ -49,13 +49,6 @@ jobs:
         if: github.event_name == 'pull_request'
         run: ./gradlew clean build
 
-      - name: Rename JAR with commit hash (dev builds only)
-        if: github.ref == 'refs/heads/development'
-        run: |
-          for f in build/libs/*.jar; do
-            mv "$f" "${f%.jar}-${GITHUB_SHA::7}.jar"
-          done
-
       - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -78,7 +71,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: plugin-jar/*.jar
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -103,12 +99,29 @@ jobs:
           git tag -f devbuild "$GITHUB_SHA"
           git push origin -f refs/tags/devbuild
 
+      - name: Clear old Dev Build assets
+        run: |
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/devbuild --jq '.id')
+          ASSET_IDS=$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --jq '.[].id')
+          for id in $ASSET_IDS; do
+            gh api repos/${{ github.repository }}/releases/assets/$id -X DELETE
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version from Gradle
+        id: get_version
+        run: |
+          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Update Dev Build Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: devbuild
-          name: Development Build
+          name: v${{ steps.get_version.outputs.version }}
           prerelease: true
           files: '*.jar'
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
