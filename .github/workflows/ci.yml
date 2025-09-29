@@ -1,10 +1,12 @@
-name: CI
+name: CI/CD
 
 on:
   push:
-    branches: ["development"]         # run on every commit in dev
+    branches: ["development"]   # run on commits to dev
+    tags:
+      - 'v*'                              # trigger release on version tags
   pull_request:
-    branches: ["master"]              # run full suite on PRs to master
+    branches: ["master","development"]    # run full suite on PRs
 
 jobs:
   build:
@@ -43,3 +45,51 @@ jobs:
       - name: Build and Test (full on PRs)
         if: github.event_name == 'pull_request'
         run: ./gradlew clean build
+
+      - name: Upload JAR as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-jar
+          path: build/libs/*.jar
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')   # only run on version tags
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-jar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: plugin-jar/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dev-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-jar
+
+      - name: Update Dev Build Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: devbuild
+          name: Development Build
+          prerelease: true
+          files: plugin-jar/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

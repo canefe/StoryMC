@@ -28,6 +28,9 @@ val remotePath: String? = System.getenv("REMOTE_PATH") ?: localProperties.getPro
 val openRouterAPIKey: String? =
     System.getenv("OPENROUTER_API_KEY") ?: localProperties.getProperty("OPENROUTER_API_KEY")
 
+val elevenLabsAPIKey: String? =
+    System.getenv("ELEVENLABS_API_KEY") ?: localProperties.getProperty("ELEVENLABS_API_KEY")
+
 plugins {
     kotlin("jvm") version "2.1.20"
     id("com.github.johnrengelman.shadow") version "8.1.1"
@@ -38,7 +41,7 @@ plugins {
 }
 
 group = "com.canefe"
-version = "0.2.0"
+version = "0.2.1-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -202,6 +205,7 @@ tasks.test {
 
     // Inject API key into test environment
     environment("OPENROUTER_API_KEY", openRouterAPIKey ?: "")
+    environment("ELEVENLABS_API_KEY", elevenLabsAPIKey ?: "")
 
     finalizedBy(tasks.jacocoTestReport)
 }
@@ -225,6 +229,10 @@ tasks.register("preCommit") {
 }
 
 tasks.withType<ShadowJar> {
+    mergeServiceFiles {
+        include("META-INF/services/javax.sound.sampled.spi.AudioFileReader")
+        include("META-INF/services/javax.sound.sampled.spi.FormatConversionProvider")
+    }
     relocate("dev.jorel.commandapi", "com.canefe.story.commandapi")
     relocate("com.github.stefvanschie.inventoryframework", "com.canefe.story.story.inventoryframework")
     archiveClassifier.set("")
