@@ -112,7 +112,7 @@ jobs:
       - name: Read version from built plugin.yml
         id: get_version
         run: |
-          JAR=$(ls build/libs/*.jar | head -n 1)
+          JAR=$(ls ./*.jar | head -n 1)
           VERSION=$(unzip -p "$JAR" plugin.yml | grep '^version:' | awk '{print $2}')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
