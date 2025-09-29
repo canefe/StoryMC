@@ -4,7 +4,7 @@ on:
   push:
     branches: ["development"]         # run on every commit in dev
   pull_request:
-    branches: ["master"]              # run full suite on PRs to master
+    branches: ["master","development"]              # run full suite on PRs to master
 
 jobs:
   build:
