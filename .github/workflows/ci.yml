@@ -95,6 +95,14 @@ jobs:
           name: plugin-jar
           path: .
 
+      - name: Point devbuild tag at current commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags origin
+          git tag -f devbuild "$GITHUB_SHA"
+          git push origin -f refs/tags/devbuild
+
       - name: Update Dev Build Release
         uses: softprops/action-gh-release@v2
         with:
@@ -102,6 +110,5 @@ jobs:
           name: Development Build
           prerelease: true
           files: '*.jar'
-          force_update: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
