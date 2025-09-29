@@ -109,12 +109,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read version from Gradle
+      - name: Read version from built plugin.yml
         id: get_version
         run: |
-          VERSION=$(grep '^version:' src/main/resources/plugin.yml | awk '{print $2}')
+          JAR=$(ls build/libs/*.jar | head -n 1)
+          VERSION=$(unzip -p "$JAR" plugin.yml | grep '^version:' | awk '{print $2}')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-
 
       - name: Update Dev Build Release
         uses: softprops/action-gh-release@v2
