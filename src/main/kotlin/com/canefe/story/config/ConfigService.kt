@@ -20,7 +20,8 @@ class ConfigService(
     // Model to use for conversations
     var aiConversationModel: String = "meta-llama/llama-3.3-70b-instruct"
 
-    // NPC context generation lists
+    // NPC context generation settings
+    var defaultLocationName: String = "Outlands"
     var traitList: List<String> = listOf()
     var quirkList: List<String> = listOf()
     var motivationList: List<String> = listOf()
@@ -237,6 +238,10 @@ class ConfigService(
         scheduleDialogueCooldown =
             config.getInt("misc.scheduleDialogueCooldown", 60) // 1 minutes default
 
+        // NPC Context Generation settings
+        defaultLocationName =
+            config.getString("context.defaultLocationName", "Outlands") ?: "Outlands"
+        // Load lists from config, defaulting to empty lists if not found
         traitList = config.getStringList("context.traits")
         quirkList = config.getStringList("context.quirks")
         motivationList = config.getStringList("context.motivations")
@@ -282,6 +287,14 @@ class ConfigService(
         config.set("npc.maxProcessPerTick", maxProcessPerTick)
         config.set("npc.randomPathingCooldown", randomPathingCooldown)
         config.set("npc.teleportOnFail", teleportOnFail)
+
+        // Context
+        config.set("context.defaultLocationName", defaultLocationName)
+        config.set("context.traits", traitList)
+        config.set("context.quirks", quirkList)
+        config.set("context.motivations", motivationList)
+        config.set("context.flaws", flawList)
+        config.set("context.tones", toneList)
 
         // NPC Voice settings
         config.set("npc.maxVoiceFiles", maxVoiceFiles)
