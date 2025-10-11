@@ -68,19 +68,6 @@ jobs:
         with:
           name: plugin-jar
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download built JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: plugin-jar
-
       - name: Generate Changelog (previous tag → current release)
         run: |
           python3 - <<'PY'
