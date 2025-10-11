@@ -1,6 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.util.*
 
@@ -28,6 +29,9 @@ val remotePath: String? = System.getenv("REMOTE_PATH") ?: localProperties.getPro
 val openRouterAPIKey: String? =
     System.getenv("OPENROUTER_API_KEY") ?: localProperties.getProperty("OPENROUTER_API_KEY")
 
+val elevenLabsAPIKey: String? =
+    System.getenv("ELEVENLABS_API_KEY") ?: localProperties.getProperty("ELEVENLABS_API_KEY")
+
 plugins {
     kotlin("jvm") version "2.1.20"
     id("com.github.johnrengelman.shadow") version "8.1.1"
@@ -38,7 +42,7 @@ plugins {
 }
 
 group = "com.canefe"
-version = "0.2.0"
+version = "0.2.1"
 
 repositories {
     mavenCentral()
@@ -202,6 +206,7 @@ tasks.test {
 
     // Inject API key into test environment
     environment("OPENROUTER_API_KEY", openRouterAPIKey ?: "")
+    environment("ELEVENLABS_API_KEY", elevenLabsAPIKey ?: "")
 
     finalizedBy(tasks.jacocoTestReport)
 }
@@ -224,10 +229,37 @@ tasks.register("preCommit") {
     dependsOn("ktlintFormat", "compileKotlin")
 }
 
+// utility to grab the short commit hash
+fun gitCommitHash(): String =
+    try {
+        val stdout = ByteArrayOutputStream()
+        exec {
+            commandLine = listOf("git", "rev-parse", "--short=7", "HEAD")
+            standardOutput = stdout
+        }
+        stdout.toString().trim()
+    } catch (e: Exception) {
+        "unknown"
+    }
+
+tasks.jar {
+    enabled = false
+}
+
 tasks.withType<ShadowJar> {
+    mergeServiceFiles {
+        include("META-INF/services/javax.sound.sampled.spi.AudioFileReader")
+        include("META-INF/services/javax.sound.sampled.spi.FormatConversionProvider")
+    }
     relocate("dev.jorel.commandapi", "com.canefe.story.commandapi")
     relocate("com.github.stefvanschie.inventoryframework", "com.canefe.story.story.inventoryframework")
-    archiveClassifier.set("")
+
+    // append -devbuild-<commit> for SNAPSHOT builds
+    if (version.toString().endsWith("SNAPSHOT")) {
+        archiveClassifier.set("devbuild-${gitCommitHash()}")
+    } else {
+        archiveClassifier.set("") // clean release
+    }
 }
 
 sourceSets {
@@ -260,7 +292,11 @@ tasks.build {
 }
 
 tasks.processResources {
-    val props = mapOf("version" to version)
+    val commit = if (version.toString().endsWith("SNAPSHOT")) gitCommitHash() else ""
+    val props =
+        mapOf(
+            "version" to if (commit.isNotEmpty()) "$version+$commit" else version.toString(),
+        )
     inputs.properties(props)
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {

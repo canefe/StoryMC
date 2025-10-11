@@ -106,9 +106,13 @@ class NPCScheduleManager private constructor(
     }
 
     fun loadSchedule(npcName: String): NPCSchedule? {
-        val scheduleFile = File(scheduleFolder, "$npcName.yml")
+        var scheduleFile = File(scheduleFolder, "$npcName.yml")
         if (!scheduleFile.exists()) {
-            return null
+            // also try lowercase
+            scheduleFile = File(scheduleFolder, "${npcName.lowercase()}.yml")
+            if (!scheduleFile.exists()) {
+                return null
+            }
         }
 
         val config = YamlConfiguration.loadConfiguration(scheduleFile)
@@ -293,7 +297,7 @@ class NPCScheduleManager private constructor(
                                     }
 
                                     // Check schedule status
-                                    val hasSchedule = schedules.containsKey(npc.name.lowercase())
+                                    val hasSchedule = getSchedule(npc.name) != null
                                     val hasLocationForCurrentTime =
                                         hasSchedule &&
                                             schedules[npc.name.lowercase()]
@@ -734,6 +738,20 @@ class NPCScheduleManager private constructor(
             Bukkit.getScheduler().runTaskLater(
                 plugin,
                 Runnable {
+                    // Only execute if we are at the correct location
+                    val npcLocation = npc.entity?.location ?: return@Runnable
+                    val distanceToTarget = npcLocation.distanceSquared(randomSublocation.bukkitLocation!!)
+                    val tolerance = 4.0 // 2 blocks tolerance
+                    if (distanceToTarget > tolerance) {
+                        if (plugin.config.debugMessages) {
+                            plugin.logger.info(
+                                "Skipping action '$action' for ${npc.name} - not at target location (distance: ${sqrt(
+                                    distanceToTarget,
+                                )})",
+                            )
+                        }
+                        return@Runnable
+                    }
                     npc.teleport(randomSublocation.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
                     executeAction(npc, action, randomSublocation)
                     if (plugin.config.debugMessages) {
@@ -1109,9 +1127,11 @@ class NPCScheduleManager private constructor(
         dutyLibrary: DutyLibrary,
         dutyLoopRunner: DutyLoopRunner,
     ) {
-        // teleport npc to absolute location just in case
-        npc.teleport(location.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
-
+        // Unless it's non precise location
+        if (!entry.random) {
+            // teleport npc to absolute location just in case
+            npc.teleport(location.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        }
         // Determine what duty to start (if any)
         val dutyToStart =
             when {
@@ -1513,8 +1533,6 @@ class NPCScheduleManager private constructor(
 
             for (entry in entries) {
                 val entryTime = entry.time
-
-                // Check if this entry is applicable for current time
                 if (entryTime <= currentHour) {
                     val diff = currentHour - entryTime
                     if (diff < bestTimeDiff) {

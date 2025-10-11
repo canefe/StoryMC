@@ -1,4 +1,4 @@
 name: Story
-version: '0.2.0'
+version: '${version}'
 main: com.canefe.story.Story
 api-version: '1.21'

@@ -74,7 +74,7 @@ class NPCContextGenerator(
      * Get or create context for an NPC using the NPC entity (preferred method)
      */
     fun getOrCreateContextForNPC(npc: NPC): NPCContext? =
-        getOrCreateContextForNPCInternal(npc.name, npc.uniqueId.toString())
+        getOrCreateContextForNPCInternal(npc.name, npc.uniqueId.toString(), npc)
 
     /**
      * Get or create context for an NPC using just the name (fallback method)
@@ -84,6 +84,7 @@ class NPCContextGenerator(
     private fun getOrCreateContextForNPCInternal(
         npcName: String,
         actualEntityId: String?,
+        npc: NPC? = null,
     ): NPCContext? {
         try {
             // FIRST: Check if this is a generic NPC that needs name aliasing
@@ -135,14 +136,28 @@ class NPCContextGenerator(
                     npcName
                 }
 
+            // Get Default StoryLocation name from config
+            val defaultLocationName = plugin.config.defaultLocationName
+
+            // Let's find the NPC entity's current StoryLocation if exists.
+            var location =
+                plugin.locationManager.getLocation(defaultLocationName)
+                    ?: plugin.locationManager.createLocation(defaultLocationName, null)
+
+            // If we have an NPC entity, try to get its location from its stored data
+            if (npc != null && npc.isSpawned && npc.entity != null) {
+                val npcLocation = plugin.locationManager.getLocationByPosition(npc.entity.location)
+                if (npcLocation != null) {
+                    location = npcLocation
+                }
+            }
+
             // Load existing NPC data including all data and memories using the resolved name
             val finalNpcData =
                 plugin.npcDataManager.getNPCData(npcName) ?: NPCData(
                     actualName, // Use the canonical name for the display name in context
                     "Default role",
-                    plugin.locationManager.getLocation("Village")
-                        ?: plugin.locationManager.createLocation("Village", null)
-                        ?: return null,
+                    location,
                     context = generateDefaultContext(actualName), // Use canonical name in context
                 )
 
