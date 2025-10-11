@@ -104,23 +104,23 @@ class FallbackTimeProvider : TimeProvider {
  */
 class TimeService(
     private val plugin: Story,
+    private var provider: TimeProvider? = null,
 ) {
-    private var timeProvider: TimeProvider
+    private var timeProvider: TimeProvider = provider ?: determineTimeProvider()
 
-    init {
+    fun determineTimeProvider(): TimeProvider {
         // Check if RealisticSeasons is available
-        timeProvider =
-            if (Bukkit.getPluginManager().isPluginEnabled("RealisticSeasons")) {
-                try {
-                    RealisticSeasonsTimeProvider()
-                } catch (e: Exception) {
-                    plugin.logger.warning("Failed to initialize RealisticSeasonsTimeProvider: ${e.message}")
-                    FallbackTimeProvider()
-                }
-            } else {
-                plugin.logger.warning("RealisticSeasons not found, using fallback time provider")
-                FallbackTimeProvider()
+        if (Bukkit.getPluginManager().isPluginEnabled("RealisticSeasons")) {
+            try {
+                return RealisticSeasonsTimeProvider()
+            } catch (e: Exception) {
+                plugin.logger.warning("Failed to initialize RealisticSeasonsTimeProvider: ${e.message}")
+                return FallbackTimeProvider()
             }
+        } else {
+            plugin.logger.warning("RealisticSeasons not found, using fallback time provider")
+        }
+        return FallbackTimeProvider()
     }
 
     fun getCurrentGameTime(): Long = timeProvider.getCurrentGameTime()
