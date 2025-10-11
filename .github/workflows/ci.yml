@@ -7,9 +7,9 @@ on:
   push:
     branches: ["development"]   # run on commits to dev
     tags:
-      - 'v*'                              # trigger release on version tags
+      - 'v*'                    # trigger release on version tags
   pull_request:
-    branches: ["master","development"]    # run full suite on PRs
+    branches: ["master","development"]  # run full suite on PRs
 
 jobs:
   build:
@@ -58,7 +58,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')   # only run on version tags
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - uses: actions/checkout@v4
@@ -68,11 +68,109 @@ jobs:
         with:
           name: plugin-jar
 
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-jar
+
+      - name: Generate Changelog (previous tag → current release)
+        run: |
+          python3 - <<'PY'
+          import subprocess, re, os
+
+          # Get all version tags (vX.Y.Z)
+          tags = subprocess.run(["git", "tag", "--sort=-creatordate"], text=True, capture_output=True).stdout.strip().splitlines()
+          stable_tags = [t for t in tags if re.match(r'^v\d+\.\d+\.\d+', t)]
+
+          # Current tag is provided by GitHub Actions
+          current = os.environ.get("GITHUB_REF_NAME")
+
+          # Find previous tag (the one right before current)
+          if current in stable_tags:
+              idx = stable_tags.index(current)
+              prev = stable_tags[idx - 1] if idx > 0 else stable_tags[0]
+          else:
+              prev = stable_tags[-2] if len(stable_tags) > 1 else stable_tags[0]
+
+          print(f"Generating changelog from {prev} → {current}\n")
+
+          raw = subprocess.run(
+              ['git', 'log', f'{prev}...{current}', '--reverse',
+               '--pretty=format:%s%n%b%n---END---'],
+              text=True, capture_output=True
+          ).stdout.strip()
+
+          groups = {"feat": [], "fix": [], "refactor": [], "ci": [], "other": []}
+
+          for entry in raw.split("---END---"):
+              entry = entry.strip()
+              if not entry:
+                  continue
+              lines = [l.strip() for l in entry.splitlines() if l.strip()]
+              title = re.sub(r'^[*\-\s]+', '', lines[0])
+              body = [re.sub(r'^[*\-\s]+', '', b) for b in lines[1:]]
+              match = re.match(r'(\w+):\s*(.*)', title)
+              if match:
+                  key, clean_title = match.group(1), match.group(2)
+                  key = key if key in groups else "other"
+              else:
+                  key, clean_title = "other", title
+              groups[key].append((clean_title.strip(), body))
+
+          out = []
+          out.append(f"## Changes from {prev} → {current}\n")
+
+          def section(title, key):
+              items = groups[key]
+              if not items: return
+              out.append(f"### {title}")
+              for t, b in items:
+                  out.append(f"* {t}")
+                  if key in ("feat", "fix"):
+                      for line in b:
+                          out.append(f"  - {line}")
+                  out.append("")
+              out.append("")
+
+          section("Features", "feat")
+          section("Fixes", "fix")
+          section("Refactors", "refactor")
+          section("CI / Build", "ci")
+          if groups["other"]:
+              out.append("### Misc")
+              for t, _ in groups["other"]:
+                  out.append(f"* {t}")
+              out.append("")
+
+          with open("changelog.md", "w") as f:
+              f.write("\n".join(out))
+          PY
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          body_path: changelog.md
+          files: plugin-jar/*.jar
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: changelog.md
           files: plugin-jar/*.jar
           overwrite_files: true
         env:
@@ -82,6 +180,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/development'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -90,6 +189,68 @@ jobs:
         with:
           name: plugin-jar
           path: .
+
+      - name: Generate Devbuild Changelog (last stable → devbuild)
+        run: |
+          python3 - <<'PY'
+          import subprocess, re, os
+
+          # Get all tags and find last stable version tag
+          tags = subprocess.run(["git", "tag", "--sort=-creatordate"], text=True, capture_output=True).stdout.strip().splitlines()
+          stable_tags = [t for t in tags if re.match(r'^v\d+\.\d+\.\d+', t)]
+          prev = stable_tags[-1] if stable_tags else "v0.2.0"
+
+          raw = subprocess.run(
+              ['git', 'log', f'{prev}...HEAD', '--reverse',
+               '--pretty=format:%s%n%b%n---END---'],
+              text=True, capture_output=True
+          ).stdout.strip()
+
+          groups = {"feat": [], "fix": [], "refactor": [], "ci": [], "other": []}
+
+          for entry in raw.split("---END---"):
+              entry = entry.strip()
+              if not entry:
+                  continue
+              lines = [l.strip() for l in entry.splitlines() if l.strip()]
+              title = re.sub(r'^[*\-\s]+', '', lines[0])
+              body = [re.sub(r'^[*\-\s]+', '', b) for b in lines[1:]]
+              match = re.match(r'(\w+):\s*(.*)', title)
+              if match:
+                  key, clean_title = match.group(1), match.group(2)
+                  key = key if key in groups else "other"
+              else:
+                  key, clean_title = "other", title
+              groups[key].append((clean_title.strip(), body))
+
+          out = []
+          out.append(f"## Changes from {prev} → devbuild\n")
+
+          def section(title, key):
+              items = groups[key]
+              if not items: return
+              out.append(f"### {title}")
+              for t, b in items:
+                  out.append(f"* {t}")
+                  if key in ("feat", "fix"):
+                      for line in b:
+                          out.append(f"  - {line}")
+                  out.append("")
+              out.append("")
+
+          section("Features", "feat")
+          section("Fixes", "fix")
+          section("Refactors", "refactor")
+          section("CI / Build", "ci")
+          if groups["other"]:
+              out.append("### Misc")
+              for t, _ in groups["other"]:
+                  out.append(f"* {t}")
+              out.append("")
+
+          with open("changelog.md", "w") as f:
+              f.write("\n".join(out))
+          PY
 
       - name: Point devbuild tag at current commit
         run: |
@@ -125,5 +286,6 @@ jobs:
           prerelease: true
           files: '*.jar'
           overwrite_files: true
+          body_path: changelog.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
