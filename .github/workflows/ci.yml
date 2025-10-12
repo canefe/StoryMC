@@ -43,11 +43,11 @@ jobs:
 
       - name: Build (no tests on dev pushes)
         if: github.event_name == 'push'
-        run: ./gradlew clean build -x test
+        run: ./gradlew build -x test
 
       - name: Build and Test (full on PRs)
         if: github.event_name == 'pull_request'
-        run: ./gradlew clean build
+        run: ./gradlew build
 
       - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
@@ -67,6 +67,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: plugin-jar
+          path: .
 
 
       - name: Fetch full history
@@ -78,7 +79,7 @@ jobs:
           import subprocess, re, os
 
           # Get all version tags (vX.Y.Z)
-          tags = subprocess.run(["git", "tag", "--sort=-creatordate"], text=True, capture_output=True).stdout.strip().splitlines()
+          tags = subprocess.run(["git", "tag", "--sort=v:refname"], text=True, capture_output=True).stdout.strip().splitlines()
           stable_tags = [t for t in tags if re.match(r'^v\d+\.\d+\.\d+', t)]
 
           # Current tag is provided by GitHub Actions
@@ -151,18 +152,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: changelog.md
-          files: plugin-jar/*.jar
-          overwrite_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body_path: changelog.md
-          files: plugin-jar/*.jar
+          files: '*.jar'
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -198,7 +188,7 @@ jobs:
           import subprocess, re, os
 
           # Get all tags and find last stable version tag
-          tags = subprocess.run(["git", "tag", "--sort=-creatordate"], text=True, capture_output=True).stdout.strip().splitlines()
+          tags = subprocess.run(["git", "tag", "--sort=v:refname"], text=True, capture_output=True).stdout.strip().splitlines()
           stable_tags = [t for t in tags if re.match(r'^v\d+\.\d+\.\d+', t)]
           prev = stable_tags[-1] if stable_tags else "v0.2.0"
 
