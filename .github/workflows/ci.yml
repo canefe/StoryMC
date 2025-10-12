@@ -42,7 +42,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build (no tests on dev pushes)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/development'
         run: ./gradlew clean build -x test
 
       - name: Build and Test (full on PRs)
@@ -70,7 +70,7 @@ jobs:
 
 
       - name: Fetch full history
-        run: git fetch --prune --unshallow --tags
+        run: git fetch --prune --unshallow --tags --force
 
       - name: Generate Changelog (previous tag → current release)
         run: |
@@ -190,7 +190,7 @@ jobs:
           git push origin -f refs/tags/devbuild
 
       - name: Fetch full history
-        run: git fetch --prune --unshallow --tags
+        run: git fetch --prune --unshallow --tags --force
 
       - name: Generate Devbuild Changelog (last stable → devbuild)
         run: |
