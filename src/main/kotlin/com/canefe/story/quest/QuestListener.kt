@@ -2,6 +2,8 @@ package com.canefe.story.quest
 
 import com.canefe.story.Story
 import com.canefe.story.api.event.ConversationStartEvent
+import com.canefe.story.api.event.PlayerLocationChangeEvent
+import com.canefe.story.location.data.StoryLocation
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -9,7 +11,6 @@ import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.inventory.ItemStack
 import java.util.regex.Pattern
 
@@ -149,20 +150,14 @@ class QuestListener(
     }
 
     @EventHandler
-    fun onPlayerMove(event: PlayerMoveEvent) {
-        // Only check when crossing chunk boundaries to avoid excessive processing
-        val fromChunk = event.from.chunk
-        val toChunk = event.to.chunk
+    fun onPlayerChangeLocation(event: PlayerLocationChangeEvent) {
+        val to = event.to ?: return
+        val from = event.from
 
-        if (fromChunk.x == toChunk.x && fromChunk.z == toChunk.z) {
-            return
-        }
+        updateQuestProgress(event.player, to)
 
-        // Check if the player has entered a tracked location
-        val locName = plugin.locationManager.getLocationByPosition(event.to)?.name
-        if (locName != null) {
-            updateQuestProgress(event.player, ObjectiveType.EXPLORE, locName)
-        }
+        // DEBUG
+        plugin.logger.info("[LocationChange] ${from?.name} -> ${to.name}")
     }
 
     @EventHandler
@@ -211,6 +206,8 @@ class QuestListener(
 
     /**
      * Helper method to update quest progress for all appropriate quests
+     *
+     * TODO: Move this to QuestManager
      */
     private fun updateQuestProgress(
         player: Player,
@@ -230,5 +227,13 @@ class QuestListener(
                 )
             }
         }
+    }
+
+    // Explore location variant
+    private fun updateQuestProgress(
+        player: Player,
+        location: StoryLocation,
+    ) {
+        updateQuestProgress(player, ObjectiveType.EXPLORE, location.name)
     }
 }

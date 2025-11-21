@@ -58,7 +58,7 @@ class LocationManager private constructor(
     }
 
     /**
-     * Gets a location based on a bukkit position within a specified range
+     * Gets a location based on a bukkit position within a specified range (3D)
      * @param position The bukkit location to check
      * @param range The maximum distance to consider, defaults to 50 blocks
      * @return The closest StoryLocation within range, or null if none found
@@ -80,6 +80,37 @@ class LocationManager private constructor(
             val distance = bukkitLocation.distance(position)
             if (distance <= range && distance < closestDistance) {
                 closestDistance = distance
+                closestLocation = location
+            }
+        }
+
+        return closestLocation
+    }
+
+    /**
+     * Gets a location based on a bukkit position within a specified range (2D)
+     * @param position The bukkit location to check
+     * @param range The maximum distance to consider, defaults to 50 blocks
+     * @return The closest StoryLocation within range, or null if none found
+     */
+    fun getLocationByPosition2D(
+        position: Location,
+        range: Double = 50.0,
+    ): StoryLocation? {
+        var closestLocation: StoryLocation? = null
+        var closestDistance = Double.MAX_VALUE
+
+        // Check all locations that have bukkit locations defined
+        for (location in locations.values) {
+            val loc = location.bukkitLocation ?: continue
+            if (loc.world != position.world) continue
+
+            val dx = loc.x - position.x
+            val dz = loc.z - position.z
+            val distSq = dx * dx + dz * dz
+
+            if (distSq <= range * range && distSq < closestDistance) {
+                closestDistance = distSq
                 closestLocation = location
             }
         }
@@ -227,7 +258,7 @@ class LocationManager private constructor(
 
         // If no explicit parent and this is a path with slashes, infer parent from path
         if (parentName == null && name.contains("/")) {
-            parentName = name.substring(0, name.lastIndexOf("/"))
+            parentName = name.take(name.lastIndexOf("/"))
         }
 
         val location = StoryLocation(name, context, parentName)
@@ -241,6 +272,8 @@ class LocationManager private constructor(
         if (config.contains("randomPathingAction")) {
             location.randomPathingAction = config.getString("randomPathingAction")
         }
+
+        location.hideTitle = config.getBoolean("hideTitle")
 
         // Load Bukkit location
         loadBukkitLocation(config, location)
@@ -272,6 +305,8 @@ class LocationManager private constructor(
             config.set("randomPathingAction", location.randomPathingAction)
         }
 
+        config.set("hideTitle", location.hideTitle)
+
         // Save Bukkit location if it exists
         location.bukkitLocation?.let { bukkitLoc ->
             config.set("world", bukkitLoc.world?.name)
@@ -284,6 +319,10 @@ class LocationManager private constructor(
 
         try {
             config.save(locationFile)
+            val reloaded = loadLocation(location.name)
+            if (reloaded != null) {
+                locations[location.name] = reloaded
+            }
         } catch (e: IOException) {
             plugin.logger.severe("Could not save location: ${location.name}")
             e.printStackTrace()

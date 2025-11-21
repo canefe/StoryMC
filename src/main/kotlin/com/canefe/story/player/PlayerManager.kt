@@ -2,6 +2,7 @@ package com.canefe.story.player
 
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -34,8 +35,25 @@ class PlayerManager(
     // Teams
     private val teams = HashMap<String, MutableSet<UUID>>()
 
+    // Stores last known StoryLocation per player
+    val lastLocation = mutableMapOf<UUID, StoryLocation?>()
+    val titleCooldowns = mutableMapOf<UUID, Long>()
+    private val TITLE_COOLDOWN_MS = 1000L // 3 seconds
+
     init {
         load()
+    }
+
+    fun canShowTitle(playerId: UUID): Boolean {
+        val now = System.currentTimeMillis()
+        val last = titleCooldowns[playerId] ?: 0L
+
+        return if (now - last >= TITLE_COOLDOWN_MS) {
+            titleCooldowns[playerId] = now
+            true
+        } else {
+            false
+        }
     }
 
     // Player-NPC interaction methods

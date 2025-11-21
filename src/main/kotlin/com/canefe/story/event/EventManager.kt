@@ -10,7 +10,9 @@ class EventManager private constructor(
     private val listeners = mutableListOf<Listener>()
 
     fun registerEvents() {
-        // Create and register all listeners
+        registerListener(PlayerEventListener(plugin))
+
+        // Plugin integration listeners
         if (Bukkit.getPluginManager().isPluginEnabled("Citizens")) {
             registerListener(NPCInteractionListener(plugin))
             plugin.logger.info("Citizens detected, NPCInteractionListener registered")
@@ -19,10 +21,10 @@ class EventManager private constructor(
         }
 
         if (Bukkit.getPluginManager().isPluginEnabled("ReviveMe")) {
-            registerListener(PlayerEventListener(plugin))
-            plugin.logger.info("ReviveMe detected, PlayerDownedListener registered")
+            registerListener(ReviveMeEventListener(plugin))
+            plugin.logger.info("ReviveMe detected, ReviveMeEventListener registered")
         } else {
-            plugin.logger.info("ReviveMe not detected, skipping PlayerDownedListener registration")
+            plugin.logger.info("ReviveMe not detected, skipping ReviveMeEventListener registration")
         }
 
         if (Bukkit.getPluginManager().isPluginEnabled("BetterHealthBar")) {
@@ -42,8 +44,6 @@ class EventManager private constructor(
     }
 
     fun unregisterAll() {
-        // Most events don't need explicit unregistering in Bukkit,
-        // but if you need to do cleanup, you can add that here
         listeners.clear()
     }
 

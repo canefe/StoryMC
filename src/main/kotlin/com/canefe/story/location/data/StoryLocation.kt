@@ -9,6 +9,7 @@ data class StoryLocation(
     var bukkitLocation: Location? = null,
     var parentLocationName: String? = null,
     val allowedNPCs: MutableList<String> = mutableListOf(),
+    var hideTitle: Boolean = false,
     var randomPathingAction: String? = null, // Action to perform when NPCs randomly move here (sit, sleep, work, idle)
 ) {
     fun hasParent(): Boolean = !parentLocationName.isNullOrEmpty()
@@ -34,6 +35,43 @@ data class StoryLocation(
         null,
         null,
     )
+
+    fun getOwnName(): String {
+        // If the name contains "/", split and take the last segment
+        if ("/" in name) {
+            return name.substringAfterLast("/")
+        }
+
+        // If it has a parent, return just this location's name
+        parentLocationName?.let {
+            if (it.isNotEmpty()) {
+                return name
+            }
+        }
+
+        // Fallback: no parent, no slash → it's already the root name
+        return name
+    }
+
+    fun getFormattedName(): String {
+        val own = getOwnName() // e.g. "Windhelm_Stables"
+
+        val parts = own.split('_')
+        if (parts.size <= 1) {
+            return parts[0].lowercase().replaceFirstChar { it.titlecase() }
+        }
+
+        val parent = parentLocationName?.substringAfterLast("/") // normalize
+
+        val trimmed =
+            if (parent != null && parts.first().equals(parent, ignoreCase = true)) {
+                parts.drop(1) // Stables
+            } else {
+                parts // DO NOT drop "Upper" in "Upper_City" etc.
+            }
+
+        return trimmed.joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.titlecase() } }
+    }
 
     // Helper method for getting the location context (which includes the parent location context as well)
     private fun getFullContext(locationRegistry: Map<String, StoryLocation>): List<String> {

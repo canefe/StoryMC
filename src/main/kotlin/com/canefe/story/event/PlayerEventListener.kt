@@ -1,8 +1,10 @@
 package com.canefe.story.event
 
 import com.canefe.story.Story
+import com.canefe.story.api.event.PlayerLocationChangeEvent
 import com.canefe.story.util.EssentialsUtils
-import net.kokoricraft.reviveme.events.PlayerDownedEvent
+import net.kyori.adventure.audience.Audience
+import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
@@ -12,7 +14,11 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
+import java.time.Duration
+import java.util.UUID
+import kotlin.collections.set
 
 /**
  * Handles player-related events for the Story plugin
@@ -64,26 +70,6 @@ class PlayerEventListener(
             "${EssentialsUtils.getNickname(
                 player.name,
             )} was damaged by $name amount ${event.finalDamage}",
-        )
-    }
-
-    @EventHandler
-    fun onPlayerDowned(event: PlayerDownedEvent) {
-        val player = event.player
-        val enemy =
-            event.enemy?.let {
-                EssentialsUtils.getNickname(it.name)
-            } ?: event.cause.name
-
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
-
-        conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} fell on the ground, downed by $enemy. They need to be revived.",
         )
     }
 
@@ -142,5 +128,88 @@ class PlayerEventListener(
         // Remove the player from any active conversations
         val conversation = plugin.conversationManager.getConversation(player) ?: return
         plugin.conversationManager.endConversation(conversation)
+    }
+
+    @EventHandler
+    fun onPlayerMove(event: PlayerMoveEvent) {
+        val player = event.player
+
+        // Only process meaningful movement (ignore head rotation, tiny steps)
+        if (event.from.world != event.to.world) return
+        if (event.from.distanceSquared(event.to) < 0.25) return // <0.5 block movement
+
+        val toLoc = plugin.locationManager.getLocationByPosition2D(event.to)
+        val prevLoc = plugin.playerManager.lastLocation[player.uniqueId]
+
+        // No change? Do nothing
+        if (toLoc == prevLoc) return
+
+        // Update cache
+        plugin.playerManager.lastLocation[player.uniqueId] = toLoc
+
+        // Fire the event
+        val changeEvent = PlayerLocationChangeEvent(player, prevLoc, toLoc)
+        Bukkit.getPluginManager().callEvent(changeEvent)
+
+        // Optional debug
+        plugin.logger.info("[LocationChange: ${player.name}]  ${prevLoc?.name} -> ${toLoc?.name}")
+    }
+
+    @EventHandler
+    fun onPlayerLocationChange(event: PlayerLocationChangeEvent) {
+        val to = event.to ?: return
+        val from = event.from
+
+        if (to.hideTitle) return
+
+        val canShowTitle: (UUID) -> Boolean = { id ->
+            plugin.playerManager.canShowTitle(id)
+        }
+
+        // 1. Ignore if same exact location
+        if (from != null && from.name == to.name) {
+            return
+        }
+
+        // 2. Ignore sub → parent transitions
+        // example: from.name = "Yohg/Dex", to.name = "Yohg"
+        if (from != null && from.parentLocationName == to.name) {
+            return
+        }
+
+        if (!canShowTitle(event.player.uniqueId)) return
+
+        val mm = plugin.miniMessage
+        val audience = Audience.audience(event.player)
+
+        val name = to.getFormattedName()
+        val depth = to.name.count { it == '/' }
+        val parent = to.parentLocationName
+
+        if (depth == 1 && parent != null) {
+            val title =
+                Title.title(
+                    mm.deserialize(""),
+                    mm.deserialize("<gray>$parent - <yellow>$name"),
+                    Title.Times.times(
+                        Duration.ofSeconds(1),
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1),
+                    ),
+                )
+            audience.showTitle(title)
+        } else {
+            val title =
+                Title.title(
+                    mm.deserialize(""),
+                    mm.deserialize("<yellow>$name"),
+                    Title.Times.times(
+                        Duration.ofSeconds(1),
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1),
+                    ),
+                )
+            audience.showTitle(title)
+        }
     }
 }
