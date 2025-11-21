@@ -22,6 +22,8 @@ class AIResponseService(
     private val gson = Gson()
     private val apiKey: String
         get() = plugin.config.openAIKey
+    private val apiUrl: String
+        get() = plugin.config.openAIUrl
 
     private val aiModel: String
         get() = plugin.config.aiModel
@@ -123,7 +125,7 @@ class AIResponseService(
                 val request =
                     Request
                         .Builder()
-                        .url("https://openrouter.ai/api/v1/chat/completions")
+                        .url(apiUrl)
                         .addHeader("Authorization", "Bearer $apiKey")
                         .addHeader("Content-Type", "application/json")
                         .post(body)
@@ -291,7 +293,7 @@ class AIResponseService(
                 val request =
                     Request
                         .Builder()
-                        .url("https://openrouter.ai/api/v1/chat/completions")
+                        .url(apiUrl)
                         .addHeader("Authorization", "Bearer $apiKey")
                         .addHeader("Content-Type", "application/json")
                         .post(body)
