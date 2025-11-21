@@ -2,9 +2,8 @@ name: Story
 version: '${version}'
 main: com.canefe.story.Story
 api-version: '1.21'
-depend:
-  - BetterHealthBar
 softdepend:
+  - CommandAPI
   - PlaceholderAPI # Provides placeholders for dynamic text replacement.
   - DecentHolograms # Enables holographic displays for visual elements.
   - ItemsAdder # Adds custom items and textures to the game.
@@ -14,3 +13,4 @@ softdepend:
   - MythicMobs # Enables the creation of custom mobs and bosses.
   - SuperVanish
   - PremiumVanish
+  - BetterHealthBar
