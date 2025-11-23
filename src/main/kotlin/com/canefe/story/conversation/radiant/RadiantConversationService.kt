@@ -78,10 +78,6 @@ class RadiantConversationService(
             return
         }
 
-        if (plugin.conversationManager.isInConversation(player)) {
-            return
-        }
-
         // First check if player is a valid potential target
         val isPlayerValid = !isPlayerInvalidTarget(player)
 
@@ -120,6 +116,10 @@ class RadiantConversationService(
                 return
             }
 
+            val conversation = plugin.conversationManager.getConversation(player)
+            if (conversation != null) {
+                return
+            }
             // Target is player
             initiatePlayerConversation(initiator, player)
         } else if (hasValidNPCTarget) {
@@ -135,7 +135,6 @@ class RadiantConversationService(
     private fun isPlayerInvalidTarget(player: Player): Boolean =
         isVanished(player) ||
             plugin.playerManager.isPlayerDisabled(player) ||
-            plugin.conversationManager.isInConversation(player) ||
             hasRecentlyWitnessedConversation(player)
 
     /**
