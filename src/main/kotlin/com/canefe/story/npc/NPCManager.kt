@@ -265,8 +265,8 @@ class NPCManager private constructor(
                     makeNPCFaceLocation(initiator, target.entity.location)
 
                     // Send the message
+                    plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator, streaming = true)
                     plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator)
-
                     // Start a conversation between the NPCs
                     val npcs = ArrayList<NPC>()
                     npcs.add(initiator)
@@ -285,13 +285,11 @@ class NPCManager private constructor(
                             Bukkit.getScheduler().scheduleSyncDelayedTask(plugin, {
                                 // Generate the NPC response
                                 plugin.npcResponseService
-                                    .generateNPCResponse(target, history, broadcast = false)
+                                    .generateNPCResponse(target, history, broadcast = true)
                                     .thenAccept { response ->
                                         // Add the response to the conversation
                                         conversation.addNPCMessage(target, response)
                                         plugin.conversationManager.cleanupHolograms(conversation)
-                                        // Broadcast the response to players
-                                        plugin.npcMessageService.broadcastNPCMessage(response, target)
 
                                         // Generate final response from initiator after another delay
                                         val finalResponseDelay = 4.toLong() // Delay before final response
@@ -304,16 +302,11 @@ class NPCManager private constructor(
                                                 .generateNPCResponse(
                                                     initiator,
                                                     updatedHistory,
-                                                    broadcast = false,
+                                                    broadcast = true,
                                                 ).thenAccept { finalResponse ->
                                                     // Add the final response to the conversation
                                                     conversation.addNPCMessage(initiator, finalResponse)
                                                     plugin.conversationManager.cleanupHolograms(conversation)
-                                                    // Broadcast the final response to players
-                                                    plugin.npcMessageService.broadcastNPCMessage(
-                                                        finalResponse,
-                                                        initiator,
-                                                    )
                                                 }
                                         }, finalResponseDelay * 20L) // Convert seconds to ticks
                                     }
