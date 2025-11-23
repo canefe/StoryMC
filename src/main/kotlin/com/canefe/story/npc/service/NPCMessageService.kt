@@ -5,7 +5,6 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.util.EssentialsUtils
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
-import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
@@ -37,6 +36,7 @@ class NPCMessageService(
      * @param name The sender's name
      * @param color Optional color for the name
      * @param avatar Optional avatar identifier
+     * @param characterId Optional character id for streaming messages
      * @return List of Components ready to be sent
      */
     fun formatMessage(
@@ -44,7 +44,7 @@ class NPCMessageService(
         name: String,
         color: String? = null,
         avatar: String? = null,
-        npcId: UUID? = null,
+        characterId: UUID? = null,
         isClientPlayer: Boolean = false,
         formatColor: String? = "<white>",
         formatColorSuffix: String? = "</white>",
@@ -80,7 +80,7 @@ class NPCMessageService(
 
             // Handle emotes inside the message (*content*)
             val formattedMessage =
-                npcId?.run { cleanedMessage }
+                characterId?.run { cleanedMessage }
                     ?: cleanedMessage.replace(Regex("\\*(.*?)\\*\\s*"), "<gray><italic>($1)</italic></gray>\n$padding")
 
             // Split the message into multiple lines to fit within the width limit
@@ -133,25 +133,18 @@ class NPCMessageService(
         }
 
         // If this is a typing message, wrap everything in typing tags
-        if (npcId != null) {
-            // Convert the formatted message to a string for the typing system
-            val stringBuilder = StringBuilder()
-            for (component in parsedMessages) {
-                stringBuilder.append(MiniMessage.miniMessage().serialize(component)).append("\n")
-            }
+        // Convert the formatted message to a string for the typing system
+        val stringBuilder = StringBuilder()
+        for (component in parsedMessages) {
+            stringBuilder.append(MiniMessage.miniMessage().serialize(component)).append("\n")
+        }
 
-            val npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcId)
-
-            val entity = npc.entity.takeIf { npc.isSpawned }
-            val id = entity?.uniqueId
-            if (id != null) {
-                // Create a single component with the typing tags
-                return listOf(
-                    MiniMessage
-                        .miniMessage()
-                        .deserialize("<npc_typing>color:$nameColor id:$id:$stringBuilder"),
-                )
-            }
+        if (characterId != null) {
+            return listOf(
+                MiniMessage
+                    .miniMessage()
+                    .deserialize("<npc_typing>color:$nameColor id:$characterId:$stringBuilder"),
+            )
         }
 
         return parsedMessages
@@ -194,7 +187,7 @@ class NPCMessageService(
                 name = npcContext?.name ?: npc.name,
                 color = color,
                 avatar = context?.avatar,
-                npcId = if (streaming) npc.uniqueId else null,
+                characterId = if (streaming && npc.entity != null) npc.entity.uniqueId else null,
             )
 
         Bukkit.getScheduler().runTask(
@@ -331,13 +324,23 @@ class NPCMessageService(
         // Get player context for avatar support (using NPC data system for players)
         val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)
 
-        // Format the message - using player's name as the sender
+        // Normal chat format
         val parsedMessages =
             formatMessage(
                 message = message,
                 name = playerName,
                 color = color,
                 avatar = playerContext?.avatar, // Add avatar support for players
+            )
+
+        // Speech bubble format
+        val speechBubbleMessages =
+            formatMessage(
+                message = message,
+                name = playerName,
+                color = color,
+                avatar = playerContext?.avatar, // Add avatar support for players
+                characterId = player.uniqueId,
             )
 
         Bukkit.getScheduler().runTask(
@@ -381,6 +384,13 @@ class NPCMessageService(
 
                         messagesToSend.forEach { component ->
                             p.sendMessage(component)
+                        }
+
+                        // Also send them as speech bubbles
+                        speechBubbleMessages.forEach { component ->
+                            if (p != player) {
+                                p.sendMessage(component)
+                            }
                         }
                     }
                 }
