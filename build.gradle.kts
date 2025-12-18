@@ -53,7 +53,7 @@ repositories {
     maven("https://repo.byteflux.net/nexus/repository/public/")
     maven {
         name = "libraryaddictReleases"
-        url = uri("https://mvn.lib.co.nz/releases")
+        url = uri("https://mvn.lib.co.nz/public")
     }
     maven("https://libraries.minecraft.net")
     maven("https://jitpack.io/")
