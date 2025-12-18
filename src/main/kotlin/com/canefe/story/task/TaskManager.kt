@@ -6,6 +6,7 @@ import com.canefe.story.util.Msg.sendRaw
 import org.bukkit.Bukkit
 import org.bukkit.command.CommandSender
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Manages permission tasks that require explicit approval from players with appropriate permissions
@@ -15,9 +16,7 @@ class TaskManager private constructor(
 ) {
     private val tasks = ConcurrentHashMap<Int, Task>()
     private val dialoguePathTasks = ConcurrentHashMap<Int, DialoguePathTask>()
-
-    @Volatile
-    private var taskIdCounter: Int = 1
+    private val taskIdCounter = AtomicInteger(1)
 
     companion object {
         private var instance: TaskManager? = null
@@ -52,7 +51,7 @@ class TaskManager private constructor(
         limitToSender: Boolean = false,
         sender: CommandSender? = null,
     ): Int {
-        val taskId = taskIdCounter++
+        val taskId = taskIdCounter.getAndIncrement()
 
         val task =
             Task(
@@ -191,7 +190,7 @@ class TaskManager private constructor(
         limitToSender: Boolean = false,
         sender: CommandSender? = null,
     ): Int {
-        val taskId = taskIdCounter++
+        val taskId = taskIdCounter.getAndIncrement()
 
         val task =
             DialoguePathTask(
