@@ -11,7 +11,7 @@ A Kotlin-based Paper plugin that transforms Minecraft into a living, narrative-d
 Fully stable as a Human-in-the-loop (HITL) orchestration tool. It provides a robust narration engine and NPC framework managed by a human Game Master.
 
 > [!NOTE]  
-> This project is architected to scale into a fully autonomous simulation engine. The objective is to transition from human-managed logic to a self-governing agentic framework where AI entities dynamically manage their own schedules, behaviors, and environmental interactions.
+> This project is designed as the client-side implementation of a broader agentic simulation framework. The architecture is transitioning from a standalone monolith to a decoupled system, where this plugin handles environmental rendering and user interaction while a dedicated simulation engine governs autonomous AI behaviors and world-state logic.
 
 ![Story](https://i.imgur.com/ZqSs2tx.png)
 
