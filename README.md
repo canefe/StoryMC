@@ -6,10 +6,12 @@
 </div>
 
 
-A Kotlin-based Paper plugin that transforms Minecraft into a living, narrative-driven world with AI-powered NPCs, dynamic storytelling, and immersive voice synthesis.
+A Kotlin-based Paper plugin that transforms Minecraft into a living, narrative-driven world through AI-integrated NPCs and voice synthesis. 
 
-Currently stable for production for sole use. But this will later transformed into a presentation layer for a simulation project that enables multi-layer narrative experiences.
+Fully stable as a Human-in-the-loop (HITL) orchestration tool. It provides a robust narration engine and NPC framework managed by a human Game Master.
 
+> [!NOTE]  
+> This project is architected to scale into a fully autonomous simulation engine. The objective is to transition from human-managed logic to a self-governing agentic framework where AI entities dynamically manage their own schedules, behaviors, and environmental interactions.
 
 ![Story](https://i.imgur.com/ZqSs2tx.png)
 
@@ -25,6 +27,9 @@ Story is a production-ready Minecraft plugin that enables Dungeon Masters to cre
 - **Multi-Player Support**. Handle concurrent conversations across multiple players
 - **Character Schedules**. NPCs follow daily routines and autonomous behaviors
 - **Plugin Ecosystem**. Integrates with Citizens, MythicMobs, and other popular plugins
+
+**Roadmap:** 
+Evolving into a comprehensive simulation engine. The goal is to transition from manual GM scheduling to a fully autonomous architecture where AI agents manage their own schedules, behaviors, and world-state interactions with minimal human intervention.
 
 ## Installation
 
