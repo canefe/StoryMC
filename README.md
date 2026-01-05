@@ -1,10 +1,11 @@
 <div align="center" style="margin-bottom: 1rem;">
-<h1 style="font-size: 2rem;margin: 0;"> StoryMC </h1>
-<img src="https://img.shields.io/badge/minecraft-1.21.1-brightgreen.svg" alt="Minecraft Version" />
-<img src="https://img.shields.io/badge/paper-1.21.1-blue.svg" alt="Paper API" />
-<img src="https://img.shields.io/badge/kotlin-1.9+-purple.svg" alt="Kotlin" />
-</div>
+  <h1 style="font-size: 2rem; margin: 0;"> StoryMC </h1>
 
+  <img src="https://img.shields.io/github/v/release/canefe/StoryMC?include_prereleases&style=flat-square" alt="Latest Version" />
+  <img src="https://img.shields.io/github/actions/workflow/status/canefe/StoryMC/ci.yml?style=flat-square" alt="Build Status" />
+  <img src="https://img.shields.io/badge/minecraft-1.21.1-brightgreen.svg?style=flat-square" alt="Minecraft Version" />
+  <img src="https://img.shields.io/badge/paper-1.21.1-blue.svg?style=flat-square" alt="Paper API" />
+</div>
 
 A Kotlin-based Paper plugin that transforms Minecraft into a living, narrative-driven world through AI-integrated NPCs and voice synthesis. 
 
