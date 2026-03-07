@@ -11,6 +11,11 @@ class SQLiteManager(
 ) {
     private var connection: Connection? = null
 
+    companion object {
+        // Increment this when the schema changes and add a migration in migrate()
+        const val SCHEMA_VERSION = 1
+    }
+
     fun connect(): Boolean =
         try {
             val dbFile = File(dataFolder, "story.db")
@@ -36,8 +41,46 @@ class SQLiteManager(
         connection = null
     }
 
-    fun createTables() {
+    private fun getSchemaVersion(): Int {
         val conn = getConnection()
+        conn.createStatement().use { stmt ->
+            val rs = stmt.executeQuery("PRAGMA user_version")
+            return if (rs.next()) rs.getInt(1) else 0
+        }
+    }
+
+    private fun setSchemaVersion(version: Int) {
+        val conn = getConnection()
+        conn.createStatement().use { stmt ->
+            stmt.executeUpdate("PRAGMA user_version = $version")
+        }
+    }
+
+    private fun migrate(fromVersion: Int) {
+        val conn = getConnection()
+
+        // Add migration steps here as the schema evolves.
+        // Each `when` branch handles upgrading FROM that version.
+        //
+        // Example for a future migration from version 1 to 2:
+        // if (fromVersion < 2) {
+        //     conn.createStatement().use { stmt ->
+        //         stmt.executeUpdate("ALTER TABLE npcs ADD COLUMN new_field TEXT")
+        //     }
+        //     logger.info("[SQLite] Migrated schema to version 2")
+        // }
+
+        setSchemaVersion(SCHEMA_VERSION)
+
+        if (fromVersion > 0) {
+            logger.info("[SQLite] Schema migrated from version $fromVersion to $SCHEMA_VERSION")
+        }
+    }
+
+    fun createTables() {
+        val currentVersion = getSchemaVersion()
+        val conn = getConnection()
+
         conn.createStatement().use { stmt ->
             // NPCs
             stmt.executeUpdate(
@@ -211,6 +254,11 @@ class SQLiteManager(
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_npc_memories_filename ON npc_memories(npc_filename)")
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_player_quests_player ON player_quests(player_id)")
             stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_id)")
+        }
+
+        // Run migrations if needed
+        if (currentVersion < SCHEMA_VERSION) {
+            migrate(currentVersion)
         }
 
         logger.info("[SQLite] Tables and indexes created")
