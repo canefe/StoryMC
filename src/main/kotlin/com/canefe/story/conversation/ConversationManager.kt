@@ -274,7 +274,7 @@ class ConversationManager private constructor(
                 conversation.npcs.firstOrNull()?.let { npc ->
                     // Get the actual physical location where the NPC currently is
                     npcContextGenerator.getOrCreateContextForNPC(npc.name)?.location?.name
-                } ?: "Village" // Default location
+                } ?: plugin.configService.defaultLocationName
 
             // Create conversation information source
             val conversationSource =

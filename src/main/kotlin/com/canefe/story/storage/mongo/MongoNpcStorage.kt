@@ -143,7 +143,7 @@ class MongoNpcStorage(
         npcData.canonicalName = doc.getString("canonicalName")
         npcData.displayHandle = doc.getString("displayHandle")
         npcData.callsign = doc.getString("callsign")
-        npcData.locationName = doc.getString("location") ?: "Village"
+        npcData.locationName = doc.getString("location")
 
         npcData.memory = parseMemories(doc)
 

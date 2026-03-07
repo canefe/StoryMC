@@ -35,7 +35,7 @@ class SQLiteNpcStorage(
                 context = rs.getString("context") ?: "",
             )
 
-        npcData.locationName = rs.getString("location") ?: "Village"
+        npcData.locationName = rs.getString("location")
         npcData.appearance = rs.getString("appearance") ?: ""
         npcData.avatar = rs.getString("avatar") ?: ""
         npcData.customVoice = rs.getString("custom_voice")

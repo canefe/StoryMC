@@ -106,7 +106,7 @@ class YamlNpcStorage(
             val appearance = config.getString("appearance") ?: ""
             val avatar = config.getString("avatar") ?: ""
             val customVoice = config.getString("customVoice")
-            val locationName = config.getString("location") ?: "Village"
+            val locationName = config.getString("location")
 
             val knowledgeCategories = mutableListOf<String>()
             val categoriesSection = config.getConfigurationSection("knowledgeCategories")

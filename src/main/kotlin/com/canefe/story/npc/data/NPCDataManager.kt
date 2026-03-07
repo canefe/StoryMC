@@ -64,10 +64,14 @@ class NPCDataManager(
             val npcData = npcStorage.loadNpcData(npcName) ?: return null
 
             // Resolve location reference
-            val locationName = npcData.locationName ?: "Village"
+            val locationName = npcData.locationName
             val storyLocation =
-                plugin.locationManager.getLocation(locationName)
-                    ?: plugin.locationManager.createLocation(locationName, null)
+                if (locationName != null) {
+                    plugin.locationManager.getLocation(locationName)
+                        ?: plugin.locationManager.createLocation(locationName, null)
+                } else {
+                    plugin.locationManager.getOrCreateDefaultLocation()
+                }
             npcData.storyLocation = storyLocation
 
             // Load memories

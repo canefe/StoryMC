@@ -136,13 +136,8 @@ class NPCContextGenerator(
                     npcName
                 }
 
-            // Get Default StoryLocation name from config
-            val defaultLocationName = plugin.config.defaultLocationName
-
             // Let's find the NPC entity's current StoryLocation if exists.
-            var location =
-                plugin.locationManager.getLocation(defaultLocationName)
-                    ?: plugin.locationManager.createLocation(defaultLocationName, null)
+            var location = plugin.locationManager.getOrCreateDefaultLocation()
 
             // If we have an NPC entity, try to get its location from its stored data
             if (npc != null && npc.isSpawned && npc.entity != null) {

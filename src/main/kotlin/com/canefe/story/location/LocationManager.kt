@@ -104,6 +104,12 @@ class LocationManager(
         }
     }
 
+    fun getOrCreateDefaultLocation(): StoryLocation {
+        val name = plugin.configService.defaultLocationName
+        return getLocation(name) ?: createLocation(name, null)
+            ?: StoryLocation(name, ArrayList(), null, null)
+    }
+
     fun getLocation(name: String): StoryLocation? =
         locations[name] ?: loadLocation(name)?.also { location ->
             locations[name] = location

@@ -62,7 +62,7 @@ class NPCContextGeneratorTest {
             NPCData(
                 name = npc.name,
                 role = "Villager",
-                storyLocation = plugin.locationManager.getLocation("Village"),
+                storyLocation = plugin.locationManager.getOrCreateDefaultLocation(),
                 context = "A placeholder context",
             ).apply {
                 generic = true
