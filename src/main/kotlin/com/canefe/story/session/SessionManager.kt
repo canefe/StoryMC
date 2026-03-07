@@ -2,32 +2,32 @@ package com.canefe.story.session
 
 import com.canefe.story.Story
 import com.canefe.story.conversation.ConversationMessage
-import org.bukkit.configuration.file.YamlConfiguration
-import java.io.File
+import com.canefe.story.storage.SessionDocument
+import com.canefe.story.storage.SessionStorage
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Manager to track gameplay sessions and persist them to YAML files.
+ * Manager to track gameplay sessions and persist them using a storage backend.
  */
-class SessionManager private constructor(
+class SessionManager(
     private val plugin: Story,
+    private var sessionStorage: SessionStorage,
 ) {
-    private val sessionFolder: File =
-        File(plugin.dataFolder, "sessions").apply { if (!exists()) mkdirs() }
+    fun updateStorage(storage: SessionStorage) {
+        sessionStorage = storage
+    }
 
     private val current = AtomicReference<Session?>(null)
-    private var currentSessionFile: File? = null
+    private var currentSessionId: String? = null
     private var lastSaveTime: Long = 0
-    private var lastFileModTime: Long = 0
 
     init {
         // Start autosave task (every 2 minutes)
         plugin.server.scheduler.runTaskTimerAsynchronously(
             plugin,
             Runnable {
-                checkForExternalChanges()
                 autosaveCurrentSession()
             },
             20 * 30,
@@ -36,7 +36,6 @@ class SessionManager private constructor(
     }
 
     fun load() {
-        checkForExternalChanges()
         autosaveCurrentSession()
     }
 
@@ -48,24 +47,22 @@ class SessionManager private constructor(
         val session = Session(plugin.timeService.getCurrentGameTime())
         current.set(session)
 
-        // Create initial session file
-        currentSessionFile = File(sessionFolder, "session-$timestamp.yml")
-        saveSessionToFile(session, currentSessionFile!!)
+        currentSessionId = "session-$timestamp"
 
         // Let's add all currently online players to the session by default
         plugin.server.onlinePlayers.forEach { player ->
             session.players.add(player.name)
         }
-        // Save changes immediately
+
+        // Save immediately
         autosaveCurrentSession()
 
-        plugin.logger.info("Started new session: ${currentSessionFile!!.name}")
+        plugin.logger.info("Started new session: $currentSessionId")
     }
 
     /** Add a player name to the active session. */
     fun addPlayer(name: String) {
         current.get()?.players?.add(name)
-        // Save changes immediately
         autosaveCurrentSession()
     }
 
@@ -102,7 +99,6 @@ class SessionManager private constructor(
         for (playerName in session.players) {
             val player = plugin.server.getPlayer(playerName)
             if (player != null) {
-                // Check if this player is mentioned in the text
                 val nickname =
                     com.canefe.story.util.EssentialsUtils
                         .getNickname(player.name)
@@ -113,18 +109,16 @@ class SessionManager private constructor(
                             keyword.equals(nickname, ignoreCase = true)
                     }
                 ) {
-                    // Get the player's current location
                     val actualLocation = plugin.locationManager.getLocationByPosition2D(player.location, 150.0)
                     if (actualLocation != null) {
                         currentPlayerLocation = "${player.name} is currently at ${actualLocation.name}.\n" +
                             "Location context: ${actualLocation.getContextForPrompt(plugin.locationManager)}\n"
-                        break // Use the first mentioned player found
+                        break
                     }
                 }
             }
         }
 
-        // If no specific player was mentioned, use the first online player from the session
         if (currentPlayerLocation == null) {
             for (playerName in session.players) {
                 val player = plugin.server.getPlayer(playerName)
@@ -139,14 +133,12 @@ class SessionManager private constructor(
             }
         }
 
-        // Add current location context if found
         if (currentPlayerLocation != null) {
             contextBuilder.append("CURRENT LOCATION:\n")
             contextBuilder.append(currentPlayerLocation)
             contextBuilder.append("\n")
         }
 
-        // Check for location references
         val mentionedLocations =
             plugin.locationManager.getAllLocations().filter { location ->
                 text.contains(location.name, ignoreCase = true) ||
@@ -161,7 +153,6 @@ class SessionManager private constructor(
             contextBuilder.append("\n")
         }
 
-        // Check for NPC references
         val mentionedNPCs =
             plugin.npcDataManager.getAllNPCNames().filter { npcName ->
                 text.contains(npcName, ignoreCase = true) ||
@@ -185,13 +176,12 @@ class SessionManager private constructor(
             contextBuilder.append("\n")
         }
 
-        // Current context
         if (session.history.isNotEmpty()) {
             contextBuilder.append("CURRENT SESSION HISTORY:\n")
             contextBuilder.append(session.history.toString())
             contextBuilder.append("\n")
         }
-        // Create AI messages
+
         val messages =
             mutableListOf(
                 ConversationMessage(
@@ -211,7 +201,6 @@ class SessionManager private constructor(
                 ConversationMessage("user", text),
             )
 
-        // Get AI response
         plugin
             .getAIResponse(messages)
             .thenAccept { aiResponse ->
@@ -220,10 +209,8 @@ class SessionManager private constructor(
                         "<yellow>Following narrative response will be added to session" +
                             " history. Do you want to proceed?</yellow> \n\n $aiResponse",
                         onAccept = {
-                            // Append AI response to session history
                             session.history.append(aiResponse)
                             var message = aiResponse
-                            // use regex to wrap Quotes in <yellow> tags
                             message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
                             val formatted =
                                 plugin.npcMessageService.formatMessage(
@@ -261,106 +248,51 @@ class SessionManager private constructor(
         val session = current.getAndSet(null) ?: return
         session.endTime = plugin.timeService.getCurrentGameTime()
 
-        // Save the final state using the existing file
-        if (currentSessionFile != null) {
-            saveSessionToFile(session, currentSessionFile!!)
-            plugin.logger.info("Session ended and saved to: ${currentSessionFile!!.name}")
-        } else {
-            saveSession(session)
+        val sessionId = currentSessionId
+        if (sessionId != null) {
+            val doc = sessionToDocument(sessionId, session)
+            sessionStorage.saveSession(sessionId, doc)
+            plugin.logger.info("Session ended and saved: $sessionId")
         }
 
-        currentSessionFile = null
+        currentSessionId = null
     }
 
-    // Save current session without ending it
     private fun autosaveCurrentSession() {
         val session = current.get() ?: return
-        val file = currentSessionFile ?: return
+        val sessionId = currentSessionId ?: return
 
-        // Only save if there were actual changes since last save
-        if (System.currentTimeMillis() - lastSaveTime > 5000) { // Minimum 5s between saves
-            saveSessionToFile(session, file)
+        if (System.currentTimeMillis() - lastSaveTime > 5000) {
+            val doc = sessionToDocument(sessionId, session)
+            sessionStorage.updateSession(sessionId, doc)
             lastSaveTime = System.currentTimeMillis()
-            plugin.logger.info("Auto-saved active session to: ${file.name}")
+            plugin.logger.info("Auto-saved active session: $sessionId")
         }
-    }
-
-    // Check if the session file was modified externally and load changes
-    private fun checkForExternalChanges() {
-        val file = currentSessionFile ?: return
-        if (!file.exists()) return
-
-        val modTime = file.lastModified()
-        if (modTime > lastFileModTime && modTime > lastSaveTime + 2000) {
-            // File was modified externally (allow 2s buffer to avoid detecting our own saves)
-            plugin.logger.info("Detected external changes to session file - reloading...")
-            loadSessionFromFile(file)
-        }
-    }
-
-    // Load session from file after external changes
-    private fun loadSessionFromFile(file: File) {
-        try {
-            val config = YamlConfiguration.loadConfiguration(file)
-            val session = current.get() ?: return
-
-            // Update player list
-            val playerList = config.getStringList("players")
-            session.players.clear()
-            session.players.addAll(playerList)
-
-            // Update history if changed externally
-            val fileHistory = config.getString("history") ?: ""
-            if (fileHistory != session.history.toString()) {
-                session.history.clear()
-                session.history.append(fileHistory)
-            }
-
-            lastFileModTime = file.lastModified()
-            plugin.logger.info("Session updated from modified file")
-        } catch (e: Exception) {
-            plugin.logger.warning("Failed to load session from file: ${e.message}")
-        }
-    }
-
-    private fun saveSessionToFile(
-        session: Session,
-        file: File,
-    ) {
-        val config = YamlConfiguration()
-        config.set("startTime", session.startTime)
-        session.endTime?.let { config.set("endTime", it) }
-        config.set("players", session.players.toList())
-        config.set("history", session.history.toString())
-        config.set("active", session.endTime == null) // Flag to identify active sessions
-        config.save(file)
-        lastFileModTime = file.lastModified()
-    }
-
-    private fun saveSession(session: Session) {
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
-        val file = File(sessionFolder, "session-$timestamp.yml")
-        saveSessionToFile(session, file)
     }
 
     /** Persist and clear the current session. */
     fun shutdown() {
         current.getAndSet(null)?.let { session ->
             session.endTime = plugin.timeService.getCurrentGameTime()
-            if (currentSessionFile != null) {
-                saveSessionToFile(session, currentSessionFile!!)
-            } else {
-                saveSession(session)
+            val sessionId = currentSessionId
+            if (sessionId != null) {
+                val doc = sessionToDocument(sessionId, session)
+                sessionStorage.saveSession(sessionId, doc)
             }
         }
-        currentSessionFile = null
+        currentSessionId = null
     }
 
-    companion object {
-        private var instance: SessionManager? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): SessionManager =
-            instance ?: synchronized(this) { instance ?: SessionManager(plugin).also { instance = it } }
-    }
+    private fun sessionToDocument(
+        sessionId: String,
+        session: Session,
+    ): SessionDocument =
+        SessionDocument(
+            sessionId = sessionId,
+            startTime = session.startTime,
+            endTime = session.endTime,
+            players = session.players.toList(),
+            history = session.history.toString(),
+            active = session.endTime == null,
+        )
 }

@@ -9,6 +9,10 @@ import com.canefe.story.command.story.quest.QuestCommand
 import com.canefe.story.command.story.session.SessionCommand
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.storage.StorageBackend
+import com.canefe.story.storage.YamlMigrator
+import com.canefe.story.util.Msg.sendError
+import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -45,6 +49,7 @@ class StoryCommand(
             .withSubcommand(getGMCommand())
             .withSubcommand(getSessionCommand())
             .withSubcommand(getTaskCommand())
+            .withSubcommand(getMigrateCommand())
             .register()
     }
 
@@ -482,6 +487,8 @@ class StoryCommand(
         <gold>/conv</gold> list <gray><italic>- List all conversations and control panel</italic></gray>
         <gold>/story</gold> gm <question> [broadcast] <gray><italic>- Ask the Game Master a question about the world</italic></gray>
         <gold>/story</gold> task <gray><italic>- Manage AI permission requests</italic></gray>
+        <gold>/story</gold> migrate yaml-to-mongodb <gray><italic>- Migrate YAML data to MongoDB</italic></gray>
+        <gold>/story</gold> migrate yaml-to-sqlite <gray><italic>- Migrate YAML data to SQLite</italic></gray>
         """.trimIndent()
 
     private fun getHelpCommand(): CommandAPICommand =
@@ -498,9 +505,83 @@ class StoryCommand(
                 CommandExecutor { sender, _ ->
                     plugin.reloadConfig()
                     plugin.configService.reload()
+                    plugin.tryReconnectStorage(sender)
                     sender.sendSuccess("Plugin reloaded successfully.")
                 },
             )
+
+    private fun getMigrateCommand(): CommandAPICommand =
+        CommandAPICommand("migrate")
+            .withPermission("story.admin")
+            .withSubcommand(
+                CommandAPICommand("yaml-to-mongodb")
+                    .withPermission("story.admin")
+                    .executes(
+                        CommandExecutor { sender, _ ->
+                            if (plugin.storageFactory.activeBackend != StorageBackend.MONGODB) {
+                                sender.sendError(
+                                    "MongoDB is not the active storage backend. Set 'storage.backend: mongodb' in config.yml and reload.",
+                                )
+                                return@CommandExecutor
+                            }
+
+                            sender.sendInfo("Starting YAML to MongoDB migration...")
+                            val migrator = YamlMigrator(plugin.dataFolder, plugin.storageFactory, plugin.logger)
+                            val result = migrator.migrate()
+
+                            sendMigrationResult(sender, result)
+                        },
+                    ),
+            ).withSubcommand(
+                CommandAPICommand("yaml-to-sqlite")
+                    .withPermission("story.admin")
+                    .executes(
+                        CommandExecutor { sender, _ ->
+                            if (plugin.storageFactory.activeBackend != StorageBackend.SQLITE) {
+                                sender.sendError(
+                                    "SQLite is not the active storage backend. Set 'storage.backend: sqlite' in config.yml and reload.",
+                                )
+                                return@CommandExecutor
+                            }
+
+                            sender.sendInfo("Starting YAML to SQLite migration...")
+                            val migrator = YamlMigrator(plugin.dataFolder, plugin.storageFactory, plugin.logger)
+                            val result = migrator.migrate()
+
+                            sendMigrationResult(sender, result)
+                        },
+                    ),
+            )
+
+    private fun sendMigrationResult(
+        sender: org.bukkit.command.CommandSender,
+        result: YamlMigrator.MigrationResult,
+    ) {
+        val totalMigrated =
+            result.npcs + result.locations + result.quests +
+                result.playerQuests + result.sessions + result.relationships +
+                result.loreBooks + result.teams + result.disabledPlayers
+
+        if (totalMigrated == 0 && result.errors.isNotEmpty()) {
+            sender.sendError(result.errors.first())
+            return
+        }
+
+        sender.sendSuccess("Migration complete!")
+        sender.sendInfo(
+            "NPCs: <gold>${result.npcs}</gold>, Locations: <gold>${result.locations}</gold>, Quests: <gold>${result.quests}</gold>",
+        )
+        sender.sendInfo("Player Quests: <gold>${result.playerQuests}</gold>, Sessions: <gold>${result.sessions}</gold>")
+        sender.sendInfo("Relationships: <gold>${result.relationships}</gold>, Lore: <gold>${result.loreBooks}</gold>")
+        sender.sendInfo("Teams: <gold>${result.teams}</gold>, Disabled Players: <gold>${result.disabledPlayers}</gold>")
+
+        if (result.errors.isNotEmpty()) {
+            sender.sendError("${result.errors.size} error(s): ${result.errors.first()}")
+            if (result.errors.size > 1) {
+                sender.sendError("Check console for remaining errors.")
+            }
+        }
+    }
 
     private fun getLocationCommand(): CommandAPICommand = LocationCommand(plugin).getCommand()
 

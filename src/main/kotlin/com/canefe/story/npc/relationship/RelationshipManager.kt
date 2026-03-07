@@ -4,12 +4,11 @@ import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.memory.Memory
+import com.canefe.story.storage.RelationshipStorage
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
-import org.bukkit.configuration.file.YamlConfiguration
-import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.absoluteValue
@@ -18,14 +17,16 @@ import kotlin.times
 
 class RelationshipManager(
     private val plugin: Story,
+    private var relationshipStorage: RelationshipStorage,
 ) {
+    fun updateStorage(storage: RelationshipStorage) {
+        relationshipStorage = storage
+    }
+
     // Stores relationships as: sourceId -> (targetId -> Relationship)
     private val relationships = ConcurrentHashMap<String, MutableMap<String, Relationship>>()
-    private val dataFolder = File(plugin.dataFolder, "relationships")
 
     init {
-        dataFolder.mkdirs()
-        // Load existing relationships from files
         loadAllRelationships()
     }
 
@@ -35,38 +36,13 @@ class RelationshipManager(
     }
 
     /**
-     * Loads all relationship data from files
+     * Loads all relationship data from storage
      */
     fun loadAllRelationships() {
         relationships.clear()
-
-        dataFolder.listFiles()?.forEach { file ->
-            if (file.isFile && file.name.endsWith(".yml")) {
-                val sourceId = file.nameWithoutExtension
-                val config = YamlConfiguration.loadConfiguration(file)
-                val sourceRelationships = ConcurrentHashMap<String, Relationship>()
-
-                config.getKeys(false).forEach { targetId ->
-                    val section = config.getConfigurationSection(targetId) ?: return@forEach
-
-                    val targetName = section.getString("name") ?: targetId
-                    val type = section.getString("type") ?: "acquaintance"
-                    val score = section.getDouble("score")
-                    val traits = section.getStringList("traits").toMutableSet()
-
-                    val relationship =
-                        Relationship(
-                            targetName = targetName,
-                            type = type,
-                            score = score,
-                            traits = traits,
-                        )
-
-                    sourceRelationships[targetId] = relationship
-                }
-
-                relationships[sourceId] = sourceRelationships
-            }
+        val loaded = relationshipStorage.loadAllRelationships()
+        for ((sourceId, rels) in loaded) {
+            relationships[sourceId] = ConcurrentHashMap(rels)
         }
     }
 
@@ -75,20 +51,7 @@ class RelationshipManager(
      */
     fun saveRelationship(sourceId: String) {
         val sourceRelationships = relationships[sourceId] ?: return
-        val file = File(dataFolder, "$sourceId.yml")
-        val config = YamlConfiguration()
-
-        sourceRelationships.forEach { (targetId, relationship) ->
-            val path = targetId
-
-            config.set("$path.name", relationship.targetName)
-            config.set("$path.type", relationship.type)
-            config.set("$path.score", relationship.score)
-            config.set("$path.traits", relationship.traits.toList())
-            config.set("$path.memoryIds", relationship.memoryIds)
-        }
-
-        config.save(file)
+        relationshipStorage.saveRelationship(sourceId, sourceRelationships)
     }
 
     /**

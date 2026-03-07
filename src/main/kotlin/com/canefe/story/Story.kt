@@ -35,6 +35,8 @@ import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionManager
+import com.canefe.story.storage.StorageBackend
+import com.canefe.story.storage.StorageFactory
 import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
@@ -135,6 +137,8 @@ open class Story :
 
     lateinit var skillManager: SkillManager
 
+    lateinit var storageFactory: StorageFactory
+        private set
     private var webUIServer: WebUIServer? = null
 
     lateinit var voiceManager: VoiceManager
@@ -234,26 +238,38 @@ open class Story :
         // Initialize the prompt service early since other services depend on it
         promptService = PromptService(this)
 
+        // Initialize storage
+        storageFactory =
+            StorageFactory.create(
+                dataFolder = dataFolder,
+                logger = logger,
+                backend = StorageBackend.fromString(configService.storageBackend),
+                mongoUri = configService.mongoUri,
+                mongoDatabase = configService.mongoDatabase,
+                mongoMaxPoolSize = configService.mongoMaxPoolSize,
+                mongoConnectTimeoutMs = configService.mongoConnectTimeoutMs,
+            )
+
         timeService = TimeService(this)
-        sessionManager = SessionManager.getInstance(this)
+        sessionManager = SessionManager(this, storageFactory.sessionStorage)
         disguiseManager = DisguiseManager(this)
         typingSessionManager = TypingSessionManager(this)
         contextExtractor = ContextExtractor(this)
         audioManager = AudioManager(this)
         npcContextGenerator = NPCContextGenerator(this)
-        npcDataManager = NPCDataManager.getInstance(this)
-        locationManager = LocationManager.getInstance(this)
-        questManager = QuestManager.getInstance(this)
+        npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
+        locationManager = LocationManager(this, storageFactory.locationStorage)
+        questManager = QuestManager(this, storageFactory.questStorage)
         npcUtils = NPCUtils.getInstance(this)
         npcManager = NPCManager.getInstance(this)
         scheduleManager = NPCScheduleManager.getInstance(this)
-        playerManager = PlayerManager.getInstance(this)
+        playerManager = PlayerManager(this, storageFactory.playerStorage)
         npcMessageService = NPCMessageService.getInstance(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
         worldInformationManager = WorldInformationManager(this)
         npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
-        lorebookManager = LoreBookManager.getInstance(this)
+        lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
         taskManager = TaskManager.getInstance(this)
         npcBehaviorManager = NPCBehaviorManager(this)
 
@@ -266,7 +282,7 @@ open class Story :
             )
 
         aiResponseService = AIResponseService(this)
-        relationshipManager = RelationshipManager(this)
+        relationshipManager = RelationshipManager(this, storageFactory.relationshipStorage)
         mythicMobConversation = MythicMobConversationIntegration(this)
         skillManager = SkillManager(this)
         voiceManager = VoiceManager(this)
@@ -325,6 +341,51 @@ open class Story :
         )
     }
 
+    fun tryReconnectStorage(sender: CommandSender? = null) {
+        if (!::storageFactory.isInitialized) return
+
+        val desired = StorageBackend.fromString(configService.storageBackend)
+        val current = storageFactory.activeBackend
+
+        // Switch if backend changed, or reconnect if MongoDB connection was lost
+        val needsSwitch =
+            desired != current ||
+                (desired == StorageBackend.MONGODB && !storageFactory.isMongoConnected)
+
+        if (!needsSwitch) return
+
+        sender?.sendMessage(miniMessage.deserialize("<yellow>Switching storage backend to $desired...</yellow>"))
+
+        if (storageFactory.switchBackend(
+                newBackend = desired,
+                newMongoUri = configService.mongoUri,
+                newMongoDatabase = configService.mongoDatabase,
+                newMongoMaxPoolSize = configService.mongoMaxPoolSize,
+                newMongoConnectTimeoutMs = configService.mongoConnectTimeoutMs,
+            )
+        ) {
+            // Push new storage implementations to all managers
+            npcDataManager.updateStorage(storageFactory.npcStorage)
+            locationManager.updateStorage(storageFactory.locationStorage)
+            questManager.updateStorage(storageFactory.questStorage)
+            sessionManager.updateStorage(storageFactory.sessionStorage)
+            relationshipManager.updateStorage(storageFactory.relationshipStorage)
+            lorebookManager.updateStorage(storageFactory.loreStorage)
+            playerManager.updateStorage(storageFactory.playerStorage)
+            sender?.sendMessage(
+                miniMessage.deserialize(
+                    "<green>Storage backend switched to ${storageFactory.activeBackend}. All managers updated.</green>",
+                ),
+            )
+        } else {
+            sender?.sendMessage(
+                miniMessage.deserialize(
+                    "<red>Failed to switch to $desired. Keeping current backend (${storageFactory.activeBackend}).</red>",
+                ),
+            )
+        }
+    }
+
     private fun initializeWebUIServer() {
         val port = 7777
         webUIServer = WebUIServer(this, port)
@@ -341,24 +402,17 @@ open class Story :
         webUIServer?.shutdown()
         // Then shut down each manager in reverse order of initialization
         try {
-            // Conversation-related systems first
-            conversationManager.cancelScheduledTasks()
-            typingSessionManager.shutdown()
+            if (::conversationManager.isInitialized) conversationManager.cancelScheduledTasks()
+            if (::typingSessionManager.isInitialized) typingSessionManager.shutdown()
+            if (::scheduleManager.isInitialized) scheduleManager.shutdown()
 
-            // NPC-related systems
-            scheduleManager.shutdown()
-
-            // Generic systems
             CommandAPI.onDisable()
             commandManager.onDisable()
-            eventManager.unregisterAll()
-            sessionManager.shutdown()
-
-            // Shutdown AI response service (virtual thread executor)
-            aiResponseService.shutdown()
-
-            // Shutdown voice manager (includes ElevenLabsAudioManager virtual thread executor)
-            voiceManager.shutdown()
+            if (::eventManager.isInitialized) eventManager.unregisterAll()
+            if (::sessionManager.isInitialized) sessionManager.shutdown()
+            if (::aiResponseService.isInitialized) aiResponseService.shutdown()
+            if (::voiceManager.isInitialized) voiceManager.shutdown()
+            if (::storageFactory.isInitialized) storageFactory.shutdown()
 
             logger.info("Story plugin has been successfully disabled.")
         } catch (e: Exception) {

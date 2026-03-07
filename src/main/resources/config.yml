@@ -1,8 +1,21 @@
 # Story Configuration File
 
+# Storage Backend Configuration
+# backend: 'sqlite' (default, recommended), 'mongodb', or 'yaml' (deprecated, buggy)
+storage:
+  backend: sqlite
+  mongodb:
+    uri: 'mongodb://localhost:27017'
+    database: 'story'
+    maxPoolSize: 10
+    connectTimeoutMs: 10000
+  # SQLite stores data in plugins/Story/story.db
+  # No additional configuration needed
+
 # OpenRouter Settings
 openrouter:
   apikey: ''
+  apiUrl: 'https://openrouter.ai/api/v1/chat/completions'
   # google/gemini-flash-1.5
   # meta-llama/llama-3.1-8b-instruct
   # meta-llama/llama-3.3-70b-instruct

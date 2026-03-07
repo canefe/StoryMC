@@ -2,19 +2,19 @@ package com.canefe.story.lore
 
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.storage.LoreStorage
 import org.bukkit.Bukkit
-import org.bukkit.configuration.file.YamlConfiguration
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-class LoreBookManager private constructor(
+class LoreBookManager(
     private val plugin: Story,
+    private var loreStorage: LoreStorage,
 ) {
+    fun updateStorage(storage: LoreStorage) {
+        loreStorage = storage
+    }
+
     private val loreBooks: MutableMap<String, LoreBook> = HashMap()
-    private val loreFolder =
-        File(plugin.dataFolder, "lore").apply {
-            if (!exists()) mkdirs()
-        }
 
     // Track recently added lore contexts by conversation to avoid duplicates
     private val recentlyAddedLoreContexts: MutableMap<Conversation, MutableSet<String>> = ConcurrentHashMap()
@@ -82,29 +82,8 @@ class LoreBookManager private constructor(
 
     fun loadAllLoreBooks() {
         loreBooks.clear()
-        val files = loreFolder.listFiles { _, name -> name.endsWith(".yml") } ?: return
-
-        for (file in files) {
-            try {
-                val config = YamlConfiguration.loadConfiguration(file)
-                val name = config.getString("name") ?: continue
-                val context = config.getString("context") ?: continue
-                val keywords = config.getStringList("keywords")
-                val categoryList = config.getStringList("categories")
-                val categories = if (categoryList.isEmpty()) setOf("common") else categoryList.toSet()
-
-                if (keywords.isNotEmpty()) {
-                    val loreBook = LoreBook(name, context, keywords, categories)
-                    loreBooks[name.lowercase()] = loreBook
-                    plugin.logger.info("Loaded lorebook: $name")
-                } else {
-                    plugin.logger.warning("Invalid lorebook format in file: ${file.name}")
-                }
-            } catch (e: Exception) {
-                plugin.logger.warning("Error loading lorebook from file: ${file.name}")
-                e.printStackTrace()
-            }
-        }
+        val loaded = loreStorage.loadAllLoreBooks()
+        loreBooks.putAll(loaded)
         plugin.logger.info("Loaded ${loreBooks.size} lorebooks")
     }
 
@@ -163,18 +142,9 @@ class LoreBookManager private constructor(
         return relevantContexts
     }
 
-    // Function to save a new lore book
     fun saveLoreBook(loreBook: LoreBook) {
-        val file = File(loreFolder, "${loreBook.name.replace(" ", "_")}.yml")
-        val config = YamlConfiguration()
-
-        config.set("name", loreBook.name)
-        config.set("context", loreBook.context)
-        config.set("keywords", loreBook.keywords)
-        config.set("categories", ArrayList(loreBook.categories))
-
         try {
-            config.save(file)
+            loreStorage.saveLoreBook(loreBook)
             loreBooks[loreBook.name.lowercase()] = loreBook
         } catch (e: Exception) {
             plugin.logger.warning("Error saving lorebook: ${loreBook.name}")
@@ -182,17 +152,15 @@ class LoreBookManager private constructor(
         }
     }
 
-    // Function to delete a lore book
     fun deleteLoreBook(name: String): Boolean {
         val loreName = name.lowercase()
-        val file = File(loreFolder, "${name.replace(" ", "_")}.yml")
+        if (!loreBooks.containsKey(loreName)) return false
 
-        return if (loreBooks.containsKey(loreName) && file.exists()) {
+        val deleted = loreStorage.deleteLoreBook(name)
+        if (deleted) {
             loreBooks.remove(loreName)
-            file.delete()
-        } else {
-            false
         }
+        return deleted
     }
 
     // Function to get a lore book
@@ -214,14 +182,4 @@ class LoreBookManager private constructor(
         val keywords: List<String>,
         val categories: Set<String> = setOf("common"),
     )
-
-    companion object {
-        private var instance: LoreBookManager? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): LoreBookManager =
-            instance ?: synchronized(this) {
-                instance ?: LoreBookManager(plugin).also { instance = it }
-            }
-    }
 }
