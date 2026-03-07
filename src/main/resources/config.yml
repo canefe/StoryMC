@@ -15,6 +15,7 @@ storage:
 # OpenRouter Settings
 openrouter:
   apikey: ''
+  apiUrl: 'https://openrouter.ai/api/v1/chat/completions'
   # google/gemini-flash-1.5
   # meta-llama/llama-3.1-8b-instruct
   # meta-llama/llama-3.3-70b-instruct

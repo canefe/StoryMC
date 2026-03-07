@@ -147,7 +147,7 @@ class ConfigService(
 
     private fun loadConfigValues() {
         // Storage settings
-        storageBackend = config.getString("storage.backend", "mongodb") ?: "mongodb"
+        storageBackend = config.getString("storage.backend", "sqlite") ?: "sqlite"
         mongoUri = config.getString("storage.mongodb.uri", "mongodb://localhost:27017") ?: "mongodb://localhost:27017"
         mongoDatabase = config.getString("storage.mongodb.database", "story") ?: "story"
         mongoMaxPoolSize = config.getInt("storage.mongodb.maxPoolSize", 10)
