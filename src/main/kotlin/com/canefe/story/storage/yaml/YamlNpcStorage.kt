@@ -5,6 +5,7 @@ package com.canefe.story.storage.yaml
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.NpcStorage
+import com.canefe.story.util.PathSanitizer
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import java.io.IOException
@@ -68,16 +69,17 @@ class YamlNpcStorage(
         displayHandleToFileIndex[npcName]?.let { return it }
 
         // If not in index, try normalized filename
-        val normalizedFileName = npcName.replace(" ", "_").lowercase()
-        val normalizedFile = File(npcDirectory, "$normalizedFileName.yml")
+        val normalizedFileName = PathSanitizer.sanitizeFileName(npcName.replace(" ", "_").lowercase())
+        val normalizedFile = PathSanitizer.safeResolve(npcDirectory, normalizedFileName) ?: return null
         if (normalizedFile.exists()) {
             return normalizedFileName
         }
 
-        // Try original filename
-        val originalFile = File(npcDirectory, "$npcName.yml")
+        // Try original filename (sanitized)
+        val sanitizedName = PathSanitizer.sanitizeFileName(npcName)
+        val originalFile = PathSanitizer.safeResolve(npcDirectory, sanitizedName) ?: return null
         if (originalFile.exists()) {
-            return npcName
+            return sanitizedName
         }
 
         return null
@@ -158,9 +160,13 @@ class YamlNpcStorage(
         npcName: String,
         npcData: NPCData,
     ) {
-        val actualFileName = resolveNpcKey(npcName) ?: npcName.replace(" ", "_").lowercase()
+        val actualFileName =
+            resolveNpcKey(npcName)
+                ?: PathSanitizer.sanitizeFileName(npcName.replace(" ", "_").lowercase())
 
-        val npcFile = File(npcDirectory, "$actualFileName.yml")
+        val npcFile =
+            PathSanitizer.safeResolve(npcDirectory, actualFileName)
+                ?: throw IOException("Invalid NPC name: $npcName")
         val config = YamlConfiguration()
 
         config.set("name", npcData.name)
@@ -219,7 +225,8 @@ class YamlNpcStorage(
     }
 
     override fun deleteNpc(npcName: String) {
-        val npcFile = File(npcDirectory, "$npcName.yml")
+        val sanitized = PathSanitizer.sanitizeFileName(npcName)
+        val npcFile = PathSanitizer.safeResolve(npcDirectory, sanitized) ?: return
         if (npcFile.exists()) {
             npcFile.delete()
         }

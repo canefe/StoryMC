@@ -464,9 +464,6 @@ open class Story :
             // Shutdown voice manager (includes ElevenLabsAudioManager virtual thread executor)
             voiceManager.shutdown()
 
-            // Close storage connections
-            storageFactory.shutdown()
-
             // Unregister commands
             commandManager.onDisable()
 

@@ -557,7 +557,12 @@ class StoryCommand(
         sender: org.bukkit.command.CommandSender,
         result: YamlMigrator.MigrationResult,
     ) {
-        if (result.errors.isNotEmpty() && result.npcs == 0 && result.locations == 0) {
+        val totalMigrated =
+            result.npcs + result.locations + result.quests +
+                result.playerQuests + result.sessions + result.relationships +
+                result.loreBooks + result.teams + result.disabledPlayers
+
+        if (totalMigrated == 0 && result.errors.isNotEmpty()) {
             sender.sendError(result.errors.first())
             return
         }
@@ -571,7 +576,10 @@ class StoryCommand(
         sender.sendInfo("Teams: <gold>${result.teams}</gold>, Disabled Players: <gold>${result.disabledPlayers}</gold>")
 
         if (result.errors.isNotEmpty()) {
-            sender.sendError("${result.errors.size} error(s) occurred. Check console for details.")
+            sender.sendError("${result.errors.size} error(s): ${result.errors.first()}")
+            if (result.errors.size > 1) {
+                sender.sendError("Check console for remaining errors.")
+            }
         }
     }
 

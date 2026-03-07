@@ -4,6 +4,7 @@ package com.canefe.story.storage.yaml
 
 import com.canefe.story.storage.LocationDocument
 import com.canefe.story.storage.LocationStorage
+import com.canefe.story.util.PathSanitizer
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import java.io.IOException
@@ -95,11 +96,12 @@ class YamlLocationStorage(
     }
 
     override fun loadLocation(name: String): LocationDocument? {
-        var locationFile = File(locationDirectory, "$name.yml")
-
-        if (!locationFile.exists() && name.contains("/")) {
-            locationFile = File(locationDirectory, name.replace("/", File.separator) + ".yml")
-        }
+        // Location names may contain "/" for hierarchy (e.g. "Ashwood/Barracks")
+        // Validate the resolved path stays within the location directory
+        val relativePath = name.replace("/", File.separator)
+        val locationFile =
+            PathSanitizer.safeResolve(locationDirectory, relativePath)
+                ?: return null
 
         if (!locationFile.exists()) return null
 
@@ -142,7 +144,10 @@ class YamlLocationStorage(
     }
 
     override fun saveLocation(location: LocationDocument) {
-        val locationFile = File(locationDirectory, "${location.name}.yml")
+        val relativePath = location.name.replace("/", File.separator)
+        val locationFile =
+            PathSanitizer.safeResolve(locationDirectory, relativePath)
+                ?: throw IOException("Invalid location name: ${location.name}")
         locationFile.parentFile?.mkdirs()
         val config = YamlConfiguration()
 
@@ -180,7 +185,8 @@ class YamlLocationStorage(
     }
 
     override fun deleteLocation(name: String) {
-        val locationFile = File(locationDirectory, "$name.yml")
+        val relativePath = name.replace("/", File.separator)
+        val locationFile = PathSanitizer.safeResolve(locationDirectory, relativePath) ?: return
         if (locationFile.exists()) {
             locationFile.delete()
         }
