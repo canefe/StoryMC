@@ -9,4 +9,10 @@ data class Session(
     val history: StringBuilder = StringBuilder(),
 ) {
     var endTime: Long? = null
+
+    /** Periodic summary of session history, used as context for AI instead of full history. */
+    var historySummary: String? = null
+
+    /** Number of entries added since the last summary was generated. */
+    var entriesSinceLastSummary: Int = 0
 }

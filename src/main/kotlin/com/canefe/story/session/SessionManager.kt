@@ -179,9 +179,10 @@ class SessionManager(
             contextBuilder.append("\n")
         }
 
-        if (session.history.isNotEmpty()) {
+        val sessionHistoryContext = session.historySummary ?: session.history.toString()
+        if (sessionHistoryContext.isNotEmpty()) {
             contextBuilder.append("CURRENT SESSION HISTORY:\n")
-            contextBuilder.append(session.history.toString())
+            contextBuilder.append(sessionHistoryContext)
             contextBuilder.append("\n")
         }
 
@@ -228,7 +229,9 @@ class SessionManager(
                             }
                         }
                         session.history.append("\n\n")
+                        session.entriesSinceLastSummary++
                         autosaveCurrentSession()
+                        summarizeIfNeeded(session)
                     }
 
                     if (force) {
@@ -267,6 +270,44 @@ class SessionManager(
         }
 
         currentSessionId = null
+    }
+
+    companion object {
+        private const val SUMMARIZE_EVERY_N_ENTRIES = 3
+    }
+
+    private fun summarizeIfNeeded(session: Session) {
+        if (session.entriesSinceLastSummary < SUMMARIZE_EVERY_N_ENTRIES) return
+
+        val historyText = session.history.toString()
+        if (historyText.isBlank()) return
+
+        val previousSummary = session.historySummary
+        val summaryPrompt =
+            if (previousSummary != null) {
+                "Previous summary:\n$previousSummary\n\nNew entries since last summary:\n$historyText"
+            } else {
+                historyText
+            }
+
+        val messages =
+            mutableListOf(
+                ConversationMessage("system", plugin.promptService.getSessionHistorySummaryPrompt()),
+                ConversationMessage("user", summaryPrompt),
+            )
+
+        plugin
+            .getAIResponse(messages, lowCost = true)
+            .thenAccept { summary ->
+                if (summary != null) {
+                    session.historySummary = summary
+                    session.entriesSinceLastSummary = 0
+                    plugin.logger.info("Session history summarized successfully")
+                }
+            }.exceptionally { e ->
+                plugin.logger.warning("[ERROR] Failed to summarize session history: ${e.message}")
+                null
+            }
     }
 
     private fun autosaveCurrentSession() {
