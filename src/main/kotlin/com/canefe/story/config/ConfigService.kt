@@ -10,6 +10,13 @@ class ConfigService(
     private val config: FileConfiguration
         get() = plugin.configFile
 
+    // Storage settings
+    var storageBackend: String = "mongodb"
+    var mongoUri: String = "mongodb://localhost:27017"
+    var mongoDatabase: String = "story"
+    var mongoMaxPoolSize: Int = 10
+    var mongoConnectTimeoutMs: Int = 10000
+
     // OpenAI API settings
     var openAIUrl: String = ""
     var openAIKey: String = ""
@@ -139,6 +146,13 @@ class ConfigService(
     }
 
     private fun loadConfigValues() {
+        // Storage settings
+        storageBackend = config.getString("storage.backend", "mongodb") ?: "mongodb"
+        mongoUri = config.getString("storage.mongodb.uri", "mongodb://localhost:27017") ?: "mongodb://localhost:27017"
+        mongoDatabase = config.getString("storage.mongodb.database", "story") ?: "story"
+        mongoMaxPoolSize = config.getInt("storage.mongodb.maxPoolSize", 10)
+        mongoConnectTimeoutMs = config.getInt("storage.mongodb.connectTimeoutMs", 10000)
+
         openAIKey = config.getString("openrouter.apikey", "") ?: ""
         openAIUrl = config.getString("openrouter.apiUrl", "") ?: ""
         aiModel =

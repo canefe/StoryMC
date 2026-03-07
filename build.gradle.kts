@@ -138,6 +138,12 @@ dependencies {
     implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
     implementation("com.googlecode.soundlibs:tritonus-share:0.3.7.4")
 
+    // MongoDB
+    implementation("org.mongodb:mongodb-driver-sync:5.4.0")
+
+    // SQLite
+    implementation("org.xerial:sqlite-jdbc:3.49.1.0")
+
     // Add Mockito-Kotlin for tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
 }
@@ -257,6 +263,8 @@ tasks.withType<ShadowJar> {
     }
     relocate("dev.jorel.commandapi", "com.canefe.story.commandapi")
     relocate("com.github.stefvanschie.inventoryframework", "com.canefe.story.story.inventoryframework")
+    relocate("com.mongodb", "com.canefe.story.lib.mongodb")
+    relocate("org.bson", "com.canefe.story.lib.bson")
 
     // append -devbuild-<commit> for SNAPSHOT builds
     if (version.toString().endsWith("SNAPSHOT")) {

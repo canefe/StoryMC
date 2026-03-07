@@ -3,19 +3,23 @@ package com.canefe.story.player
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.storage.PlayerStorage
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
 import org.bukkit.Bukkit
-import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
-import java.io.File
 import java.util.*
 import java.util.logging.Level
 
-class PlayerManager(
+class PlayerManager private constructor(
     private val plugin: Story,
+    private var playerStorage: PlayerStorage,
 ) {
+    fun updateStorage(storage: PlayerStorage) {
+        playerStorage = storage
+    }
+
     // Player to NPC mapping
     val playerCurrentNPC = HashMap<UUID, UUID>()
 
@@ -127,6 +131,7 @@ class PlayerManager(
         val playerUUID = player.uniqueId
         playerQuestTitles.remove(playerUUID)
         playerQuestObjectives.remove(playerUUID)
+        playerStorage.clearPlayerQuestDisplay(playerUUID)
         saveData()
     }
 
@@ -265,30 +270,14 @@ class PlayerManager(
 
     private fun saveTeamsAndQuests() {
         try {
-            // Save teams
-            val teamsFile = File(plugin.dataFolder, "teams.yml")
-            val teamsConfig = YamlConfiguration()
+            playerStorage.saveTeams(teams)
 
-            for ((teamName, members) in teams) {
-                val memberList = members.map { it.toString() }
-                teamsConfig.set("teams.$teamName", memberList)
-            }
-
-            teamsConfig.save(teamsFile)
-
-            // Save player quests
-            val questsFile = File(plugin.dataFolder, "player-quests.yml")
-            val questsConfig = YamlConfiguration()
-
+            // Save each player's quest display
             for (playerUUID in playerQuestTitles.keys) {
-                val title = playerQuestTitles[playerUUID]
-                val objective = playerQuestObjectives[playerUUID]
-
-                questsConfig.set("players.$playerUUID.title", title)
-                questsConfig.set("players.$playerUUID.objective", objective)
+                val title = playerQuestTitles[playerUUID] ?: continue
+                val objective = playerQuestObjectives[playerUUID] ?: continue
+                playerStorage.savePlayerQuestDisplay(playerUUID, title, objective)
             }
-
-            questsConfig.save(questsFile)
         } catch (e: Exception) {
             plugin.logger.log(Level.SEVERE, "Failed to save teams and quests data", e)
         }
@@ -296,13 +285,9 @@ class PlayerManager(
 
     private fun saveDisabledPlayers() {
         try {
-            val disabledPlayersFile = File(plugin.dataFolder, "disabled-players.yml")
-            val disabledPlayersConfig = YamlConfiguration()
-
-            disabledPlayersConfig.set("disabled-players", disabledPlayers)
-            disabledPlayersConfig.save(disabledPlayersFile)
+            playerStorage.saveDisabledPlayers(disabledPlayers)
         } catch (e: Exception) {
-            plugin.logger.severe("Could not save disabled players to file: ${e.message}")
+            plugin.logger.severe("Could not save disabled players: ${e.message}")
         }
     }
 
@@ -314,47 +299,12 @@ class PlayerManager(
     private fun loadTeamsAndQuests() {
         try {
             // Load teams
-            val teamsFile = File(plugin.dataFolder, "teams.yml")
-            if (teamsFile.exists()) {
-                val teamsConfig = YamlConfiguration.loadConfiguration(teamsFile)
-                val teamsSection = teamsConfig.getConfigurationSection("teams")
+            teams.putAll(playerStorage.loadTeams())
 
-                teamsSection?.getKeys(false)?.forEach { teamName ->
-                    val membersList = teamsConfig.getStringList("teams.$teamName")
-                    val membersSet = HashSet<UUID>()
-
-                    membersList.forEach { uuidString ->
-                        try {
-                            membersSet.add(UUID.fromString(uuidString))
-                        } catch (e: IllegalArgumentException) {
-                            plugin.logger.warning("Invalid UUID in team $teamName: $uuidString")
-                        }
-                    }
-
-                    teams[teamName] = membersSet
-                }
-            }
-
-            // Load player quests
-            val questsFile = File(plugin.dataFolder, "player-quests.yml")
-            if (questsFile.exists()) {
-                val questsConfig = YamlConfiguration.loadConfiguration(questsFile)
-                val playersSection = questsConfig.getConfigurationSection("players")
-
-                playersSection?.getKeys(false)?.forEach { uuidString ->
-                    try {
-                        val playerUUID = UUID.fromString(uuidString)
-                        val title = questsConfig.getString("players.$uuidString.title")
-                        val objective = questsConfig.getString("players.$uuidString.objective")
-
-                        if (title != null && objective != null) {
-                            playerQuestTitles[playerUUID] = title
-                            playerQuestObjectives[playerUUID] = objective
-                        }
-                    } catch (e: IllegalArgumentException) {
-                        plugin.logger.warning("Invalid player UUID: $uuidString")
-                    }
-                }
+            // Load player quest displays
+            for ((playerId, questData) in playerStorage.loadPlayerQuestDisplay()) {
+                playerQuestTitles[playerId] = questData.first
+                playerQuestObjectives[playerId] = questData.second
             }
         } catch (e: Exception) {
             plugin.logger.log(Level.SEVERE, "Failed to load teams and quests data", e)
@@ -363,29 +313,30 @@ class PlayerManager(
 
     private fun loadDisabledPlayers() {
         try {
-            val disabledPlayersFile = File(plugin.dataFolder, "disabled-players.yml")
-            if (disabledPlayersFile.exists()) {
-                val disabledPlayersConfig = YamlConfiguration.loadConfiguration(disabledPlayersFile)
-                val disabledPlayersList = disabledPlayersConfig.getStringList("disabled-players")
-
-                disabledPlayers.clear()
-                disabledPlayers.addAll(disabledPlayersList)
-            } else {
-                plugin.saveResource("disabled-players.yml", false)
-            }
+            disabledPlayers.clear()
+            disabledPlayers.addAll(playerStorage.loadDisabledPlayers())
         } catch (e: Exception) {
-            plugin.logger.severe("Could not load disabled players from file: ${e.message}")
+            plugin.logger.severe("Could not load disabled players: ${e.message}")
         }
     }
 
     companion object {
         private var instance: PlayerManager? = null
 
-        fun getInstance(story: Story): PlayerManager {
-            if (instance == null) {
-                instance = PlayerManager(story)
+        @JvmStatic
+        fun getInstance(
+            plugin: Story,
+            playerStorage: PlayerStorage,
+        ): PlayerManager =
+            instance ?: synchronized(this) {
+                instance ?: PlayerManager(plugin, playerStorage).also { instance = it }
             }
-            return instance!!
-        }
+
+        @JvmStatic
+        fun getInstance(plugin: Story): PlayerManager =
+            instance
+                ?: throw IllegalStateException(
+                    "PlayerManager not initialized. Call getInstance(plugin, playerStorage) first.",
+                )
     }
 }

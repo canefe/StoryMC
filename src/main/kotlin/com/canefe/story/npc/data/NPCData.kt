@@ -25,6 +25,10 @@ data class NPCData(
     var displayHandle: String? = null // Short name for MC display (e.g., "A. Mossveil")
     var callsign: String? = null // Optional differentiator (e.g., "Spearhand")
 
+    // Transient field used by storage to pass the location name before the manager resolves it
+    @Transient
+    var locationName: String? = null
+
     // Helper method to add a memory
     fun addMemory(
         content: String,

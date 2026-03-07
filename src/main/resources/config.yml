@@ -1,5 +1,17 @@
 # Story Configuration File
 
+# Storage Backend Configuration
+# backend: 'mongodb' (default, recommended), 'sqlite', or 'yaml' (deprecated, buggy)
+storage:
+  backend: mongodb
+  mongodb:
+    uri: 'mongodb://localhost:27017'
+    database: 'story'
+    maxPoolSize: 10
+    connectTimeoutMs: 10000
+  # SQLite stores data in plugins/Story/story.db
+  # No additional configuration needed
+
 # OpenRouter Settings
 openrouter:
   apikey: ''

@@ -3,6 +3,7 @@ package com.canefe.story.quest
 import com.canefe.story.Story
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
+import com.canefe.story.storage.QuestStorage
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
@@ -16,7 +17,6 @@ import org.bukkit.OfflinePlayer
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import java.io.File
-import java.io.IOException
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -25,7 +25,12 @@ import kotlin.text.get
 
 class QuestManager private constructor(
     private val plugin: Story,
+    private var questStorage: QuestStorage,
 ) {
+    fun updateStorage(storage: QuestStorage) {
+        questStorage = storage
+    }
+
     private val quests = ConcurrentHashMap<String, Quest>()
     private val playerQuests = ConcurrentHashMap<UUID, MutableMap<String, PlayerQuest>>()
 
@@ -93,79 +98,17 @@ class QuestManager private constructor(
 
     fun loadAllQuests() {
         quests.clear()
-        val files = questFolder.listFiles { _, name -> name.endsWith(".yml") } ?: return
-
-        for (file in files) {
-            try {
-                val questId = file.name.replace(".yml", "")
-                val quest = loadQuest(questId)
-                if (quest != null) {
-                    quests[questId] = quest
-                    // plugin.logger.info("Loaded quest: ${quest.title} (ID: $questId)")
-                }
-            } catch (e: Exception) {
-                plugin.logger.warning("Error loading quest from file: ${file.name}")
-                e.printStackTrace()
-            }
-        }
+        val loaded = questStorage.loadAllQuests()
+        quests.putAll(loaded)
         plugin.logger.info("Loaded ${quests.size} quests")
     }
 
-    fun loadQuest(questId: String): Quest? {
-        val questFile = File(questFolder, "$questId.yml")
-        if (!questFile.exists()) {
-            return null
-        }
-
-        val config = YamlConfiguration.loadConfiguration(questFile)
-
-        val title = config.getString("title") ?: return null
-        val description = config.getString("description") ?: ""
-        val type = QuestType.valueOf(config.getString("type", "MAIN") ?: "MAIN")
-        val prerequisites = config.getStringList("prerequisites").toMutableList()
-        val nextQuests = config.getStringList("nextQuests").toMutableList()
-
-        val objectives = mutableListOf<QuestObjective>()
-        val objectivesSection = config.getConfigurationSection("objectives") ?: return null
-
-        for (key in objectivesSection.getKeys(false)) {
-            val objDesc = objectivesSection.getString("$key.description") ?: continue
-            val objType = ObjectiveType.valueOf(objectivesSection.getString("$key.type") ?: continue)
-            val objTarget = objectivesSection.getString("$key.target") ?: ""
-            val objRequired = objectivesSection.getInt("$key.required", 1)
-
-            objectives.add(QuestObjective(objDesc, objType, objTarget, 0, objRequired))
-        }
-
-        val rewards = mutableListOf<QuestReward>()
-        val rewardsSection = config.getConfigurationSection("rewards")
-
-        if (rewardsSection != null) {
-            for (key in rewardsSection.getKeys(false)) {
-                val rewardType = RewardType.valueOf(rewardsSection.getString("$key.type") ?: continue)
-                val amount = rewardsSection.getInt("$key.amount", 0)
-
-                // TODO: Handle item rewards properly once you have a serialization system
-                rewards.add(QuestReward(rewardType, amount))
-            }
-        }
-
-        return Quest(questId, title, description, type, objectives, rewards, prerequisites, nextQuests)
-    }
+    fun loadQuest(questId: String): Quest? = questStorage.loadQuest(questId)
 
     fun loadAllPlayerQuests() {
-        val playerFiles = playerQuestFolder.listFiles { _, name -> name.endsWith(".yml") } ?: return
-
-        for (file in playerFiles) {
-            try {
-                val playerId = UUID.fromString(file.nameWithoutExtension)
-                loadPlayerQuests(playerId)
-            } catch (ex: Exception) {
-                plugin.logger.warning("Error loading player quests from ${file.name}: ${ex.message}")
-            }
-        }
-
-        plugin.logger.info("Loaded quests for ${playerQuests.size} players")
+        // Player quests are loaded lazily when requested via getPlayerQuests()
+        playerQuests.clear()
+        plugin.logger.info("Player quests cache cleared (will load on demand)")
     }
 
     fun resetQuest(
@@ -182,40 +125,7 @@ class QuestManager private constructor(
     }
 
     fun saveQuest(quest: Quest) {
-        val questFile = File(questFolder, "${quest.id}.yml")
-        val config = YamlConfiguration()
-
-        config.set("title", quest.title)
-        config.set("description", quest.description)
-        config.set("type", quest.type.name)
-        config.set("prerequisites", quest.prerequisites)
-        config.set("nextQuests", quest.nextQuests)
-
-        // Save objectives
-        for (i in quest.objectives.indices) {
-            val obj = quest.objectives[i]
-            val path = "objectives.$i"
-            config.set("$path.description", obj.description)
-            config.set("$path.type", obj.type.name)
-            config.set("$path.target", obj.target)
-            config.set("$path.required", obj.required)
-        }
-
-        // Save rewards
-        for (i in quest.rewards.indices) {
-            val reward = quest.rewards[i]
-            val path = "rewards.$i"
-            config.set("$path.type", reward.type.name)
-            config.set("$path.amount", reward.amount)
-            // TODO: Handle item rewards serialization
-        }
-
-        try {
-            config.save(questFile)
-        } catch (e: IOException) {
-            plugin.logger.severe("Could not save quest: ${quest.id}")
-            e.printStackTrace()
-        }
+        questStorage.saveQuest(quest)
     }
 
     fun getQuest(questId: String): Quest? = quests[questId]
@@ -612,32 +522,7 @@ class QuestManager private constructor(
     private fun loadPlayerQuests(playerId: UUID) {
         if (playerQuests.containsKey(playerId)) return
 
-        val playerQuestsMap = mutableMapOf<String, PlayerQuest>()
-        val playerFile = File(playerQuestFolder, "$playerId.yml")
-
-        if (playerFile.exists()) {
-            val config = YamlConfiguration.loadConfiguration(playerFile)
-
-            for (questId in config.getKeys(false)) {
-                val statusStr = config.getString("$questId.status") ?: continue
-                val status = QuestStatus.valueOf(statusStr)
-                val completionDate = config.getLong("$questId.completionDate", 0)
-
-                val playerQuest = PlayerQuest(questId, playerId, status, completionDate)
-
-                // Load objective progress
-                config.getConfigurationSection("$questId.progress")?.let { progressSection ->
-                    for (key in progressSection.getKeys(false)) {
-                        val index = key.toIntOrNull() ?: continue
-                        val progress = progressSection.getInt(key)
-                        playerQuest.objectiveProgress[index] = progress
-                    }
-                }
-
-                playerQuestsMap[questId] = playerQuest
-            }
-        }
-
+        val playerQuestsMap = questStorage.loadPlayerQuests(playerId).toMutableMap()
         playerQuests[playerId] = playerQuestsMap
 
         val currentQuest = playerQuestsMap.values.lastOrNull { it.status == QuestStatus.IN_PROGRESS }
@@ -751,40 +636,13 @@ class QuestManager private constructor(
         playerId: UUID,
         playerQuest: PlayerQuest,
     ) {
-        val playerFile = File(playerQuestFolder, "$playerId.yml")
-        val config =
-            if (playerFile.exists()) {
-                YamlConfiguration.loadConfiguration(playerFile)
-            } else {
-                YamlConfiguration()
-            }
-
-        val questId = playerQuest.questId
-        config.set("$questId.status", playerQuest.status.name)
-        config.set("$questId.completionDate", playerQuest.completionDate)
-
-        // Save objective progress
-        for ((index, progress) in playerQuest.objectiveProgress) {
-            config.set("$questId.progress.$index", progress)
-        }
-
-        try {
-            config.save(playerFile)
-
-            // Update the in-memory map instead of clearing and reloading
-            playerQuests.getOrPut(playerId) { mutableMapOf() }[questId] = playerQuest
-        } catch (e: IOException) {
-            plugin.logger.severe("Could not save player quest for player $playerId, quest $questId")
-            e.printStackTrace()
-        }
+        questStorage.savePlayerQuest(playerId, playerQuest)
+        playerQuests.getOrPut(playerId) { mutableMapOf() }[playerQuest.questId] = playerQuest
     }
 
     fun clearPlayerQuests(playerId: UUID) {
         playerQuests.remove(playerId)
-        val playerFile = File(playerQuestFolder, "$playerId.yml")
-        if (playerFile.exists()) {
-            playerFile.delete()
-        }
+        questStorage.deletePlayerQuests(playerId)
     }
 
     fun loadConfig() {
@@ -800,6 +658,16 @@ class QuestManager private constructor(
         private var instance: QuestManager? = null
 
         @JvmStatic
-        fun getInstance(plugin: Story): QuestManager = instance ?: QuestManager(plugin).also { instance = it }
+        fun getInstance(
+            plugin: Story,
+            questStorage: QuestStorage,
+        ): QuestManager = instance ?: QuestManager(plugin, questStorage).also { instance = it }
+
+        @JvmStatic
+        fun getInstance(plugin: Story): QuestManager =
+            instance
+                ?: throw IllegalStateException(
+                    "QuestManager not initialized. Call getInstance(plugin, questStorage) first.",
+                )
     }
 }
