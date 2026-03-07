@@ -194,6 +194,7 @@ class NPCManager private constructor(
         player: Player,
         message: String,
         onCompleteAction: Runnable?,
+        radiant: Boolean = false,
     ) {
         if (!npc.isSpawned || isNPCDisabled(npc)) return
 
@@ -220,6 +221,7 @@ class NPCManager private constructor(
                     npcs.add(npc)
 
                     val conversation = plugin.conversationManager.startConversation(player, npcs)
+                    if (radiant) conversation.radiant = true
 
                     // Send the message
                     plugin.npcMessageService.broadcastNPCMessage(message, npc)

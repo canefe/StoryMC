@@ -70,7 +70,10 @@ class SessionManager(
      * Generate an AI response based on the input text enriched with relevant context,
      * then append the response to the session history.
      */
-    fun feed(text: String) {
+    fun feed(
+        text: String,
+        force: Boolean = false,
+    ) {
         val session = current.get() ?: return
 
         // Gather context from lore, NPCs, and locations
@@ -205,35 +208,43 @@ class SessionManager(
             .getAIResponse(messages)
             .thenAccept { aiResponse ->
                 if (aiResponse != null) {
-                    plugin.askForPermission(
-                        "<yellow>Following narrative response will be added to session" +
-                            " history. Do you want to proceed?</yellow> \n\n $aiResponse",
-                        onAccept = {
-                            session.history.append(aiResponse)
-                            var message = aiResponse
-                            message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
-                            val formatted =
-                                plugin.npcMessageService.formatMessage(
-                                    message = message,
-                                    name = "",
-                                    formatColor = "<color:#e67e22>",
-                                    formatColorSuffix = "</color:#e67e22>",
-                                )
-                            if (plugin.config.broadcastSessionEntries) {
-                                session.players.forEach { player ->
-                                    val ply = plugin.server.getPlayer(player)
-                                    for (messagePart in formatted) {
-                                        ply?.sendMessage(messagePart)
-                                    }
+                    val addToSession = {
+                        session.history.append(aiResponse)
+                        var message = aiResponse
+                        message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
+                        val formatted =
+                            plugin.npcMessageService.formatMessage(
+                                message = message,
+                                name = "",
+                                formatColor = "<color:#e67e22>",
+                                formatColorSuffix = "</color:#e67e22>",
+                            )
+                        if (plugin.config.broadcastSessionEntries) {
+                            session.players.forEach { player ->
+                                val ply = plugin.server.getPlayer(player)
+                                for (messagePart in formatted) {
+                                    ply?.sendMessage(messagePart)
                                 }
                             }
-                            session.history.append("\n\n")
-                            autosaveCurrentSession()
-                        },
-                        onRefuse = {
-                            plugin.logger.info("Narrative response was not added to session history. Rejected.")
-                        },
-                    )
+                        }
+                        session.history.append("\n\n")
+                        autosaveCurrentSession()
+                    }
+
+                    if (force) {
+                        addToSession()
+                    } else {
+                        plugin.askForPermission(
+                            "<yellow>Following narrative response will be added to session" +
+                                " history. Do you want to proceed?</yellow> \n\n $aiResponse",
+                            onAccept = {
+                                addToSession()
+                            },
+                            onRefuse = {
+                                plugin.logger.info("Narrative response was not added to session history. Rejected.")
+                            },
+                        )
+                    }
                 } else {
                     plugin.logger.warning("[ERROR] Failed to generate narrative response")
                 }

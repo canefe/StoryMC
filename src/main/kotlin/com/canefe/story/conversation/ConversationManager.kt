@@ -307,7 +307,8 @@ class ConversationManager private constructor(
             )
             sessionContext.append("\nLocation: ${conversationLocation}\n")
             sessionContext.append("Summarize this conversation and add it. ")
-            plugin.sessionManager.feed(sessionContext.toString())
+            val forceSession = !conversation.radiant && conversation.players.isNotEmpty()
+            plugin.sessionManager.feed(sessionContext.toString(), force = forceSession)
 
             // Summarize conversation for NPC memory if needed
             npcResponseService
@@ -1118,6 +1119,8 @@ class ConversationManager private constructor(
                 _players = mutableListOf(),
                 initialNPCs = npcs,
             )
+        conversation.radiant = true
+
         // Add to repository
         repository.addConversation(conversation)
 
