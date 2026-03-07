@@ -11,7 +11,7 @@ class ConfigService(
         get() = plugin.configFile
 
     // Storage settings
-    var storageBackend: String = "mongodb"
+    var storageBackend: String = "sqlite"
     var mongoUri: String = "mongodb://localhost:27017"
     var mongoDatabase: String = "story"
     var mongoMaxPoolSize: Int = 10
