@@ -379,3 +379,10 @@ recent_events_generation:
         Keep it concise (2-3 sentences) but informative, capturing the essence of what's happening in the location.
 
         Respond with a JSON object containing only a 'recent_events' field.
+
+session_history_summary:
+  system_prompt: |
+    You are a concise summarizer for a medieval fantasy role-playing session.
+    Summarize the session history into a condensed narrative that preserves key events,
+    character actions, important dialogue outcomes, and plot developments.
+    Keep the summary under 500 words. Focus on what matters for continuing the story.

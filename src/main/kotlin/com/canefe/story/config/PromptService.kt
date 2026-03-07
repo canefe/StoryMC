@@ -248,6 +248,9 @@ class PromptService(
         return getPrompt("location_context_generation", variables)
     }
 
+    /** Gets the session history summary prompt */
+    fun getSessionHistorySummaryPrompt(): String = getPrompt("session_history_summary")
+
     /** Recent events generation prompt */
     fun getRecentEventsGenerationPrompt(contextInformation: String): String {
         val variables = mapOf("context_information" to contextInformation)

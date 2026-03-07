@@ -70,7 +70,10 @@ class SessionManager(
      * Generate an AI response based on the input text enriched with relevant context,
      * then append the response to the session history.
      */
-    fun feed(text: String) {
+    fun feed(
+        text: String,
+        force: Boolean = false,
+    ) {
         val session = current.get() ?: return
 
         // Gather context from lore, NPCs, and locations
@@ -176,9 +179,10 @@ class SessionManager(
             contextBuilder.append("\n")
         }
 
-        if (session.history.isNotEmpty()) {
+        val sessionHistoryContext = session.historySummary ?: session.history.toString()
+        if (sessionHistoryContext.isNotEmpty()) {
             contextBuilder.append("CURRENT SESSION HISTORY:\n")
-            contextBuilder.append(session.history.toString())
+            contextBuilder.append(sessionHistoryContext)
             contextBuilder.append("\n")
         }
 
@@ -205,35 +209,45 @@ class SessionManager(
             .getAIResponse(messages)
             .thenAccept { aiResponse ->
                 if (aiResponse != null) {
-                    plugin.askForPermission(
-                        "<yellow>Following narrative response will be added to session" +
-                            " history. Do you want to proceed?</yellow> \n\n $aiResponse",
-                        onAccept = {
-                            session.history.append(aiResponse)
-                            var message = aiResponse
-                            message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
-                            val formatted =
-                                plugin.npcMessageService.formatMessage(
-                                    message = message,
-                                    name = "",
-                                    formatColor = "<color:#e67e22>",
-                                    formatColorSuffix = "</color:#e67e22>",
-                                )
-                            if (plugin.config.broadcastSessionEntries) {
-                                session.players.forEach { player ->
-                                    val ply = plugin.server.getPlayer(player)
-                                    for (messagePart in formatted) {
-                                        ply?.sendMessage(messagePart)
-                                    }
+                    val addToSession = {
+                        session.history.append(aiResponse)
+                        var message = aiResponse
+                        message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
+                        val formatted =
+                            plugin.npcMessageService.formatMessage(
+                                message = message,
+                                name = "",
+                                formatColor = "<color:#e67e22>",
+                                formatColorSuffix = "</color:#e67e22>",
+                            )
+                        if (plugin.config.broadcastSessionEntries) {
+                            session.players.forEach { player ->
+                                val ply = plugin.server.getPlayer(player)
+                                for (messagePart in formatted) {
+                                    ply?.sendMessage(messagePart)
                                 }
                             }
-                            session.history.append("\n\n")
-                            autosaveCurrentSession()
-                        },
-                        onRefuse = {
-                            plugin.logger.info("Narrative response was not added to session history. Rejected.")
-                        },
-                    )
+                        }
+                        session.history.append("\n\n")
+                        session.entriesSinceLastSummary++
+                        autosaveCurrentSession()
+                        summarizeIfNeeded(session)
+                    }
+
+                    if (force) {
+                        addToSession()
+                    } else {
+                        plugin.askForPermission(
+                            "<yellow>Following narrative response will be added to session" +
+                                " history. Do you want to proceed?</yellow> \n\n $aiResponse",
+                            onAccept = {
+                                addToSession()
+                            },
+                            onRefuse = {
+                                plugin.logger.info("Narrative response was not added to session history. Rejected.")
+                            },
+                        )
+                    }
                 } else {
                     plugin.logger.warning("[ERROR] Failed to generate narrative response")
                 }
@@ -256,6 +270,44 @@ class SessionManager(
         }
 
         currentSessionId = null
+    }
+
+    companion object {
+        private const val SUMMARIZE_EVERY_N_ENTRIES = 3
+    }
+
+    private fun summarizeIfNeeded(session: Session) {
+        if (session.entriesSinceLastSummary < SUMMARIZE_EVERY_N_ENTRIES) return
+
+        val historyText = session.history.toString()
+        if (historyText.isBlank()) return
+
+        val previousSummary = session.historySummary
+        val summaryPrompt =
+            if (previousSummary != null) {
+                "Previous summary:\n$previousSummary\n\nNew entries since last summary:\n$historyText"
+            } else {
+                historyText
+            }
+
+        val messages =
+            mutableListOf(
+                ConversationMessage("system", plugin.promptService.getSessionHistorySummaryPrompt()),
+                ConversationMessage("user", summaryPrompt),
+            )
+
+        plugin
+            .getAIResponse(messages, lowCost = true)
+            .thenAccept { summary ->
+                if (summary != null) {
+                    session.historySummary = summary
+                    session.entriesSinceLastSummary = 0
+                    plugin.logger.info("Session history summarized successfully")
+                }
+            }.exceptionally { e ->
+                plugin.logger.warning("[ERROR] Failed to summarize session history: ${e.message}")
+                null
+            }
     }
 
     private fun autosaveCurrentSession() {

@@ -17,6 +17,7 @@ class Conversation(
     // Public properties
     var active: Boolean = true
     var chatEnabled: Boolean = true
+    var radiant: Boolean = false
     val mutedNPCs: MutableList<NPC> = ArrayList()
 
     // Read-only property exposing internal list as immutable

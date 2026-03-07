@@ -214,7 +214,7 @@ class RadiantConversationService(
                 Bukkit.getScheduler().runTask(
                     plugin,
                     Runnable {
-                        npcManager.eventGoToPlayerAndTalk(initiator, player, greeting, null)
+                        npcManager.eventGoToPlayerAndTalk(initiator, player, greeting, null, radiant = true)
                     },
                 )
             } catch (e: Exception) {

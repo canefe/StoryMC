@@ -90,7 +90,7 @@ class ConversationManagerTest {
             val npc = makeNpc("Guard")
 
             // Ensure session/world handlers do nothing but are observable
-            every { plugin.sessionManager.feed(any()) } just Runs
+            every { plugin.sessionManager.feed(any(), any()) } just Runs
             every { plugin.worldInformationManager.processInformation(any()) } just Runs
             // If summarization is called, return a completed future (but we expect it not to be called)
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
@@ -111,7 +111,7 @@ class ConversationManagerTest {
             // Assert: summarization not called, world/session not called
             verify(exactly = 0) { plugin.npcResponseService.summarizeConversation(any()) }
             verify(exactly = 0) { plugin.worldInformationManager.processInformation(any()) }
-            verify(exactly = 0) { plugin.sessionManager.feed(any()) }
+            verify(exactly = 0) { plugin.sessionManager.feed(any(), any()) }
 
             // Conversation removed and scheduled task cancelled
             assertNull(plugin.conversationManager.getConversation(player))
@@ -127,7 +127,7 @@ class ConversationManagerTest {
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
                 CompletableFuture.completedFuture(null)
 
-            every { plugin.sessionManager.feed(any()) } just Runs
+            every { plugin.sessionManager.feed(any(), any()) } just Runs
             every { plugin.worldInformationManager.processInformation(any()) } just Runs
             // Summarization should be invoked for significant conversations (> 2 user messages)
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
@@ -149,7 +149,7 @@ class ConversationManagerTest {
             // Assert: summarization and world/session processing called
             verify(exactly = 1) { plugin.npcResponseService.summarizeConversation(any()) }
             verify(exactly = 1) { plugin.worldInformationManager.processInformation(any()) }
-            verify(exactly = 1) { plugin.sessionManager.feed(any()) }
+            verify(exactly = 1) { plugin.sessionManager.feed(any(), eq(true)) }
 
             // Conversation removed and scheduled task cancelled
             assertNull(plugin.conversationManager.getConversation(player))
