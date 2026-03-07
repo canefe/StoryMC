@@ -6,6 +6,25 @@ import com.canefe.story.storage.yaml.*
 import java.io.File
 import java.util.logging.Logger
 
+enum class StorageBackend {
+    MONGODB,
+    SQLITE,
+    YAML,
+    ;
+
+    companion object {
+        fun fromString(value: String): StorageBackend =
+            when (value.lowercase()) {
+                "mongodb" -> MONGODB
+                "sqlite" -> SQLITE
+                "yaml" -> YAML
+                else -> {
+                    YAML
+                }
+            }
+    }
+}
+
 class StorageFactory private constructor(
     var npcStorage: NpcStorage,
     var locationStorage: LocationStorage,
@@ -14,7 +33,7 @@ class StorageFactory private constructor(
     var relationshipStorage: RelationshipStorage,
     var loreStorage: LoreStorage,
     var playerStorage: PlayerStorage,
-    var backendName: String,
+    var activeBackend: StorageBackend,
     private var mongoClientManager: MongoClientManager?,
     private var sqliteManager: SQLiteManager?,
     private val dataFolder: File,
@@ -43,88 +62,90 @@ class StorageFactory private constructor(
      */
     @Suppress("DEPRECATION")
     fun switchBackend(
-        newBackend: String,
+        newBackend: StorageBackend,
         newMongoUri: String = mongoUri,
         newMongoDatabase: String = mongoDatabase,
         newMongoMaxPoolSize: Int = mongoMaxPoolSize,
         newMongoConnectTimeoutMs: Int = mongoConnectTimeoutMs,
     ): Boolean {
-        val wantsMongo = newBackend.equals("mongodb", ignoreCase = true)
-        val wantsSQLite = newBackend.equals("sqlite", ignoreCase = true)
-
         // Update stored config
         mongoUri = newMongoUri
         mongoDatabase = newMongoDatabase
         mongoMaxPoolSize = newMongoMaxPoolSize
         mongoConnectTimeoutMs = newMongoConnectTimeoutMs
 
-        if (wantsMongo) {
-            val mongo =
-                MongoClientManager(
-                    uri = newMongoUri,
-                    databaseName = newMongoDatabase,
-                    maxPoolSize = newMongoMaxPoolSize,
-                    connectTimeoutMs = newMongoConnectTimeoutMs,
-                    logger = logger,
-                )
+        when (newBackend) {
+            StorageBackend.MONGODB -> {
+                val mongo =
+                    MongoClientManager(
+                        uri = newMongoUri,
+                        databaseName = newMongoDatabase,
+                        maxPoolSize = newMongoMaxPoolSize,
+                        connectTimeoutMs = newMongoConnectTimeoutMs,
+                        logger = logger,
+                    )
 
-            if (!mongo.connect()) {
-                logger.severe("[Storage] MongoDB connection failed. Keeping current backend ($backendName).")
-                return false
+                if (!mongo.connect()) {
+                    logger.severe("[Storage] MongoDB connection failed. Keeping current backend ($activeBackend).")
+                    return false
+                }
+
+                mongo.createIndexes()
+                shutdown()
+                mongoClientManager = mongo
+
+                npcStorage = MongoNpcStorage(mongo, logger)
+                locationStorage = MongoLocationStorage(mongo)
+                questStorage = MongoQuestStorage(mongo)
+                sessionStorage = MongoSessionStorage(mongo)
+                relationshipStorage = MongoRelationshipStorage(mongo)
+                loreStorage = MongoLoreStorage(mongo)
+                playerStorage = MongoPlayerStorage(mongo)
+                activeBackend = StorageBackend.MONGODB
+
+                logger.info("[Storage] Switched to MongoDB.")
+                return true
             }
 
-            mongo.createIndexes()
-            shutdown()
-            mongoClientManager = mongo
+            StorageBackend.SQLITE -> {
+                val sqlite = SQLiteManager(dataFolder, logger)
+                if (!sqlite.connect()) {
+                    logger.severe("[Storage] SQLite initialization failed. Keeping current backend ($activeBackend).")
+                    return false
+                }
 
-            npcStorage = MongoNpcStorage(mongo, logger)
-            locationStorage = MongoLocationStorage(mongo)
-            questStorage = MongoQuestStorage(mongo)
-            sessionStorage = MongoSessionStorage(mongo)
-            relationshipStorage = MongoRelationshipStorage(mongo)
-            loreStorage = MongoLoreStorage(mongo)
-            playerStorage = MongoPlayerStorage(mongo)
-            backendName = "MongoDB"
+                sqlite.createTables()
+                shutdown()
+                sqliteManager = sqlite
 
-            logger.info("[Storage] Switched to MongoDB.")
-            return true
-        } else if (wantsSQLite) {
-            val sqlite = SQLiteManager(dataFolder, logger)
-            if (!sqlite.connect()) {
-                logger.severe("[Storage] SQLite initialization failed. Keeping current backend ($backendName).")
-                return false
+                npcStorage = SQLiteNpcStorage(sqlite, logger)
+                locationStorage = SQLiteLocationStorage(sqlite)
+                questStorage = SQLiteQuestStorage(sqlite)
+                sessionStorage = SQLiteSessionStorage(sqlite)
+                relationshipStorage = SQLiteRelationshipStorage(sqlite)
+                loreStorage = SQLiteLoreStorage(sqlite)
+                playerStorage = SQLitePlayerStorage(sqlite)
+                activeBackend = StorageBackend.SQLITE
+
+                logger.info("[Storage] Switched to SQLite.")
+                return true
             }
 
-            sqlite.createTables()
-            shutdown()
-            sqliteManager = sqlite
+            StorageBackend.YAML -> {
+                shutdown()
 
-            npcStorage = SQLiteNpcStorage(sqlite, logger)
-            locationStorage = SQLiteLocationStorage(sqlite)
-            questStorage = SQLiteQuestStorage(sqlite)
-            sessionStorage = SQLiteSessionStorage(sqlite)
-            relationshipStorage = SQLiteRelationshipStorage(sqlite)
-            loreStorage = SQLiteLoreStorage(sqlite)
-            playerStorage = SQLitePlayerStorage(sqlite)
-            backendName = "SQLite"
+                npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
+                locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
+                questStorage = YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
+                sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
+                relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
+                loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
+                playerStorage = YamlPlayerStorage(dataFolder, logger)
+                activeBackend = StorageBackend.YAML
 
-            logger.info("[Storage] Switched to SQLite.")
-            return true
-        } else {
-            // YAML
-            shutdown()
-
-            npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
-            locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
-            questStorage = YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
-            sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
-            relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
-            loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
-            playerStorage = YamlPlayerStorage(dataFolder, logger)
-            backendName = "YAML (deprecated)"
-
-            logger.info("[Storage] Switched to YAML (deprecated).")
-            return true
+                logger.info("[Storage] Switched to YAML (deprecated).")
+                return true
+            }
         }
     }
 
@@ -132,46 +153,57 @@ class StorageFactory private constructor(
         fun create(
             dataFolder: File,
             logger: Logger,
-            backend: String,
+            backend: StorageBackend,
             mongoUri: String = "",
             mongoDatabase: String = "",
             mongoMaxPoolSize: Int = 10,
             mongoConnectTimeoutMs: Int = 10000,
         ): StorageFactory {
-            val wantsMongo = backend.equals("mongodb", ignoreCase = true)
-            val wantsSQLite = backend.equals("sqlite", ignoreCase = true)
             var mongoClient: MongoClientManager? = null
             var sqliteClient: SQLiteManager? = null
-            var useMongo = false
-            var useSQLite = false
+            var actualBackend = backend
 
-            if (wantsMongo) {
-                val mongo =
-                    MongoClientManager(
-                        uri = mongoUri,
-                        databaseName = mongoDatabase,
-                        maxPoolSize = mongoMaxPoolSize,
-                        connectTimeoutMs = mongoConnectTimeoutMs,
-                        logger = logger,
-                    )
+            when (backend) {
+                StorageBackend.MONGODB -> {
+                    val mongo =
+                        MongoClientManager(
+                            uri = mongoUri,
+                            databaseName = mongoDatabase,
+                            maxPoolSize = mongoMaxPoolSize,
+                            connectTimeoutMs = mongoConnectTimeoutMs,
+                            logger = logger,
+                        )
 
-                if (mongo.connect()) {
-                    mongo.createIndexes()
-                    mongoClient = mongo
-                    useMongo = true
-                } else {
-                    logger.severe("[Storage] Could not connect to MongoDB. Falling back to YAML storage.")
-                    logger.severe("[Storage] Use '/story reload' to retry the MongoDB connection.")
+                    if (mongo.connect()) {
+                        mongo.createIndexes()
+                        mongoClient = mongo
+                    } else {
+                        logger.severe("[Storage] Could not connect to MongoDB. Falling back to SQLite.")
+                        logger.severe("[Storage] Use '/story reload' to retry the MongoDB connection.")
+                        val sqlite = SQLiteManager(dataFolder, logger)
+                        if (sqlite.connect()) {
+                            sqlite.createTables()
+                            sqliteClient = sqlite
+                            actualBackend = StorageBackend.SQLITE
+                        } else {
+                            logger.severe("[Storage] SQLite fallback also failed. Using YAML.")
+                            actualBackend = StorageBackend.YAML
+                        }
+                    }
                 }
-            } else if (wantsSQLite) {
-                val sqlite = SQLiteManager(dataFolder, logger)
-                if (sqlite.connect()) {
-                    sqlite.createTables()
-                    sqliteClient = sqlite
-                    useSQLite = true
-                } else {
-                    logger.severe("[Storage] Could not initialize SQLite. Falling back to YAML storage.")
+
+                StorageBackend.SQLITE -> {
+                    val sqlite = SQLiteManager(dataFolder, logger)
+                    if (sqlite.connect()) {
+                        sqlite.createTables()
+                        sqliteClient = sqlite
+                    } else {
+                        logger.severe("[Storage] Could not initialize SQLite. Falling back to YAML (deprecated).")
+                        actualBackend = StorageBackend.YAML
+                    }
                 }
+
+                StorageBackend.YAML -> {}
             }
 
             val npcStorage: NpcStorage
@@ -182,48 +214,43 @@ class StorageFactory private constructor(
             val loreStorage: LoreStorage
             val playerStorage: PlayerStorage
 
-            if (useMongo) {
-                val mc = mongoClient!!
-                npcStorage = MongoNpcStorage(mc, logger)
-                locationStorage = MongoLocationStorage(mc)
-                questStorage = MongoQuestStorage(mc)
-                sessionStorage = MongoSessionStorage(mc)
-                relationshipStorage = MongoRelationshipStorage(mc)
-                loreStorage = MongoLoreStorage(mc)
-                playerStorage = MongoPlayerStorage(mc)
-            } else if (useSQLite) {
-                val sc = sqliteClient!!
-                npcStorage = SQLiteNpcStorage(sc, logger)
-                locationStorage = SQLiteLocationStorage(sc)
-                questStorage = SQLiteQuestStorage(sc)
-                sessionStorage = SQLiteSessionStorage(sc)
-                relationshipStorage = SQLiteRelationshipStorage(sc)
-                loreStorage = SQLiteLoreStorage(sc)
-                playerStorage = SQLitePlayerStorage(sc)
-            } else {
-                @Suppress("DEPRECATION")
-                npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
-                @Suppress("DEPRECATION")
-                locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
-                @Suppress("DEPRECATION")
-                questStorage = YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
-                @Suppress("DEPRECATION")
-                sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
-                @Suppress("DEPRECATION")
-                relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
-                @Suppress("DEPRECATION")
-                loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
-                @Suppress("DEPRECATION")
-                playerStorage = YamlPlayerStorage(dataFolder, logger)
+            @Suppress("DEPRECATION")
+            when (actualBackend) {
+                StorageBackend.MONGODB -> {
+                    val mc = mongoClient!!
+                    npcStorage = MongoNpcStorage(mc, logger)
+                    locationStorage = MongoLocationStorage(mc)
+                    questStorage = MongoQuestStorage(mc)
+                    sessionStorage = MongoSessionStorage(mc)
+                    relationshipStorage = MongoRelationshipStorage(mc)
+                    loreStorage = MongoLoreStorage(mc)
+                    playerStorage = MongoPlayerStorage(mc)
+                }
+
+                StorageBackend.SQLITE -> {
+                    val sc = sqliteClient!!
+                    npcStorage = SQLiteNpcStorage(sc, logger)
+                    locationStorage = SQLiteLocationStorage(sc)
+                    questStorage = SQLiteQuestStorage(sc)
+                    sessionStorage = SQLiteSessionStorage(sc)
+                    relationshipStorage = SQLiteRelationshipStorage(sc)
+                    loreStorage = SQLiteLoreStorage(sc)
+                    playerStorage = SQLitePlayerStorage(sc)
+                }
+
+                StorageBackend.YAML -> {
+                    npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
+                    locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
+                    questStorage =
+                        YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
+                    sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
+                    relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
+                    loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
+                    playerStorage = YamlPlayerStorage(dataFolder, logger)
+                }
             }
 
-            val backendName =
-                when {
-                    useMongo -> "MongoDB"
-                    useSQLite -> "SQLite"
-                    else -> "YAML (deprecated)"
-                }
-            logger.info("Storage backend: $backendName")
+            logger.info("Storage backend: $actualBackend")
 
             return StorageFactory(
                 npcStorage = npcStorage,
@@ -233,7 +260,7 @@ class StorageFactory private constructor(
                 relationshipStorage = relationshipStorage,
                 loreStorage = loreStorage,
                 playerStorage = playerStorage,
-                backendName = backendName,
+                activeBackend = actualBackend,
                 mongoClientManager = mongoClient,
                 sqliteManager = sqliteClient,
                 dataFolder = dataFolder,

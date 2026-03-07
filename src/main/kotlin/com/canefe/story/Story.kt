@@ -35,6 +35,7 @@ import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionManager
+import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
 import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
@@ -242,7 +243,7 @@ open class Story :
             StorageFactory.create(
                 dataFolder = dataFolder,
                 logger = logger,
-                backend = configService.storageBackend,
+                backend = StorageBackend.fromString(configService.storageBackend),
                 mongoUri = configService.mongoUri,
                 mongoDatabase = configService.mongoDatabase,
                 mongoMaxPoolSize = configService.mongoMaxPoolSize,
@@ -343,30 +344,20 @@ open class Story :
     fun tryReconnectStorage(sender: CommandSender? = null) {
         if (!::storageFactory.isInitialized) return
 
-        val desiredBackend = configService.storageBackend
-        val currentBackend = storageFactory.backendName
+        val desired = StorageBackend.fromString(configService.storageBackend)
+        val current = storageFactory.activeBackend
 
-        // Check if a backend switch is needed
+        // Switch if backend changed, or reconnect if MongoDB connection was lost
         val needsSwitch =
-            when {
-                desiredBackend.equals("mongodb", ignoreCase = true) && currentBackend != "MongoDB" -> true
-                desiredBackend.equals("sqlite", ignoreCase = true) && currentBackend != "SQLite" -> true
-                desiredBackend.equals(
-                    "yaml",
-                    ignoreCase = true,
-                ) &&
-                    !currentBackend.contains("YAML", ignoreCase = true) -> true
-                // Also retry if mongo was requested but failed (currently on YAML fallback)
-                desiredBackend.equals("mongodb", ignoreCase = true) && !storageFactory.isMongoConnected -> true
-                else -> false
-            }
+            desired != current ||
+                (desired == StorageBackend.MONGODB && !storageFactory.isMongoConnected)
 
         if (!needsSwitch) return
 
-        sender?.sendMessage(miniMessage.deserialize("<yellow>Switching storage backend to $desiredBackend...</yellow>"))
+        sender?.sendMessage(miniMessage.deserialize("<yellow>Switching storage backend to $desired...</yellow>"))
 
         if (storageFactory.switchBackend(
-                newBackend = desiredBackend,
+                newBackend = desired,
                 newMongoUri = configService.mongoUri,
                 newMongoDatabase = configService.mongoDatabase,
                 newMongoMaxPoolSize = configService.mongoMaxPoolSize,
@@ -383,13 +374,13 @@ open class Story :
             playerManager.updateStorage(storageFactory.playerStorage)
             sender?.sendMessage(
                 miniMessage.deserialize(
-                    "<green>Storage backend switched to ${storageFactory.backendName}. All managers updated.</green>",
+                    "<green>Storage backend switched to ${storageFactory.activeBackend}. All managers updated.</green>",
                 ),
             )
         } else {
             sender?.sendMessage(
                 miniMessage.deserialize(
-                    "<red>Failed to switch to $desiredBackend. Keeping current backend (${storageFactory.backendName}).</red>",
+                    "<red>Failed to switch to $desired. Keeping current backend (${storageFactory.activeBackend}).</red>",
                 ),
             )
         }

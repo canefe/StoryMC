@@ -9,6 +9,7 @@ import com.canefe.story.command.story.quest.QuestCommand
 import com.canefe.story.command.story.session.SessionCommand
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.YamlMigrator
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
@@ -517,8 +518,10 @@ class StoryCommand(
                     .withPermission("story.admin")
                     .executes(
                         CommandExecutor { sender, _ ->
-                            if (!plugin.storageFactory.isMongoConnected) {
-                                sender.sendError("MongoDB is not connected. Connect first with '/story reload'.")
+                            if (plugin.storageFactory.activeBackend != StorageBackend.MONGODB) {
+                                sender.sendError(
+                                    "MongoDB is not the active storage backend. Set 'storage.backend: mongodb' in config.yml and reload.",
+                                )
                                 return@CommandExecutor
                             }
 
@@ -534,7 +537,7 @@ class StoryCommand(
                     .withPermission("story.admin")
                     .executes(
                         CommandExecutor { sender, _ ->
-                            if (!plugin.storageFactory.isSQLite) {
+                            if (plugin.storageFactory.activeBackend != StorageBackend.SQLITE) {
                                 sender.sendError(
                                     "SQLite is not the active storage backend. Set 'storage.backend: sqlite' in config.yml and reload.",
                                 )

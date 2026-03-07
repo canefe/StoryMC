@@ -26,8 +26,7 @@ class YamlMigrator(
     )
 
     fun migrate(): MigrationResult {
-        val backend = storageFactory.backendName
-        if (backend.contains("YAML", ignoreCase = true)) {
+        if (storageFactory.activeBackend == StorageBackend.YAML) {
             return MigrationResult(
                 errors = mutableListOf("Current storage backend is YAML. Cannot migrate YAML to YAML."),
             )
