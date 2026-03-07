@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.getOrDefault
 import kotlin.text.get
 
-class QuestManager private constructor(
+class QuestManager(
     private val plugin: Story,
     private var questStorage: QuestStorage,
 ) {
@@ -652,22 +652,5 @@ class QuestManager private constructor(
         loadQuestReference()
         loadAllQuests()
         loadAllPlayerQuests()
-    }
-
-    companion object {
-        private var instance: QuestManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            questStorage: QuestStorage,
-        ): QuestManager = instance ?: QuestManager(plugin, questStorage).also { instance = it }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): QuestManager =
-            instance
-                ?: throw IllegalStateException(
-                    "QuestManager not initialized. Call getInstance(plugin, questStorage) first.",
-                )
     }
 }

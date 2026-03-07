@@ -6,7 +6,7 @@ import com.canefe.story.storage.LoreStorage
 import org.bukkit.Bukkit
 import java.util.concurrent.ConcurrentHashMap
 
-class LoreBookManager private constructor(
+class LoreBookManager(
     private val plugin: Story,
     private var loreStorage: LoreStorage,
 ) {
@@ -182,24 +182,4 @@ class LoreBookManager private constructor(
         val keywords: List<String>,
         val categories: Set<String> = setOf("common"),
     )
-
-    companion object {
-        private var instance: LoreBookManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            loreStorage: LoreStorage,
-        ): LoreBookManager =
-            instance ?: synchronized(this) {
-                instance ?: LoreBookManager(plugin, loreStorage).also { instance = it }
-            }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): LoreBookManager =
-            instance
-                ?: throw IllegalStateException(
-                    "LoreBookManager not initialized. Call getInstance(plugin, loreStorage) first.",
-                )
-    }
 }

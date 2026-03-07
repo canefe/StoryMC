@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Manager to track gameplay sessions and persist them using a storage backend.
  */
-class SessionManager private constructor(
+class SessionManager(
     private val plugin: Story,
     private var sessionStorage: SessionStorage,
 ) {
@@ -295,24 +295,4 @@ class SessionManager private constructor(
             history = session.history.toString(),
             active = session.endTime == null,
         )
-
-    companion object {
-        private var instance: SessionManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            sessionStorage: SessionStorage,
-        ): SessionManager =
-            instance ?: synchronized(this) {
-                instance ?: SessionManager(plugin, sessionStorage).also { instance = it }
-            }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): SessionManager =
-            instance
-                ?: throw IllegalStateException(
-                    "SessionManager not initialized. Call getInstance(plugin, sessionStorage) first.",
-                )
-    }
 }

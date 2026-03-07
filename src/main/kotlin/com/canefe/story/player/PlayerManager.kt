@@ -12,7 +12,7 @@ import org.bukkit.entity.Player
 import java.util.*
 import java.util.logging.Level
 
-class PlayerManager private constructor(
+class PlayerManager(
     private val plugin: Story,
     private var playerStorage: PlayerStorage,
 ) {
@@ -318,25 +318,5 @@ class PlayerManager private constructor(
         } catch (e: Exception) {
             plugin.logger.severe("Could not load disabled players: ${e.message}")
         }
-    }
-
-    companion object {
-        private var instance: PlayerManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            playerStorage: PlayerStorage,
-        ): PlayerManager =
-            instance ?: synchronized(this) {
-                instance ?: PlayerManager(plugin, playerStorage).also { instance = it }
-            }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): PlayerManager =
-            instance
-                ?: throw IllegalStateException(
-                    "PlayerManager not initialized. Call getInstance(plugin, playerStorage) first.",
-                )
     }
 }

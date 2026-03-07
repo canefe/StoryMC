@@ -10,7 +10,7 @@ import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import java.io.IOException
 
-class NPCDataManager private constructor(
+class NPCDataManager(
     private val plugin: Story,
     private var npcStorage: NpcStorage,
 ) {
@@ -155,22 +155,5 @@ class NPCDataManager private constructor(
     fun loadConfig() {
         npcDataCache.clear()
         plugin.logger.info("NPC data cache cleared")
-    }
-
-    companion object {
-        private var instance: NPCDataManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            npcStorage: NpcStorage,
-        ): NPCDataManager = instance ?: NPCDataManager(plugin, npcStorage).also { instance = it }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): NPCDataManager =
-            instance
-                ?: throw IllegalStateException(
-                    "NPCDataManager not initialized. Call getInstance(plugin, npcStorage) first.",
-                )
     }
 }

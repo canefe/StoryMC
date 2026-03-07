@@ -7,7 +7,7 @@ import com.canefe.story.storage.LocationStorage
 import org.bukkit.Location
 import java.io.File
 
-class LocationManager private constructor(
+class LocationManager(
     private val plugin: Story,
     private var locationStorage: LocationStorage,
 ) {
@@ -212,25 +212,5 @@ class LocationManager private constructor(
             hideTitle = location.hideTitle,
             randomPathingAction = location.randomPathingAction,
         )
-    }
-
-    companion object {
-        private var instance: LocationManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            locationStorage: LocationStorage,
-        ): LocationManager =
-            instance ?: synchronized(this) {
-                instance ?: LocationManager(plugin, locationStorage).also { instance = it }
-            }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): LocationManager =
-            instance
-                ?: throw IllegalStateException(
-                    "LocationManager not initialized. Call getInstance(plugin, locationStorage) first.",
-                )
     }
 }

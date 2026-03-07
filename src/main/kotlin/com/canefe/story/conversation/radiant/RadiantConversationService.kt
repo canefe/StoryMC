@@ -1,7 +1,6 @@
 package com.canefe.story.conversation.radiant
 
 import com.canefe.story.Story
-import com.canefe.story.npc.NPCManager
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
@@ -16,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 class RadiantConversationService(
     private val plugin: Story,
 ) {
-    private val npcManager = NPCManager.getInstance(plugin)
+    private val npcManager = plugin.npcManager
 
     // Track players who recently witnessed a radiant conversation
     private val playerWitnessedConversation = ConcurrentHashMap<UUID, Long>()
