@@ -56,11 +56,7 @@ class ConversationThemeManager(
         for (theme in themes) {
             theme.onDeactivate(conversation)
         }
-        conversation.themeData.let {
-            for (name in it.activeThemeNames) {
-                it.removeThemeName(name)
-            }
-        }
+        conversation.themeData.clearThemeNames()
     }
 
     fun onMessage(conversation: Conversation, message: ConversationMessage) {

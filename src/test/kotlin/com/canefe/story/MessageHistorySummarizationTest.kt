@@ -148,7 +148,7 @@ class MessageHistorySummarizationTest {
             val messagesToSummarizeCount = totalMessages - 3
 
             conversation.replaceHistoryWithSummary(
-                "Summary of conversation so far: Alice and Guard discussed things.",
+                "Alice and Guard discussed things.",
                 messagesToSummarizeCount,
             )
 

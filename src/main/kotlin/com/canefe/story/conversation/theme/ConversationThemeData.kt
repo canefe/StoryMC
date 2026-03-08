@@ -12,4 +12,8 @@ data class ConversationThemeData(
     }
 
     fun removeThemeName(name: String): Boolean = _activeThemeNames.remove(name)
+
+    fun clearThemeNames() {
+        _activeThemeNames.clear()
+    }
 }

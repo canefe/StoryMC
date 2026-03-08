@@ -182,6 +182,7 @@ class Conversation(
     fun replaceHistoryWithSummary(
         summary: String,
         summarizedMessagesCount: Int,
+        countedMessages: Int = summarizedMessagesCount,
     ) {
         if (summarizedMessagesCount <= 0 || _history.size < summarizedMessagesCount) {
             return
@@ -189,11 +190,13 @@ class Conversation(
         // Remove only the messages that were actually summarized
         _history.subList(0, summarizedMessagesCount).clear()
         // Prepend the new summary
-        _history.add(0, ConversationMessage("system", summary))
+        _history.add(0, ConversationMessage("system", "Summary of conversation so far: $summary"))
 
-        // Decrement rather than reset — messages added during the async
-        // window will have incremented the counter and must be preserved.
-        messagesSinceLastSummary -= summarizedMessagesCount
+        // Decrement only by the number of messages that were actually counted
+        // toward the summarization threshold (excludes system messages and "..."
+        // placeholders). Messages added during the async window will have
+        // incremented the counter and must be preserved.
+        messagesSinceLastSummary -= countedMessages
         if (messagesSinceLastSummary < 0) {
             messagesSinceLastSummary = 0
         }

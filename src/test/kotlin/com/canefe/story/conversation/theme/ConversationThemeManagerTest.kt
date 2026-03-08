@@ -92,6 +92,7 @@ class ConversationThemeManagerTest {
         manager.onConversationEnd(conversation)
 
         assertTrue(manager.getActiveThemes(conversation).isEmpty())
+        assertTrue(conversation.themeData.activeThemeNames.isEmpty())
     }
 
     @Test

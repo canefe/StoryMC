@@ -35,6 +35,7 @@ class ConversationManager private constructor(
     private val responseTimers = mutableMapOf<Int, Int>()
 
     private val endingConversations = Collections.synchronizedSet(mutableSetOf<Int>())
+    private val summarizingConversations = mutableSetOf<Int>()
 
     // Getter for scheduled tasks
     fun getScheduledTasks(): MutableMap<Conversation, Int> = scheduledTasks
@@ -336,6 +337,9 @@ class ConversationManager private constructor(
         }
 
         cleanupHolograms(conversation)
+
+        // Cleanup theme state to prevent memory leak
+        plugin.themeManager.onConversationEnd(conversation)
 
         // Remove from repository
         repository.removeConversation(conversation)
@@ -856,11 +860,23 @@ class ConversationManager private constructor(
             return
         }
 
+        // Prevent concurrent summarization requests for the same conversation
+        if (!summarizingConversations.add(conversation.id)) {
+            return
+        }
+
         val history = conversation.history
         val nonSystemMessages = history.filter { it.role != "system" }
 
         // Need enough messages to make summarization worthwhile
         if (nonSystemMessages.size <= recentMessagesToKeep) {
+            summarizingConversations.remove(conversation.id)
+            return
+        }
+
+        // Guard against negative splitIndex when history has many system messages
+        if (history.size <= recentMessagesToKeep) {
+            summarizingConversations.remove(conversation.id)
             return
         }
 
@@ -875,12 +891,20 @@ class ConversationManager private constructor(
         val splitIndex = history.size - recentMessagesToKeep
         val messagesToSummarize = history.subList(0, splitIndex)
 
-        // Build the summarization prompt
+        // Count only non-system, non-placeholder messages that were actually
+        // counted toward the summarization threshold, so replaceHistoryWithSummary
+        // decrements the counter accurately.
+        val countedMessages = messagesToSummarize.count {
+            it.role != "system" && it.content != "..."
+        }
+
+        // Build the summarization prompt — use bracketed labels instead of raw
+        // "role: content" to prevent user-supplied newlines from spoofing roles.
         val summaryPrompt = plugin.promptService.getMessageHistorySummaryPrompt()
         val conversationText =
             messagesToSummarize
                 .filter { it.role != "system" || it.content.startsWith("Summary of conversation") }
-                .joinToString("\n") { "${it.role}: ${it.content}" }
+                .joinToString("\n") { "[${it.role}] ${it.content.replace("\n", " ")}" }
 
         val prompts =
             listOf(
@@ -894,7 +918,7 @@ class ConversationManager private constructor(
             if (!summary.isNullOrBlank()) {
                 // Safely modify conversation state on the main server thread
                 Bukkit.getScheduler().runTask(plugin, Runnable {
-                    conversation.replaceHistoryWithSummary(summary, messagesToSummarizeCount)
+                    conversation.replaceHistoryWithSummary(summary, messagesToSummarizeCount, countedMessages)
 
                     if (plugin.config.debugMessages) {
                         plugin.logger.info(
@@ -902,12 +926,16 @@ class ConversationManager private constructor(
                                 "New history size: ${conversation.history.size}",
                         )
                     }
+                    summarizingConversations.remove(conversation.id)
                 })
+            } else {
+                summarizingConversations.remove(conversation.id)
             }
         }.exceptionally { e ->
             plugin.logger.warning(
                 "Failed to summarize message history for conversation ${conversation.id}: ${e.message}",
             )
+            summarizingConversations.remove(conversation.id)
             null
         }
     }
