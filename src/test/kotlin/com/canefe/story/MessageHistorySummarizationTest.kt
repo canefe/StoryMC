@@ -126,7 +126,7 @@ class MessageHistorySummarizationTest {
         }
 
         @Test
-        fun `replaceHistoryWithSummary resets counter and replaces history`() {
+        fun `replaceHistoryWithSummary resets counter and removes summarized messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
             val conversation = Conversation(
@@ -135,33 +135,66 @@ class MessageHistorySummarizationTest {
             )
 
             // Add several messages
-            conversation.addPlayerMessage(player, "msg1")
-            conversation.addPlayerMessage(player, "msg2")
-            conversation.addNPCMessage(npc, "response1")
-            conversation.addPlayerMessage(player, "msg3")
-            conversation.addNPCMessage(npc, "response2")
+            conversation.addPlayerMessage(player, "msg1")        // user
+            conversation.addPlayerMessage(player, "msg2")        // user
+            conversation.addNPCMessage(npc, "response1")         // assistant + "..."
+            conversation.addPlayerMessage(player, "msg3")        // user
+            conversation.addNPCMessage(npc, "response2")         // assistant + "..."
 
             assertEquals(5, conversation.messagesSinceLastSummary)
 
-            val recentMessages = listOf(
-                ConversationMessage("user", "Alice: msg3"),
-                ConversationMessage("assistant", "Guard: response2"),
-            )
+            val totalMessages = conversation.history.size
+            // Summarize all but the last 3 messages
+            val messagesToSummarizeCount = totalMessages - 3
 
             conversation.replaceHistoryWithSummary(
                 "Summary of conversation so far: Alice and Guard discussed things.",
-                recentMessages,
+                messagesToSummarizeCount,
             )
 
             // Counter should be reset
             assertEquals(0, conversation.messagesSinceLastSummary)
 
-            // History should contain summary + recent messages
-            assertEquals(3, conversation.history.size)
+            // History should contain 1 summary + 3 remaining recent messages
+            assertEquals(4, conversation.history.size)
             assertEquals("system", conversation.history[0].role)
             assertTrue(conversation.history[0].content.contains("Summary of conversation"))
-            assertEquals("user", conversation.history[1].role)
-            assertEquals("assistant", conversation.history[2].role)
+        }
+
+        @Test
+        fun `replaceHistoryWithSummary preserves messages added during async summarization`() {
+            val player = server.addPlayer("Alice")
+            val npc = makeNpc("Guard")
+            val conversation = Conversation(
+                _players = mutableListOf(player.uniqueId),
+                initialNPCs = listOf(npc),
+            )
+
+            // Add initial messages
+            conversation.addPlayerMessage(player, "msg1")  // index 0
+            conversation.addPlayerMessage(player, "msg2")  // index 1
+            conversation.addPlayerMessage(player, "msg3")  // index 2
+
+            // Snapshot: summarize first 2 messages
+            val messagesToSummarizeCount = 2
+
+            // Simulate new messages arriving during async summarization
+            conversation.addPlayerMessage(player, "msg4")  // index 3 - added "during" async
+            conversation.addPlayerMessage(player, "msg5")  // index 4 - added "during" async
+
+            // Now apply the summary (as if the async call completed)
+            conversation.replaceHistoryWithSummary(
+                "Summary: discussed msg1 and msg2.",
+                messagesToSummarizeCount,
+            )
+
+            // Should have: 1 summary + msg3 + msg4 + msg5 = 4 messages
+            assertEquals(4, conversation.history.size)
+            assertEquals("system", conversation.history[0].role)
+            assertTrue(conversation.history[0].content.contains("Summary"))
+            // msg4 and msg5 (added during async) should be preserved
+            assertTrue(conversation.history.any { it.content.contains("msg4") })
+            assertTrue(conversation.history.any { it.content.contains("msg5") })
         }
     }
 

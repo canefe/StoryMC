@@ -178,11 +178,16 @@ class Conversation(
 
     fun replaceHistoryWithSummary(
         summary: String,
-        recentMessages: List<ConversationMessage>,
+        summarizedMessageCount: Int,
     ) {
-        _history.clear()
-        _history.add(ConversationMessage("system", summary))
-        _history.addAll(recentMessages)
+        // Remove only the messages that were actually summarized,
+        // preserving any messages added after the snapshot was taken.
+        val removeCount = summarizedMessageCount.coerceAtMost(_history.size)
+        repeat(removeCount) {
+            _history.removeAt(0)
+        }
+        // Insert the summary at the beginning
+        _history.add(0, ConversationMessage("system", summary))
         messagesSinceLastSummary = 0
     }
 

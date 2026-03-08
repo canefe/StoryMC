@@ -874,7 +874,6 @@ class ConversationManager private constructor(
         // Split history: messages to summarize vs recent messages to keep
         val splitIndex = history.size - recentMessagesToKeep
         val messagesToSummarize = history.subList(0, splitIndex)
-        val recentMessages = history.subList(splitIndex, history.size).toList()
 
         // Build the summarization prompt
         val summaryPrompt = plugin.promptService.getMessageHistorySummaryPrompt()
@@ -890,16 +889,20 @@ class ConversationManager private constructor(
             )
 
         // Run summarization asynchronously to avoid blocking the main thread
+        val messagesToSummarizeCount = messagesToSummarize.size
         plugin.getAIResponse(prompts, lowCost = true).thenAccept { summary ->
             if (!summary.isNullOrBlank()) {
-                conversation.replaceHistoryWithSummary(summary, recentMessages)
+                // Safely modify conversation state on the main server thread
+                Bukkit.getScheduler().runTask(plugin, Runnable {
+                    conversation.replaceHistoryWithSummary(summary, messagesToSummarizeCount)
 
-                if (plugin.config.debugMessages) {
-                    plugin.logger.info(
-                        "Message history summarized for conversation ${conversation.id}. " +
-                            "New history size: ${conversation.history.size}",
-                    )
-                }
+                    if (plugin.config.debugMessages) {
+                        plugin.logger.info(
+                            "Message history summarized for conversation ${conversation.id}. " +
+                                "New history size: ${conversation.history.size}",
+                        )
+                    }
+                })
             }
         }.exceptionally { e ->
             plugin.logger.warning(
