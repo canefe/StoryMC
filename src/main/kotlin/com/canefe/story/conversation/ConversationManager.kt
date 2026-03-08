@@ -649,6 +649,9 @@ class ConversationManager private constructor(
         conversation.addPlayerMessage(player, message)
         handleHolograms(conversation, player.name)
 
+        // Check if message history needs summarization
+        checkAndSummarizeHistory(conversation)
+
         // Skip response generation if chat is disabled
         if (!conversation.chatEnabled) {
             return
@@ -841,6 +844,71 @@ class ConversationManager private constructor(
         return npc.entity
     }
 
+    /**
+     * Checks if the conversation history needs summarization and triggers it if so.
+     * Summarization occurs every 5 conversational messages to keep the context window manageable.
+     */
+    private fun checkAndSummarizeHistory(conversation: Conversation) {
+        val summarizationThreshold = 5
+        val recentMessagesToKeep = 4
+
+        if (conversation.messagesSinceLastSummary < summarizationThreshold) {
+            return
+        }
+
+        val history = conversation.history
+        val nonSystemMessages = history.filter { it.role != "system" }
+
+        // Need enough messages to make summarization worthwhile
+        if (nonSystemMessages.size <= recentMessagesToKeep) {
+            return
+        }
+
+        if (plugin.config.debugMessages) {
+            plugin.logger.info(
+                "Summarizing message history for conversation ${conversation.id} " +
+                    "(${history.size} messages, ${conversation.messagesSinceLastSummary} since last summary)",
+            )
+        }
+
+        // Split history: messages to summarize vs recent messages to keep
+        val splitIndex = history.size - recentMessagesToKeep
+        val messagesToSummarize = history.subList(0, splitIndex)
+        val recentMessages = history.subList(splitIndex, history.size).toList()
+
+        // Build the summarization prompt
+        val summaryPrompt = plugin.promptService.getMessageHistorySummaryPrompt()
+        val conversationText =
+            messagesToSummarize
+                .filter { it.role != "system" || it.content.startsWith("Summary of conversation") }
+                .joinToString("\n") { "${it.role}: ${it.content}" }
+
+        val prompts =
+            listOf(
+                ConversationMessage("system", summaryPrompt),
+                ConversationMessage("user", conversationText),
+            )
+
+        // Run summarization asynchronously to avoid blocking the main thread
+        plugin.getAIResponse(prompts, lowCost = true).thenAccept { summary ->
+            if (!summary.isNullOrBlank()) {
+                conversation.replaceHistoryWithSummary(summary, recentMessages)
+
+                if (plugin.config.debugMessages) {
+                    plugin.logger.info(
+                        "Message history summarized for conversation ${conversation.id}. " +
+                            "New history size: ${conversation.history.size}",
+                    )
+                }
+            }
+        }.exceptionally { e ->
+            plugin.logger.warning(
+                "Failed to summarize message history for conversation ${conversation.id}: ${e.message}",
+            )
+            null
+        }
+    }
+
     // NPC conversation coordination
     fun generateResponses(
         conversation: Conversation,
@@ -966,6 +1034,9 @@ class ConversationManager private constructor(
                                     // Add the NPC's response to the conversation history
                                     conversation.addNPCMessage(npcEntity, npcResponse)
 
+                                    // Check if message history needs summarization
+                                    checkAndSummarizeHistory(conversation)
+
                                     // Hologram cleanup
                                     cleanupHolograms(conversation)
 
@@ -1058,6 +1129,7 @@ class ConversationManager private constructor(
                                 .thenAccept { npcResponse ->
                                     // Rest of processing code
                                     conversation.addNPCMessage(npcEntity, npcResponse)
+                                    checkAndSummarizeHistory(conversation)
                                     cleanupHolograms(conversation)
                                     // Process action intents...
                                     result.complete(Unit)

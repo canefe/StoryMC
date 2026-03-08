@@ -248,6 +248,9 @@ class PromptService(
         return getPrompt("location_context_generation", variables)
     }
 
+    /** Gets the message history summary prompt for mid-conversation summarization */
+    fun getMessageHistorySummaryPrompt(): String = getPrompt("message_history_summary")
+
     /** Gets the session history summary prompt */
     fun getSessionHistorySummaryPrompt(): String = getPrompt("session_history_summary")
 

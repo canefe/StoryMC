@@ -380,6 +380,20 @@ recent_events_generation:
 
         Respond with a JSON object containing only a 'recent_events' field.
 
+message_history_summary:
+  system_prompt: |
+    You are a concise conversation summarizer. Condense the following conversation history
+    into a brief summary that preserves all important context needed to continue the conversation naturally.
+
+    Focus on:
+    - Key topics discussed and decisions made
+    - Each character's stance, mood, and attitude
+    - Important information revealed (names, places, events, promises)
+    - The current direction of the conversation
+
+    Keep the summary under 200 words. Write in third person, past tense.
+    Format: "Summary of conversation so far: [your summary]"
+
 session_history_summary:
   system_prompt: |
     You are a concise summarizer for a medieval fantasy role-playing session.

@@ -14,6 +14,10 @@ class Conversation(
     private val _npcs: MutableSet<NPC> = HashSet(initialNPCs)
     private val _history: MutableList<ConversationMessage> = ArrayList()
 
+    // Track the number of non-system messages added since the last history summarization
+    var messagesSinceLastSummary: Int = 0
+        private set
+
     // Public properties
     var active: Boolean = true
     var chatEnabled: Boolean = true
@@ -157,6 +161,9 @@ class Conversation(
                 message,
             )
         _history.add(userMessage)
+        if (message != "...") {
+            messagesSinceLastSummary++
+        }
     }
 
     private fun addAssistantMessage(message: String) {
@@ -166,6 +173,17 @@ class Conversation(
                 message,
             )
         _history.add(assistantMessage)
+        messagesSinceLastSummary++
+    }
+
+    fun replaceHistoryWithSummary(
+        summary: String,
+        recentMessages: List<ConversationMessage>,
+    ) {
+        _history.clear()
+        _history.add(ConversationMessage("system", summary))
+        _history.addAll(recentMessages)
+        messagesSinceLastSummary = 0
     }
 
     fun clearHistory() {
