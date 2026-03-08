@@ -1,5 +1,6 @@
 package com.canefe.story.conversation
 
+import com.canefe.story.conversation.theme.ConversationThemeData
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
@@ -16,6 +17,9 @@ class Conversation(
 
     // Track the number of non-system messages added since the last history summarization
     var messagesSinceLastSummary: Int = 0
+
+    // Theme data for this conversation
+    val themeData: ConversationThemeData = ConversationThemeData()
 
     // Public properties
     var active: Boolean = true

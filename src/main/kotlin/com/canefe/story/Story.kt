@@ -12,6 +12,7 @@ import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
+import com.canefe.story.conversation.theme.*
 import com.canefe.story.event.EventManager
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.location.LocationManager
@@ -142,6 +143,12 @@ open class Story :
     private var webUIServer: WebUIServer? = null
 
     lateinit var voiceManager: VoiceManager
+
+    // Theme system
+    lateinit var themeRegistry: ConversationThemeRegistry
+        private set
+    lateinit var themeManager: ConversationThemeManager
+        private set
 
     // NPC Name Aliasing System
     lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
@@ -288,6 +295,12 @@ open class Story :
         voiceManager = VoiceManager(this)
         npcNameManager = NPCNameManager(this)
         npcNameResolver = NPCNameResolver(this)
+
+        // Initialize theme system
+        themeRegistry = ConversationThemeRegistry()
+        themeRegistry.register(ChatTheme.NAME) { ChatTheme() }
+        themeRegistry.register(ViolenceTheme.NAME) { ViolenceTheme() }
+        themeManager = ConversationThemeManager(themeRegistry)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()
