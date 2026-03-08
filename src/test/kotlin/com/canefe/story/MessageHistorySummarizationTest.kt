@@ -126,7 +126,7 @@ class MessageHistorySummarizationTest {
         }
 
         @Test
-        fun `replaceHistoryWithSummary resets counter and removes summarized messages`() {
+        fun `replaceHistoryWithSummary decrements counter and removes summarized messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
             val conversation = Conversation(
@@ -135,11 +135,11 @@ class MessageHistorySummarizationTest {
             )
 
             // Add several messages
-            conversation.addPlayerMessage(player, "msg1")        // user
-            conversation.addPlayerMessage(player, "msg2")        // user
-            conversation.addNPCMessage(npc, "response1")         // assistant + "..."
-            conversation.addPlayerMessage(player, "msg3")        // user
-            conversation.addNPCMessage(npc, "response2")         // assistant + "..."
+            conversation.addPlayerMessage(player, "msg1")        // user (+1)
+            conversation.addPlayerMessage(player, "msg2")        // user (+1)
+            conversation.addNPCMessage(npc, "response1")         // assistant (+1) + "..."
+            conversation.addPlayerMessage(player, "msg3")        // user (+1)
+            conversation.addNPCMessage(npc, "response2")         // assistant (+1) + "..."
 
             assertEquals(5, conversation.messagesSinceLastSummary)
 
@@ -152,8 +152,8 @@ class MessageHistorySummarizationTest {
                 messagesToSummarizeCount,
             )
 
-            // Counter should be reset
-            assertEquals(0, conversation.messagesSinceLastSummary)
+            // Counter should be decremented by the number of summarized messages
+            assertEquals(5 - messagesToSummarizeCount, conversation.messagesSinceLastSummary)
 
             // History should contain 1 summary + 3 remaining recent messages
             assertEquals(4, conversation.history.size)
@@ -171,16 +171,19 @@ class MessageHistorySummarizationTest {
             )
 
             // Add initial messages
-            conversation.addPlayerMessage(player, "msg1")  // index 0
-            conversation.addPlayerMessage(player, "msg2")  // index 1
-            conversation.addPlayerMessage(player, "msg3")  // index 2
+            conversation.addPlayerMessage(player, "msg1")  // index 0 (+1)
+            conversation.addPlayerMessage(player, "msg2")  // index 1 (+1)
+            conversation.addPlayerMessage(player, "msg3")  // index 2 (+1)
 
             // Snapshot: summarize first 2 messages
             val messagesToSummarizeCount = 2
 
             // Simulate new messages arriving during async summarization
-            conversation.addPlayerMessage(player, "msg4")  // index 3 - added "during" async
-            conversation.addPlayerMessage(player, "msg5")  // index 4 - added "during" async
+            conversation.addPlayerMessage(player, "msg4")  // index 3 (+1)
+            conversation.addPlayerMessage(player, "msg5")  // index 4 (+1)
+
+            // Counter is 5 (all 5 player messages counted)
+            assertEquals(5, conversation.messagesSinceLastSummary)
 
             // Now apply the summary (as if the async call completed)
             conversation.replaceHistoryWithSummary(
@@ -195,6 +198,28 @@ class MessageHistorySummarizationTest {
             // msg4 and msg5 (added during async) should be preserved
             assertTrue(conversation.history.any { it.content.contains("msg4") })
             assertTrue(conversation.history.any { it.content.contains("msg5") })
+            // Counter should reflect only unsummarized messages (5 - 2 = 3)
+            assertEquals(3, conversation.messagesSinceLastSummary)
+        }
+
+        @Test
+        fun `replaceHistoryWithSummary is a no-op when count exceeds history size`() {
+            val player = server.addPlayer("Alice")
+            val npc = makeNpc("Guard")
+            val conversation = Conversation(
+                _players = mutableListOf(player.uniqueId),
+                initialNPCs = listOf(npc),
+            )
+
+            conversation.addPlayerMessage(player, "msg1")
+            val originalSize = conversation.history.size
+
+            // Attempt to summarize more messages than exist
+            conversation.replaceHistoryWithSummary("Bad summary", originalSize + 5)
+
+            // History should be unchanged
+            assertEquals(originalSize, conversation.history.size)
+            assertEquals(1, conversation.messagesSinceLastSummary)
         }
     }
 
@@ -272,9 +297,10 @@ class MessageHistorySummarizationTest {
             plugin.conversationManager.addPlayerMessage(player, conversation, "msg6")
 
             // After summarization completes, history should be condensed
-            // 1 summary system message + 4 recent messages kept
+            // 1 summary system message + recent messages kept
             assertTrue(conversation.history.size <= 6)
-            assertEquals(0, conversation.messagesSinceLastSummary)
+            // Counter is decremented by summarized count, not reset to 0
+            assertTrue(conversation.messagesSinceLastSummary < 6)
 
             // First message should be the summary
             val firstMessage = conversation.history[0]
@@ -370,7 +396,7 @@ class MessageHistorySummarizationTest {
         }
 
         @Test
-        fun `counter resets after successful summarization allowing re-trigger`() {
+        fun `counter decrements after successful summarization allowing re-trigger`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
 
@@ -388,8 +414,8 @@ class MessageHistorySummarizationTest {
                 plugin.conversationManager.addPlayerMessage(player, conversation, "round1_msg${i + 1}")
             }
 
-            // Counter should be reset after summarization
-            assertEquals(0, conversation.messagesSinceLastSummary)
+            // Counter should be decremented (not necessarily 0) after summarization
+            assertTrue(conversation.messagesSinceLastSummary < 6)
 
             // Update mock for second round
             every {
@@ -401,9 +427,8 @@ class MessageHistorySummarizationTest {
                 plugin.conversationManager.addPlayerMessage(player, conversation, "round2_msg${i + 1}")
             }
 
-            // Should have been called twice total (once per round)
+            // Should have been called at least twice total (once per round)
             verify(atLeast = 2) { plugin.aiResponseService.getAIResponseAsync(any(), any()) }
-            assertEquals(0, conversation.messagesSinceLastSummary)
         }
     }
 }

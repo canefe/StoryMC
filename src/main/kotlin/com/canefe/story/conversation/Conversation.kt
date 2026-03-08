@@ -16,7 +16,6 @@ class Conversation(
 
     // Track the number of non-system messages added since the last history summarization
     var messagesSinceLastSummary: Int = 0
-        private set
 
     // Public properties
     var active: Boolean = true
@@ -178,17 +177,22 @@ class Conversation(
 
     fun replaceHistoryWithSummary(
         summary: String,
-        summarizedMessageCount: Int,
+        summarizedMessagesCount: Int,
     ) {
-        // Remove only the messages that were actually summarized,
-        // preserving any messages added after the snapshot was taken.
-        val removeCount = summarizedMessageCount.coerceAtMost(_history.size)
-        repeat(removeCount) {
-            _history.removeAt(0)
+        if (summarizedMessagesCount <= 0 || _history.size < summarizedMessagesCount) {
+            return
         }
-        // Insert the summary at the beginning
+        // Remove only the messages that were actually summarized
+        _history.subList(0, summarizedMessagesCount).clear()
+        // Prepend the new summary
         _history.add(0, ConversationMessage("system", summary))
-        messagesSinceLastSummary = 0
+
+        // Decrement rather than reset — messages added during the async
+        // window will have incremented the counter and must be preserved.
+        messagesSinceLastSummary -= summarizedMessagesCount
+        if (messagesSinceLastSummary < 0) {
+            messagesSinceLastSummary = 0
+        }
     }
 
     fun clearHistory() {
