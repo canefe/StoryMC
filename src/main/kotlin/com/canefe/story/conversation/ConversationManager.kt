@@ -850,7 +850,7 @@ class ConversationManager private constructor(
      */
     private fun checkAndSummarizeHistory(conversation: Conversation) {
         val summarizationThreshold = plugin.config.summarizationThreshold
-        val recentMessagesToKeep = 4
+        val recentMessagesToKeep = RECENT_MESSAGES_TO_KEEP
 
         if (conversation.messagesSinceLastSummary < summarizationThreshold) {
             return
@@ -1309,6 +1309,7 @@ class ConversationManager private constructor(
     }
 
     companion object {
+        private const val RECENT_MESSAGES_TO_KEEP = 4
         private var instance: ConversationManager? = null
 
         @JvmStatic
