@@ -849,7 +849,7 @@ class ConversationManager private constructor(
      * Summarization occurs every 5 conversational messages to keep the context window manageable.
      */
     private fun checkAndSummarizeHistory(conversation: Conversation) {
-        val summarizationThreshold = 5
+        val summarizationThreshold = plugin.config.summarizationThreshold
         val recentMessagesToKeep = 4
 
         if (conversation.messagesSinceLastSummary < summarizationThreshold) {

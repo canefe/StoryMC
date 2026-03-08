@@ -51,6 +51,8 @@ class ConfigService(
         false // Whether to enable dialogue path selection for DMs
     var delayedPlayerMessageProcessing: Boolean =
         false // Whether to delay player message processing like /g command
+    var summarizationThreshold: Int =
+        5 // Summarize conversation history every N messages
 
     /*
     NPC Behavior settings
@@ -196,6 +198,11 @@ class ConfigService(
                 "conversation.delayedPlayerMessageProcessing",
                 false,
             ) // Whether to delay player message processing like /g command
+        summarizationThreshold =
+            config.getInt(
+                "conversation.summarizationThreshold",
+                5,
+            ) // Summarize conversation history every N messages
 
         // NPC Behavior Settings
         headRotationDelay = config.getInt("npc.headRotationDelay", 2)
@@ -290,6 +297,7 @@ class ConfigService(
         config.set("conversation.behavioralDirectivesEnabled", behavioralDirectivesEnabled)
         config.set("conversation.dialoguePathSelectionEnabled", dialoguePathSelectionEnabled)
         config.set("conversation.delayedPlayerMessageProcessing", delayedPlayerMessageProcessing)
+        config.set("conversation.summarizationThreshold", summarizationThreshold)
 
         // NPC Behavior settings
         config.set("npc.headRotationDelay", headRotationDelay)

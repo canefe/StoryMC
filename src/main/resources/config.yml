@@ -41,6 +41,7 @@ conversation:
   behavioralDirectivesEnabled: false
   dialoguePathSelectionEnabled: false
   delayedPlayerMessageProcessing: false
+  summarizationThreshold: 5 # Summarize conversation history every N messages
 # NPC Behavior
 npc:
   headRotationDelay: 2
