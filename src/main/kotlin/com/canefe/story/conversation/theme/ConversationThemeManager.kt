@@ -2,16 +2,18 @@ package com.canefe.story.conversation.theme
 
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class ConversationThemeManager(
     private val registry: ConversationThemeRegistry,
 ) {
-    private val activeThemes = mutableMapOf<Int, MutableList<ConversationTheme>>()
+    private val activeThemes = ConcurrentHashMap<Int, CopyOnWriteArrayList<ConversationTheme>>()
 
     fun activateTheme(conversation: Conversation, themeName: String): Boolean {
         if (!registry.isRegistered(themeName)) return false
 
-        val themes = activeThemes.getOrPut(conversation.id) { mutableListOf() }
+        val themes = activeThemes.getOrPut(conversation.id) { CopyOnWriteArrayList() }
 
         // Don't activate if already active
         if (themes.any { it.name == themeName }) return false

@@ -35,7 +35,7 @@ class ConversationManager private constructor(
     private val responseTimers = mutableMapOf<Int, Int>()
 
     private val endingConversations = Collections.synchronizedSet(mutableSetOf<Int>())
-    private val summarizingConversations = mutableSetOf<Int>()
+    private val summarizingConversations = Collections.synchronizedSet(mutableSetOf<Int>())
 
     // Getter for scheduled tasks
     fun getScheduledTasks(): MutableMap<Conversation, Int> = scheduledTasks
