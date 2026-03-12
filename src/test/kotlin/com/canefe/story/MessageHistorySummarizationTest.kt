@@ -3,8 +3,8 @@ package com.canefe.story
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationManager
-import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.testutils.makeNpc
+import dev.jorel.commandapi.CommandAPI
 import io.mockk.*
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPCRegistry
@@ -27,6 +27,11 @@ class MessageHistorySummarizationTest {
         System.setProperty("mockbukkit", "true")
         server = MockBukkit.mock()
 
+        mockkStatic(CommandAPI::class)
+        every { CommandAPI.onLoad(any()) } just Runs
+        every { CommandAPI.onEnable() } just Runs
+        every { CommandAPI.onDisable() } just Runs
+
         mockkConstructor(CommandManager::class)
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
 
@@ -42,6 +47,7 @@ class MessageHistorySummarizationTest {
         plugin.worldInformationManager = mockk(relaxed = true)
         plugin.npcContextGenerator = mockk(relaxed = true)
         plugin.sessionManager = mockk(relaxed = true)
+        plugin.aiResponseService = mockk(relaxed = true)
 
         plugin.conversationManager =
             ConversationManager.getInstance(
@@ -63,10 +69,11 @@ class MessageHistorySummarizationTest {
         fun `messagesSinceLastSummary increments on player messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             assertEquals(0, conversation.messagesSinceLastSummary)
 
@@ -81,10 +88,11 @@ class MessageHistorySummarizationTest {
         fun `messagesSinceLastSummary increments on NPC messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             assertEquals(0, conversation.messagesSinceLastSummary)
 
@@ -97,10 +105,11 @@ class MessageHistorySummarizationTest {
         fun `messagesSinceLastSummary does not increment on system messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             conversation.addSystemMessage("A new player has joined")
             assertEquals(0, conversation.messagesSinceLastSummary)
@@ -110,10 +119,11 @@ class MessageHistorySummarizationTest {
         fun `messagesSinceLastSummary does not count ellipsis user messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             // Simulate the pattern from addNPCMessage: assistant + "..."
             conversation.addNPCMessage(npc, "Hello")
@@ -129,17 +139,18 @@ class MessageHistorySummarizationTest {
         fun `replaceHistoryWithSummary decrements counter and removes summarized messages`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             // Add several messages
-            conversation.addPlayerMessage(player, "msg1")        // user (+1)
-            conversation.addPlayerMessage(player, "msg2")        // user (+1)
-            conversation.addNPCMessage(npc, "response1")         // assistant (+1) + "..."
-            conversation.addPlayerMessage(player, "msg3")        // user (+1)
-            conversation.addNPCMessage(npc, "response2")         // assistant (+1) + "..."
+            conversation.addPlayerMessage(player, "msg1") // user (+1)
+            conversation.addPlayerMessage(player, "msg2") // user (+1)
+            conversation.addNPCMessage(npc, "response1") // assistant (+1) + "..."
+            conversation.addPlayerMessage(player, "msg3") // user (+1)
+            conversation.addNPCMessage(npc, "response2") // assistant (+1) + "..."
 
             assertEquals(5, conversation.messagesSinceLastSummary)
 
@@ -165,22 +176,23 @@ class MessageHistorySummarizationTest {
         fun `replaceHistoryWithSummary preserves messages added during async summarization`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             // Add initial messages
-            conversation.addPlayerMessage(player, "msg1")  // index 0 (+1)
-            conversation.addPlayerMessage(player, "msg2")  // index 1 (+1)
-            conversation.addPlayerMessage(player, "msg3")  // index 2 (+1)
+            conversation.addPlayerMessage(player, "msg1") // index 0 (+1)
+            conversation.addPlayerMessage(player, "msg2") // index 1 (+1)
+            conversation.addPlayerMessage(player, "msg3") // index 2 (+1)
 
             // Snapshot: summarize first 2 messages
             val messagesToSummarizeCount = 2
 
             // Simulate new messages arriving during async summarization
-            conversation.addPlayerMessage(player, "msg4")  // index 3 (+1)
-            conversation.addPlayerMessage(player, "msg5")  // index 4 (+1)
+            conversation.addPlayerMessage(player, "msg4") // index 3 (+1)
+            conversation.addPlayerMessage(player, "msg5") // index 4 (+1)
 
             // Counter is 5 (all 5 player messages counted)
             assertEquals(5, conversation.messagesSinceLastSummary)
@@ -206,10 +218,11 @@ class MessageHistorySummarizationTest {
         fun `replaceHistoryWithSummary is a no-op when count exceeds history size`() {
             val player = server.addPlayer("Alice")
             val npc = makeNpc("Guard")
-            val conversation = Conversation(
-                _players = mutableListOf(player.uniqueId),
-                initialNPCs = listOf(npc),
-            )
+            val conversation =
+                Conversation(
+                    _players = mutableListOf(player.uniqueId),
+                    initialNPCs = listOf(npc),
+                )
 
             conversation.addPlayerMessage(player, "msg1")
             val originalSize = conversation.history.size
@@ -280,7 +293,7 @@ class MessageHistorySummarizationTest {
 
             plugin.configService.summarizationThreshold = 5
 
-            val summaryText = "Summary of conversation so far: Alice talked to Guard about the kingdom."
+            val summaryText = "Alice talked to Guard about the kingdom."
             every {
                 plugin.aiResponseService.getAIResponseAsync(any(), any())
             } returns CompletableFuture.completedFuture(summaryText)
@@ -296,6 +309,9 @@ class MessageHistorySummarizationTest {
             plugin.conversationManager.addPlayerMessage(player, conversation, "msg5")
             plugin.conversationManager.addPlayerMessage(player, conversation, "msg6")
 
+            // Tick the scheduler so the runTask callback from thenAccept executes
+            server.scheduler.performOneTick()
+
             // After summarization completes, history should be condensed
             // 1 summary system message + recent messages kept
             assertTrue(conversation.history.size <= 6)
@@ -305,7 +321,7 @@ class MessageHistorySummarizationTest {
             // First message should be the summary
             val firstMessage = conversation.history[0]
             assertEquals("system", firstMessage.role)
-            assertEquals(summaryText, firstMessage.content)
+            assertEquals("Summary of conversation so far: $summaryText", firstMessage.content)
         }
 
         @Test
@@ -414,6 +430,9 @@ class MessageHistorySummarizationTest {
                 plugin.conversationManager.addPlayerMessage(player, conversation, "round1_msg${i + 1}")
             }
 
+            // Tick the scheduler so the runTask callback from thenAccept executes
+            server.scheduler.performOneTick()
+
             // Counter should be decremented (not necessarily 0) after summarization
             assertTrue(conversation.messagesSinceLastSummary < 6)
 
@@ -426,6 +445,9 @@ class MessageHistorySummarizationTest {
             repeat(6) { i ->
                 plugin.conversationManager.addPlayerMessage(player, conversation, "round2_msg${i + 1}")
             }
+
+            // Tick the scheduler so the second round's runTask executes
+            server.scheduler.performOneTick()
 
             // Should have been called at least twice total (once per round)
             verify(atLeast = 2) { plugin.aiResponseService.getAIResponseAsync(any(), any()) }
