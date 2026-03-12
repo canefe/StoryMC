@@ -894,50 +894,75 @@ class ConversationManager private constructor(
         // Count only non-system, non-placeholder messages that were actually
         // counted toward the summarization threshold, so replaceHistoryWithSummary
         // decrements the counter accurately.
-        val countedMessages = messagesToSummarize.count {
-            it.role != "system" && it.content != "..."
-        }
+        val countedMessages =
+            messagesToSummarize.count {
+                it.role != "system" && it.content != "..."
+            }
 
-        // Build the summarization prompt — use bracketed labels instead of raw
-        // "role: content" to prevent user-supplied newlines from spoofing roles.
+        // Build the summarization prompt — character names are already in the
+        // message content (e.g. "DrJonas: hello"), so we only need the text.
+        // Newlines within messages are flattened to prevent injection.
         val summaryPrompt = plugin.promptService.getMessageHistorySummaryPrompt()
-        val conversationText =
+
+        // Extract existing summary (if any) and new messages separately
+        val existingSummary =
             messagesToSummarize
-                .filter { it.role != "system" || it.content.startsWith("Summary of conversation") }
-                .joinToString("\n") { "[${it.role}] ${it.content.replace("\n", " ")}" }
+                .firstOrNull { it.role == "system" && it.content.startsWith("Summary of conversation") }
+                ?.content
+
+        val newMessages =
+            messagesToSummarize
+                .filter { it.content != "..." }
+                .filter { it.role != "system" }
+                .joinToString("\n") { it.content.replace("\n", " ") }
+
+        val userMessage =
+            if (existingSummary != null) {
+                "Here is the existing summary of earlier events:\n---\n$existingSummary\n---\n\n" +
+                    "Here are the new messages that happened after that summary:\n---\n$newMessages\n---\n\n" +
+                    "Write a single combined summary that incorporates ALL details from the existing summary " +
+                    "and the new messages. Do not drop any information from the existing summary."
+            } else {
+                "Summarize the following conversation transcript:\n---\n$newMessages\n---"
+            }
 
         val prompts =
             listOf(
                 ConversationMessage("system", summaryPrompt),
-                ConversationMessage("user", conversationText),
+                ConversationMessage("user", userMessage),
             )
 
         // Run summarization asynchronously to avoid blocking the main thread
         val messagesToSummarizeCount = messagesToSummarize.size
-        plugin.getAIResponse(prompts, lowCost = true).thenAccept { summary ->
-            if (!summary.isNullOrBlank()) {
-                // Safely modify conversation state on the main server thread
-                Bukkit.getScheduler().runTask(plugin, Runnable {
-                    conversation.replaceHistoryWithSummary(summary, messagesToSummarizeCount, countedMessages)
+        plugin
+            .getAIResponse(prompts, lowCost = false)
+            .thenAccept { summary ->
+                if (!summary.isNullOrBlank()) {
+                    // Safely modify conversation state on the main server thread
+                    Bukkit.getScheduler().runTask(
+                        plugin,
+                        Runnable {
+                            conversation.replaceHistoryWithSummary(summary, messagesToSummarizeCount, countedMessages)
 
-                    if (plugin.config.debugMessages) {
-                        plugin.logger.info(
-                            "Message history summarized for conversation ${conversation.id}. " +
-                                "New history size: ${conversation.history.size}",
-                        )
-                    }
+                            if (plugin.config.debugMessages) {
+                                plugin.logger.info(
+                                    "Message history summarized for conversation ${conversation.id}. " +
+                                        "New history size: ${conversation.history.size}",
+                                )
+                            }
+                            summarizingConversations.remove(conversation.id)
+                        },
+                    )
+                } else {
                     summarizingConversations.remove(conversation.id)
-                })
-            } else {
+                }
+            }.exceptionally { e ->
+                plugin.logger.warning(
+                    "Failed to summarize message history for conversation ${conversation.id}: ${e.message}",
+                )
                 summarizingConversations.remove(conversation.id)
+                null
             }
-        }.exceptionally { e ->
-            plugin.logger.warning(
-                "Failed to summarize message history for conversation ${conversation.id}: ${e.message}",
-            )
-            summarizingConversations.remove(conversation.id)
-            null
-        }
     }
 
     // NPC conversation coordination
