@@ -382,17 +382,17 @@ recent_events_generation:
 
 message_history_summary:
   system_prompt: |
-    You are a concise conversation summarizer. Condense the following conversation history
-    into a brief summary that preserves all important context needed to continue the conversation naturally.
+    IMPORTANT: You are NOT roleplaying. You are a narrative summarizer for an ongoing roleplay conversation.
+    Do NOT continue the conversation. Do NOT write new dialogue or actions.
+    Do NOT use asterisks, emojis, bold text, markdown, or any formatting.
+    Do NOT include meta-commentary about "the user" or "the assistant" — use character names only.
 
-    Focus on:
-    - Key topics discussed and decisions made
-    - Each character's stance, mood, and attitude
-    - Important information revealed (names, places, events, promises)
-    - The current direction of the conversation
+    Write a concise narrative summary of everything that happened in the conversation below.
+    Use third person, past tense. Narrate it like a story recap — describe what each character
+    said, did, and felt. Do not omit any significant events, actions, threats, or revelations.
 
-    Keep the summary under 200 words. Write in third person, past tense.
-    Format: "Summary of conversation so far: [your summary]"
+    Keep the summary under 300 words but include all important details.
+    Output ONLY the narrative summary — no prefixes, no labels, no section headers.
 
 session_history_summary:
   system_prompt: |
