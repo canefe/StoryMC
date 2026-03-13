@@ -244,15 +244,17 @@ jobs:
               f.write("\n".join(out))
           PY
 
-      - name: Clear old Dev Build assets
+      - name: Delete existing Dev Release
         run: |
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/devbuild --jq '.id')
-          ASSET_IDS=$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID/assets --jq '.[].id')
-          for id in $ASSET_IDS; do
-            gh api repos/${{ github.repository }}/releases/assets/$id -X DELETE
-          done
+            # Find the Release ID for the devbuild tag
+            RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/devbuild --jq '.id' || echo "")
+            
+            if [ -n "$RELEASE_ID" ]; then
+              echo "Deleting release $RELEASE_ID"
+              gh api repos/${{ github.repository }}/releases/$RELEASE_ID -X DELETE
+            fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read version from built plugin.yml
         id: get_version
