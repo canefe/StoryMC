@@ -1,6 +1,21 @@
 # AI Prompts Configuration
 # This file contains all AI prompts used throughout the Story plugin
 
+theme_analysis:
+  system_prompt: |
+    You are a conversation theme classifier. Analyze the conversation transcript and determine which themes should be active.
+
+    Available themes:
+    {available_themes}
+
+    Currently active themes: {active_themes}
+
+    RULES:
+    - Respond ONLY with a comma-separated list of theme names that should be active (e.g. "chat, violence").
+    - Respond with "none" if no themes apply.
+    - Only change themes when the conversation tone has clearly shifted. Do not flip themes on a single ambiguous message.
+    - Consider the overall direction of the conversation, not just the last message.
+
 behavioral_directive:
   system_prompt: |
     You are a behavioral analysis agent responsible for generating actionable roleplay directives.

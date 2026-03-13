@@ -10,7 +10,10 @@ class ConversationThemeManager(
 ) {
     private val activeThemes = ConcurrentHashMap<Int, CopyOnWriteArrayList<ConversationTheme>>()
 
-    fun activateTheme(conversation: Conversation, themeName: String): Boolean {
+    fun activateTheme(
+        conversation: Conversation,
+        themeName: String,
+    ): Boolean {
         if (!registry.isRegistered(themeName)) return false
 
         val themes = activeThemes.getOrPut(conversation.id) { CopyOnWriteArrayList() }
@@ -33,7 +36,10 @@ class ConversationThemeManager(
         return true
     }
 
-    fun deactivateTheme(conversation: Conversation, themeName: String): Boolean {
+    fun deactivateTheme(
+        conversation: Conversation,
+        themeName: String,
+    ): Boolean {
         val themes = activeThemes[conversation.id] ?: return false
         val theme = themes.find { it.name == themeName } ?: return false
 
@@ -50,8 +56,10 @@ class ConversationThemeManager(
     fun getActiveThemes(conversation: Conversation): List<ConversationTheme> =
         activeThemes[conversation.id]?.toList() ?: emptyList()
 
-    fun hasTheme(conversation: Conversation, themeName: String): Boolean =
-        activeThemes[conversation.id]?.any { it.name == themeName } ?: false
+    fun hasTheme(
+        conversation: Conversation,
+        themeName: String,
+    ): Boolean = activeThemes[conversation.id]?.any { it.name == themeName } ?: false
 
     fun onConversationEnd(conversation: Conversation) {
         val themes = activeThemes.remove(conversation.id) ?: return
@@ -61,7 +69,10 @@ class ConversationThemeManager(
         conversation.themeData.clearThemeNames()
     }
 
-    fun onMessage(conversation: Conversation, message: ConversationMessage) {
+    fun onMessage(
+        conversation: Conversation,
+        message: ConversationMessage,
+    ) {
         val themes = activeThemes[conversation.id] ?: return
         for (theme in themes) {
             theme.onMessage(conversation, message)

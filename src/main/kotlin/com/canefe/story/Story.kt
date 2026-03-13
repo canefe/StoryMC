@@ -149,6 +149,8 @@ open class Story :
         private set
     lateinit var themeManager: ConversationThemeManager
         private set
+    lateinit var themeAgent: com.canefe.story.conversation.theme.ConversationThemeAgent
+        private set
 
     // NPC Name Aliasing System
     lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
@@ -301,6 +303,9 @@ open class Story :
         themeRegistry.register(ChatTheme.NAME) { ChatTheme() }
         themeRegistry.register(ViolenceTheme.NAME) { ViolenceTheme() }
         themeManager = ConversationThemeManager(themeRegistry)
+        themeAgent =
+            com.canefe.story.conversation.theme
+                .ConversationThemeAgent(this, themeManager, themeRegistry)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()

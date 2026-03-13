@@ -40,7 +40,7 @@ class PromptIntegrationTest {
         val envKey =
             System.getenv("OPENROUTER_API_KEY") ?: System.getenv("OPENAI_API_KEY") ?: ""
         if (envKey.isNotBlank()) {
-            plugin.config.openAIKey = envKey
+            // plugin.config.openAIKey = envKey
         }
     }
 

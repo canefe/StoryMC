@@ -43,6 +43,19 @@ class PromptService(
         return prompt
     }
 
+    /** Gets the theme analysis prompt */
+    fun getThemeAnalysisPrompt(
+        availableThemes: String,
+        activeThemes: String,
+    ): String {
+        val variables =
+            mapOf(
+                "available_themes" to availableThemes,
+                "active_themes" to activeThemes,
+            )
+        return getPrompt("theme_analysis", variables)
+    }
+
     /** Gets the behavioral directive prompt with context */
     fun getBehavioralDirectivePrompt(
         recentMessages: String,

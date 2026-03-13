@@ -20,11 +20,12 @@ class ConversationThemeManagerTest {
         manager = ConversationThemeManager(registry)
 
         val npc = makeNpc("Guard")
-        conversation = Conversation(
-            id = 1,
-            _players = mutableListOf(),
-            initialNPCs = listOf(npc),
-        )
+        conversation =
+            Conversation(
+                id = 1,
+                _players = mutableListOf(),
+                initialNPCs = listOf(npc),
+            )
     }
 
     @Test
@@ -62,6 +63,7 @@ class ConversationThemeManagerTest {
             object : ConversationTheme() {
                 override val name = "trade"
                 override val displayName = "Trade"
+                override val description = "Trading and bartering"
                 override val compatibleWith = setOf(ChatTheme.NAME)
             }
         }
@@ -102,9 +104,13 @@ class ConversationThemeManagerTest {
             object : ConversationTheme() {
                 override val name = "spy"
                 override val displayName = "Spy"
+                override val description = "Espionage and stealth"
                 override val compatibleWith = emptySet<String>()
 
-                override fun onMessage(conversation: Conversation, message: ConversationMessage) {
+                override fun onMessage(
+                    conversation: Conversation,
+                    message: ConversationMessage,
+                ) {
                     messageReceived = true
                 }
             }

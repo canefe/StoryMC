@@ -77,10 +77,19 @@ class ConvListCommand(
         npcNames: List<String>,
         playerNames: List<String>,
     ): List<Component> {
-        // Build the prefix with conversation ID
+        // Build the prefix with conversation ID and active themes
         val miniMessage = commandUtils.mm
         val componentList = mutableListOf<Component>()
-        val prefix = miniMessage.deserialize("<gray>=====<green>[$id]</green>=====</gray>")
+
+        val conversation = commandUtils.conversationManager.getConversationById(id)
+        val activeThemes = conversation?.themeData?.activeThemeNames ?: emptyList()
+        val themeSuffix =
+            if (activeThemes.isNotEmpty()) {
+                " <dark_gray>[<light_purple>${activeThemes.joinToString(", ")}</light_purple>]</dark_gray>"
+            } else {
+                ""
+            }
+        val prefix = miniMessage.deserialize("<gray>=====<green>[$id]</green>=====</gray>$themeSuffix")
 
         // Append clickable NPC names
         val clickableNpcNames = createClickableNpcNames(id, npcNames)

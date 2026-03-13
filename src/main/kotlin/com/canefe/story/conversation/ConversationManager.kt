@@ -653,6 +653,9 @@ class ConversationManager private constructor(
         conversation.addPlayerMessage(player, message)
         handleHolograms(conversation, player.name)
 
+        // Analyze and update conversation themes
+        plugin.themeAgent.analyzeAndUpdateThemes(conversation)
+
         // Check if message history needs summarization
         checkAndSummarizeHistory(conversation)
 

@@ -3,7 +3,10 @@ package com.canefe.story.conversation.theme
 class ConversationThemeRegistry {
     private val factories = mutableMapOf<String, ConversationThemeFactory>()
 
-    fun register(name: String, factory: ConversationThemeFactory) {
+    fun register(
+        name: String,
+        factory: ConversationThemeFactory,
+    ) {
         factories[name] = factory
     }
 
