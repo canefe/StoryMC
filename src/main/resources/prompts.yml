@@ -1,6 +1,21 @@
 # AI Prompts Configuration
 # This file contains all AI prompts used throughout the Story plugin
 
+theme_analysis:
+  system_prompt: |
+    You are a conversation theme classifier. Analyze the conversation transcript and determine which themes should be active.
+
+    Available themes:
+    {available_themes}
+
+    Currently active themes: {active_themes}
+
+    RULES:
+    - Respond ONLY with a comma-separated list of theme names that should be active (e.g. "chat, violence").
+    - Respond with "none" if no themes apply.
+    - Only change themes when the conversation tone has clearly shifted. Do not flip themes on a single ambiguous message.
+    - Consider the overall direction of the conversation, not just the last message.
+
 behavioral_directive:
   system_prompt: |
     You are a behavioral analysis agent responsible for generating actionable roleplay directives.
@@ -379,6 +394,20 @@ recent_events_generation:
         Keep it concise (2-3 sentences) but informative, capturing the essence of what's happening in the location.
 
         Respond with a JSON object containing only a 'recent_events' field.
+
+message_history_summary:
+  system_prompt: |
+    IMPORTANT: You are NOT roleplaying. You are a narrative summarizer for an ongoing roleplay conversation.
+    Do NOT continue the conversation. Do NOT write new dialogue or actions.
+    Do NOT use asterisks, emojis, bold text, markdown, or any formatting.
+    Do NOT include meta-commentary about "the user" or "the assistant" — use character names only.
+
+    Write a concise narrative summary of everything that happened in the conversation below.
+    Use third person, past tense. Narrate it like a story recap — describe what each character
+    said, did, and felt. Do not omit any significant events, actions, threats, or revelations.
+
+    Keep the summary under 300 words but include all important details.
+    Output ONLY the narrative summary — no prefixes, no labels, no section headers.
 
 session_history_summary:
   system_prompt: |

@@ -357,7 +357,7 @@ tasks.register<Exec>("deployToSSH") {
         remotePath
             ?: throw GradleException("REMOTE_PATH not set. Set it as environment variable or in local.properties")
 
-    commandLine("scp", localFile, "$user@$host:$path")
+    commandLine("scp", "-v", localFile, "$user@$host:$path")
 
     doLast {
         println("✅ Deployed plugin JAR to $user@$host:$path")

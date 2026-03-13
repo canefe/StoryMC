@@ -1,5 +1,6 @@
 package com.canefe.story.conversation
 
+import com.canefe.story.conversation.theme.ConversationThemeData
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
@@ -13,6 +14,12 @@ class Conversation(
     private val _npcNames: MutableList<String> = ArrayList()
     private val _npcs: MutableSet<NPC> = HashSet(initialNPCs)
     private val _history: MutableList<ConversationMessage> = ArrayList()
+
+    // Track the number of non-system messages added since the last history summarization
+    var messagesSinceLastSummary: Int = 0
+
+    // Theme data for this conversation
+    val themeData: ConversationThemeData = ConversationThemeData()
 
     // Public properties
     var active: Boolean = true
@@ -157,6 +164,9 @@ class Conversation(
                 message,
             )
         _history.add(userMessage)
+        if (message != "...") {
+            messagesSinceLastSummary++
+        }
     }
 
     private fun addAssistantMessage(message: String) {
@@ -166,6 +176,30 @@ class Conversation(
                 message,
             )
         _history.add(assistantMessage)
+        messagesSinceLastSummary++
+    }
+
+    fun replaceHistoryWithSummary(
+        summary: String,
+        summarizedMessagesCount: Int,
+        countedMessages: Int = summarizedMessagesCount,
+    ) {
+        if (summarizedMessagesCount <= 0 || _history.size < summarizedMessagesCount) {
+            return
+        }
+        // Remove only the messages that were actually summarized
+        _history.subList(0, summarizedMessagesCount).clear()
+        // Prepend the new summary
+        _history.add(0, ConversationMessage("system", "Summary of conversation so far: $summary"))
+
+        // Decrement only by the number of messages that were actually counted
+        // toward the summarization threshold (excludes system messages and "..."
+        // placeholders). Messages added during the async window will have
+        // incremented the counter and must be preserved.
+        messagesSinceLastSummary -= countedMessages
+        if (messagesSinceLastSummary < 0) {
+            messagesSinceLastSummary = 0
+        }
     }
 
     fun clearHistory() {
