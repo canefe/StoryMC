@@ -11,7 +11,18 @@ class ViolenceTheme : ConversationTheme() {
     override val description: String = "Combat, fighting, threats, or physical aggression. Activate when violence occurs or is imminent."
     override val compatibleWith: Set<String> = setOf(ChatTheme.NAME)
 
+    private val sentinelAvailable: Boolean by lazy {
+        try {
+            Class.forName("org.mcmonkey.sentinel.SentinelTrait")
+            true
+        } catch (_: ClassNotFoundException) {
+            false
+        }
+    }
+
     override fun onActivate(conversation: Conversation) {
+        if (!sentinelAvailable) return
+
         val plugin = Story.instance
         val npcs = conversation.npcs
         val playerUUIDs = conversation.players
@@ -38,6 +49,8 @@ class ViolenceTheme : ConversationTheme() {
     }
 
     override fun onDeactivate(conversation: Conversation) {
+        if (!sentinelAvailable) return
+
         val plugin = Story.instance
         val npcs = conversation.npcs
         val playerUUIDs = conversation.players
