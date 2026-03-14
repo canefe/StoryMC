@@ -1,15 +1,19 @@
 package com.canefe.story.storage.sqlite
 
+import com.canefe.story.player.PlayerConfig
 import com.canefe.story.storage.PlayerStorage
 import com.canefe.story.storage.SQLiteManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class SQLitePlayerStorage(
     private val sqlite: SQLiteManager,
 ) : PlayerStorage {
     private val gson = Gson()
+    private val json = Json { ignoreUnknownKeys = true }
 
     override fun loadTeams(): Map<String, MutableSet<UUID>> {
         val result = mutableMapOf<String, MutableSet<UUID>>()
@@ -107,5 +111,36 @@ class SQLitePlayerStorage(
             stmt.setString(1, playerId.toString())
             stmt.executeUpdate()
         }
+    }
+
+    override fun loadPlayerConfig(playerId: UUID): PlayerConfig {
+        val conn = sqlite.getConnection()
+        conn.prepareStatement("SELECT config_json FROM player_configs WHERE player_id = ?").use { stmt ->
+            stmt.setString(1, playerId.toString())
+            val rs = stmt.executeQuery()
+            if (rs.next()) {
+                return try {
+                    json.decodeFromString<PlayerConfig>(rs.getString("config_json"))
+                } catch (_: Exception) {
+                    PlayerConfig()
+                }
+            }
+        }
+        return PlayerConfig()
+    }
+
+    override fun savePlayerConfig(
+        playerId: UUID,
+        config: PlayerConfig,
+    ) {
+        val conn = sqlite.getConnection()
+        conn
+            .prepareStatement(
+                "REPLACE INTO player_configs (player_id, config_json) VALUES (?, ?)",
+            ).use { stmt ->
+                stmt.setString(1, playerId.toString())
+                stmt.setString(2, json.encodeToString(config))
+                stmt.executeUpdate()
+            }
     }
 }

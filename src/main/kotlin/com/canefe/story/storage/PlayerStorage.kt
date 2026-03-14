@@ -1,5 +1,6 @@
 package com.canefe.story.storage
 
+import com.canefe.story.player.PlayerConfig
 import java.util.UUID
 
 interface PlayerStorage {
@@ -20,4 +21,11 @@ interface PlayerStorage {
     )
 
     fun clearPlayerQuestDisplay(playerId: UUID)
+
+    fun loadPlayerConfig(playerId: UUID): PlayerConfig
+
+    fun savePlayerConfig(
+        playerId: UUID,
+        config: PlayerConfig,
+    )
 }

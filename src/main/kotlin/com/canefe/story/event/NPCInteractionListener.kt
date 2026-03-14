@@ -55,8 +55,9 @@ class NPCInteractionListener(
         // Check if player is disabled
         if (plugin.playerManager.isPlayerDisabled(player)) return
 
-        // Check if delayed message processing is enabled
-        if (plugin.config.delayedPlayerMessageProcessing) {
+        // Check if delayed message processing is enabled (global config OR per-player config)
+        val playerConfig = plugin.playerManager.getPlayerConfig(player.uniqueId)
+        if (plugin.config.delayedPlayerMessageProcessing || playerConfig.delayedPlayerMessageProcessing) {
             processDelayedPlayerMessage(player, message)
             return
         }

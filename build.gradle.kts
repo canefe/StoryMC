@@ -34,6 +34,7 @@ val elevenLabsAPIKey: String? =
 
 plugins {
     kotlin("jvm") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("xyz.jpenilla.run-paper") version "2.3.1"
     id("com.gradleup.shadow") version "8.3.3"
@@ -119,6 +120,7 @@ dependencies {
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Testing
     // Use a single, up-to-date MockBukkit coordinate for 1.21 compatibility

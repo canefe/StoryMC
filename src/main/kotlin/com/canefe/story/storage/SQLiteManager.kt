@@ -246,6 +246,16 @@ class SQLiteManager(
                 )
                 """.trimIndent(),
             )
+
+            // Player Configs
+            stmt.executeUpdate(
+                """
+                CREATE TABLE IF NOT EXISTS player_configs (
+                    player_id TEXT PRIMARY KEY,
+                    config_json TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
         }
 
         // Create indexes

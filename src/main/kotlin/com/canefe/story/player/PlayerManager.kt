@@ -10,6 +10,7 @@ import com.canefe.story.util.Msg.sendSuccess
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Level
 
 class PlayerManager(
@@ -43,6 +44,9 @@ class PlayerManager(
     val lastLocation = mutableMapOf<UUID, StoryLocation?>()
     val titleCooldowns = mutableMapOf<UUID, Long>()
     private val TITLE_COOLDOWN_MS = 1000L // 3 seconds
+
+    // Per-player configurations
+    private val playerConfigs = ConcurrentHashMap<UUID, PlayerConfig>()
 
     init {
         load()
@@ -259,6 +263,28 @@ class PlayerManager(
             }
         }
         return null
+    }
+
+    // Player config methods
+
+    fun getPlayerConfig(playerId: UUID): PlayerConfig =
+        playerConfigs.getOrPut(playerId) {
+            playerStorage.loadPlayerConfig(playerId)
+        }
+
+    fun updatePlayerConfig(
+        playerId: UUID,
+        config: PlayerConfig,
+    ) {
+        playerConfigs[playerId] = config
+        playerStorage.savePlayerConfig(playerId, config)
+    }
+
+    fun toggleDelayedMessageProcessing(player: Player): Boolean {
+        val current = getPlayerConfig(player.uniqueId)
+        val updated = current.copy(delayedPlayerMessageProcessing = !current.delayedPlayerMessageProcessing)
+        updatePlayerConfig(player.uniqueId, updated)
+        return updated.delayedPlayerMessageProcessing
     }
 
     // Data saving/loading methods

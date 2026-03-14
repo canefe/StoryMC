@@ -2,6 +2,7 @@ package com.canefe.story.command.base
 
 import com.canefe.story.Story
 import com.canefe.story.command.conversation.ConvCommand
+import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
@@ -60,6 +61,7 @@ class CommandManager(
         // Register structured commands
         ConvCommand(plugin).register()
         StoryCommand(plugin).register()
+        PlayerConfigCommand(plugin).register()
 
         // Register simpler commands
         registerSimpleCommands()
