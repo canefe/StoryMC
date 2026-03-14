@@ -1,11 +1,11 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.util.EssentialsUtils
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
-import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
@@ -152,7 +152,7 @@ class NPCMessageService(
 
     fun broadcastNPCMessage(
         message: String,
-        npc: NPC,
+        npc: StoryNPC,
         color: String? = null,
         npcContext: NPCContext? = null,
         streaming: Boolean = false,
@@ -187,18 +187,18 @@ class NPCMessageService(
                 name = npcContext?.name ?: npc.name,
                 color = color,
                 avatar = context?.avatar,
-                characterId = if (streaming && npc.entity != null) npc.entity.uniqueId else null,
+                characterId = if (streaming && npc.entity != null) npc.entity!!.uniqueId else null,
             )
 
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
                 val entity =
-                    plugin.disguiseManager.isNPCBeingImpersonated(npc).let {
-                        // if it is true then return the player
+                    if (plugin.disguiseManager.isNPCBeingImpersonated(npc)) {
                         plugin.disguiseManager.getDisguisedPlayer(npc)
-                    }
-                        ?: npc.entity
+                    } else {
+                        null
+                    } ?: npc.entity
 
                 // Only send message to players who are nearby OR have permission
                 val npcLocation = entity?.location ?: return@Runnable
@@ -249,9 +249,10 @@ class NPCMessageService(
                             if (otherNpc != npc) {
                                 otherNpc.entity?.let { otherEntity ->
                                     // Only turn head if the other NPC entity is valid
-                                    if (otherEntity.isValid && (npc.entity != null && npc.entity.isValid)) {
+                                    val speakingEntity = npc.entity
+                                    if (otherEntity.isValid && (speakingEntity != null && speakingEntity.isValid)) {
                                         // Turn head towards the speaking NPC
-                                        plugin.npcBehaviorManager.turnHead(otherNpc, npc.entity)
+                                        plugin.npcBehaviorManager.turnHead(otherNpc, speakingEntity)
                                     }
                                 }
                             }
@@ -271,7 +272,7 @@ class NPCMessageService(
 
                                     plugin.audioManager
                                         .playRandomVoice(
-                                            location = npc.entity.location,
+                                            location = npc.entity!!.location,
                                             gender = gender,
                                             lastPlayed = lastSound,
                                         ).thenAccept { soundId ->
@@ -298,7 +299,7 @@ class NPCMessageService(
      */
     fun broadcastNPCStreamMessage(
         message: String,
-        npc: NPC,
+        npc: StoryNPC,
         color: String? = null,
         npcContext: NPCContext? = null,
     ) {

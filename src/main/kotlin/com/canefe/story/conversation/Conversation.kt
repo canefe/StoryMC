@@ -1,18 +1,18 @@
 package com.canefe.story.conversation
 
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.theme.ConversationThemeData
 import com.canefe.story.util.EssentialsUtils
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
 import java.util.*
 
 class Conversation(
     var id: Int = -1,
     private val _players: MutableList<UUID>,
-    initialNPCs: List<NPC>,
+    initialNPCs: List<StoryNPC>,
 ) {
     private val _npcNames: MutableList<String> = ArrayList()
-    private val _npcs: MutableSet<NPC> = HashSet(initialNPCs)
+    private val _npcs: MutableSet<StoryNPC> = HashSet(initialNPCs)
     private val _history: MutableList<ConversationMessage> = ArrayList()
 
     // Track the number of non-system messages added since the last history summarization
@@ -25,16 +25,16 @@ class Conversation(
     var active: Boolean = true
     var chatEnabled: Boolean = true
     var radiant: Boolean = false
-    val mutedNPCs: MutableList<NPC> = ArrayList()
+    val mutedNPCs: MutableList<StoryNPC> = ArrayList()
 
     // Read-only property exposing internal list as immutable
     val npcNames: List<String> get() = _npcNames.toList()
-    val npcs: List<NPC> get() = _npcs.toList()
+    val npcs: List<StoryNPC> get() = _npcs.toList()
     val history: List<ConversationMessage> get() = _history.toList()
     val players: List<UUID> get() = _players.toList()
 
     // Last Speaking NPC
-    var lastSpeakingNPC: NPC? = null
+    var lastSpeakingNPC: StoryNPC? = null
 
     init {
         for (npc in initialNPCs) {
@@ -42,17 +42,17 @@ class Conversation(
         }
     }
 
-    fun getNPCByName(name: String): NPC? = _npcs.find { it.name.equals(name, ignoreCase = true) }
+    fun getNPCByName(name: String): StoryNPC? = _npcs.find { it.name.equals(name, ignoreCase = true) }
 
     fun hasPlayer(playerUUID: UUID): Boolean = _players.contains(playerUUID)
 
     fun hasNPC(name: String): Boolean = _npcNames.contains(name)
 
-    fun hasNPC(npc: NPC): Boolean = _npcs.contains(npc)
+    fun hasNPC(npc: StoryNPC): Boolean = _npcs.contains(npc)
 
     fun hasPlayer(player: Player): Boolean = _players.contains(player.uniqueId)
 
-    fun addNPC(npc: NPC): Boolean {
+    fun addNPC(npc: StoryNPC): Boolean {
         val npcName = npc.name
         _npcs.add(npc)
 
@@ -71,7 +71,7 @@ class Conversation(
         return true
     }
 
-    fun removeNPC(npc: NPC): Boolean {
+    fun removeNPC(npc: StoryNPC): Boolean {
         val npcName = npc.name
         _npcs.remove(npc)
 
@@ -98,7 +98,7 @@ class Conversation(
         return false
     }
 
-    fun muteNPC(npc: NPC): Boolean {
+    fun muteNPC(npc: StoryNPC): Boolean {
         if (!_npcs.contains(npc)) {
             return false
         }
@@ -109,7 +109,7 @@ class Conversation(
         return false
     }
 
-    fun unmuteNPC(npc: NPC): Boolean {
+    fun unmuteNPC(npc: StoryNPC): Boolean {
         if (mutedNPCs.contains(npc)) {
             mutedNPCs.remove(npc)
             return true
@@ -127,7 +127,7 @@ class Conversation(
     }
 
     fun addNPCMessage(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
     ) {
         // Get nickname

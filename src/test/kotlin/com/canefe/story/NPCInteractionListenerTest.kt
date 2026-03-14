@@ -3,7 +3,7 @@ package com.canefe.story
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.event.NPCInteractionListener
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.testutils.waitUntil
 import dev.jorel.commandapi.CommandAPI
 import io.mockk.*
@@ -107,8 +107,8 @@ class NPCInteractionListenerTest {
     @Test
     fun `player joins existing NPC conversation if nearby NPC already in conversation`() {
         val alice = server.addPlayer("Alice")
-        val guard = makeNpc("Guard")
-        val shopkeeper = makeNpc("Shopkeeper")
+        val guard = makeStoryNpc("Guard")
+        val shopkeeper = makeStoryNpc("Shopkeeper")
 
         // There exists a conversation for Guard already
         val existingConversation = plugin.conversationManager.startConversation(listOf(guard, shopkeeper))
@@ -198,7 +198,7 @@ class NPCInteractionListenerTest {
 
         val alice = server.addPlayer("Alice")
         val bob = server.addPlayer("Bob")
-        val guard = makeNpc("Guard")
+        val guard = makeStoryNpc("Guard")
 
         every { getNearbyNPCs(bob, any()) } returns listOf(guard)
         every { getNearbyPlayers(bob, any()) } returns emptyList()
@@ -299,8 +299,8 @@ class NPCInteractionListenerTest {
         }
         val alice = server.addPlayer("Alice")
         val bob = server.addPlayer("Bob")
-        val guard = makeNpc("Guard")
-        val shopkeeper = makeNpc("Shopkeeper")
+        val guard = makeStoryNpc("Guard")
+        val shopkeeper = makeStoryNpc("Shopkeeper")
         val mockRegistry = mockk<NPCRegistry>(relaxed = true)
         every { mockRegistry.isNPC(bob) } returns false
         every { mockRegistry.isNPC(alice) } returns false

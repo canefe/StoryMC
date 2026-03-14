@@ -1,13 +1,14 @@
 package com.canefe.story.npc.relationship
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.RelationshipStorage
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -141,9 +142,10 @@ class RelationshipManager(
      */
     fun processAmbientRelationships() {
         val npcNames = plugin.npcDataManager.getAllNPCNames()
-        val npcs = mutableListOf<NPC>()
+        val npcs = mutableListOf<StoryNPC>()
         // Loop Citizens registry
-        for (npc in CitizensAPI.getNPCRegistry()) {
+        for (citizensNpc in CitizensAPI.getNPCRegistry()) {
+            val npc = CitizensStoryNPC(citizensNpc)
             val npcName = npc.name
             if (npcName == null || !npcs.contains(npc)) continue
 
@@ -165,7 +167,7 @@ class RelationshipManager(
                 if (!npc2.isSpawned || npc1 == npc2) continue
 
                 // Check if NPCs are near each other
-                if (npc1.entity.location.distanceSquared(npc2.entity.location) < 25) { // 5 blocks
+                if (npc1.entity!!.location.distanceSquared(npc2.entity!!.location) < 25) { // 5 blocks
                     val relationship = getRelationship(npc1.name, npc2.name)
                     val lastInteractionKey = "${npc1.name}-${npc2.name}"
 

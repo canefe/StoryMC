@@ -1,8 +1,8 @@
 package com.canefe.story.audio
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.util.EssentialsUtils
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -33,7 +33,7 @@ class VoiceManager(
      * @return CompletableFuture indicating success/failure
      */
     fun generateSpeechForNPC(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
         players: HashSet<Player>,
     ): CompletableFuture<Boolean> {
@@ -179,7 +179,7 @@ class VoiceManager(
 
     /** Generate speech for a single player (useful for private conversations) */
     fun generateSpeechForSinglePlayer(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
         player: Player,
     ): CompletableFuture<Boolean> {
@@ -218,7 +218,7 @@ class VoiceManager(
     }
 
     /** Determine the appropriate voice ID for an NPC based on their traits */
-    private fun determineNPCVoiceId(npc: NPC): String? {
+    private fun determineNPCVoiceId(npc: StoryNPC): String? {
         // Try to get NPC-specific voice mapping first
         val npcVoice = audioManager.getVoiceId(npc.name)
         if (npcVoice != audioManager.getVoiceId("default")) {

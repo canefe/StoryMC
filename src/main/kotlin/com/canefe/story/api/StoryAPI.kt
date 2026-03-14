@@ -1,7 +1,8 @@
 package com.canefe.story.api
 
 import com.canefe.story.Story
-import com.canefe.story.character.data.CharacterData
+import com.canefe.story.api.character.CharacterSkills
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.ConversationMessage
 import org.bukkit.entity.Player
 import java.util.concurrent.CompletableFuture
@@ -93,34 +94,19 @@ interface StoryAPI {
         fun getCharacterSkillLevel(
             player: Player,
             skillName: String,
-        ): Int {
-            val char = getCharacterData(player)
-            char.let {
-                return it?.getSkillModifier(skillName) ?: 0
-            }
-        }
+        ): Int = getCharacter(player).skills.getModifier(skillName)
 
         /**
-         * Get a Character Data by Player
-         *
-         * @param player The player to check
-         * @return The CharacterData API wrapper if found, null otherwise
+         * Get a [PlayerCharacter] for a player.
          */
         @JvmStatic
-        fun getCharacterData(player: Player): CharacterData? {
-            val char =
-                CharacterData(
-                    id = player.uniqueId,
-                    name = player.name,
-                    role = "default",
-                    storyLocation = null,
-                    context = "null",
+        fun getCharacter(player: Player): PlayerCharacter {
+            val skills =
+                CharacterSkills(
+                    provider = instance.skillManager.createProviderForCharacter(player.uniqueId, true),
+                    player = player,
                 )
-            char.isPlayer = true
-            char.setSkillProvider(
-                instance.skillManager.createProviderForCharacter(player.uniqueId, true),
-            )
-            return char
+            return PlayerCharacter(player = player, skills = skills)
         }
 
         /**

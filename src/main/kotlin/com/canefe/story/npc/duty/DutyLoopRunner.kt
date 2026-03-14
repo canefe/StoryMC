@@ -1,8 +1,8 @@
 package com.canefe.story.npc.duty
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.scheduler.BukkitTask
 import java.util.*
@@ -21,7 +21,7 @@ class DutyLoopRunner private constructor(
     private var dutyTask: BukkitTask? = null
 
     data class DutyExecutionContext(
-        val npc: NPC,
+        val npc: StoryNPC,
         val location: StoryLocation,
         val state: DutyState,
         var lastTickTime: Long = System.currentTimeMillis(),
@@ -35,7 +35,7 @@ class DutyLoopRunner private constructor(
      * Start a duty loop for an NPC
      */
     fun start(
-        npc: NPC,
+        npc: StoryNPC,
         dutyScript: DutyScript,
         location: StoryLocation,
     ) {
@@ -59,7 +59,7 @@ class DutyLoopRunner private constructor(
     /**
      * Stop duty loop for an NPC
      */
-    fun stop(npc: NPC) {
+    fun stop(npc: StoryNPC) {
         val context = activeDuties.remove(npc.uniqueId)
         if (context != null && plugin.config.debugMessages) {
             plugin.logger.info("Stopped duty for ${npc.name}")
@@ -69,12 +69,12 @@ class DutyLoopRunner private constructor(
     /**
      * Check if an NPC is on duty
      */
-    fun isOnDuty(npc: NPC): Boolean = activeDuties.containsKey(npc.uniqueId)
+    fun isOnDuty(npc: StoryNPC): Boolean = activeDuties.containsKey(npc.uniqueId)
 
     /**
      * Get current duty context for an NPC
      */
-    fun getDutyContext(npc: NPC): DutyExecutionContext? = activeDuties[npc.uniqueId]
+    fun getDutyContext(npc: StoryNPC): DutyExecutionContext? = activeDuties[npc.uniqueId]
 
     /**
      * Start the duty ticker task
@@ -224,7 +224,7 @@ class DutyLoopRunner private constructor(
      * Move NPC to a workstation
      */
     private fun moveToWorkstation(
-        npc: NPC,
+        npc: StoryNPC,
         location: StoryLocation,
         workstationName: String,
     ) {
@@ -246,7 +246,7 @@ class DutyLoopRunner private constructor(
         val targetLocation = workstationLocation.clone().add(offsetX, 0.0, offsetZ)
 
         // Check if NPC is already close to the workstation
-        if (npc.entity.location.distance(targetLocation) <= 1.5) {
+        if (npc.entity!!.location.distance(targetLocation) <= 1.5) {
             return // Already at workstation
         }
 
@@ -266,7 +266,7 @@ class DutyLoopRunner private constructor(
      * Perform an emote (placeholder for now)
      */
     private fun performEmote(
-        npc: NPC,
+        npc: StoryNPC,
         emoteId: String,
     ) {
         // For now, just log the emote
@@ -283,7 +283,7 @@ class DutyLoopRunner private constructor(
      * Make NPC face the nearest player
      */
     private fun faceNearestPlayer(
-        npc: NPC,
+        npc: StoryNPC,
         range: Double,
     ) {
         val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, range, ignoreY = true)
@@ -291,19 +291,12 @@ class DutyLoopRunner private constructor(
         if (nearbyPlayers.isNotEmpty()) {
             val nearestPlayer =
                 nearbyPlayers.minByOrNull {
-                    it.location.distance(npc.entity.location)
+                    it.location.distance(npc.entity!!.location)
                 }
 
             if (nearestPlayer != null) {
                 // Make NPC face the player
-                val npcLocation = npc.entity.location
-                val direction =
-                    nearestPlayer.location
-                        .clone()
-                        .subtract(npcLocation)
-                        .toVector()
-                npcLocation.direction = direction
-                npc.entity.teleport(npcLocation)
+                npc.lookAt(nearestPlayer)
             }
         }
     }

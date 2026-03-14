@@ -1,10 +1,10 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.util.PluginUtils
 import eu.decentsoftware.holograms.api.DHAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import java.util.*
@@ -29,11 +29,11 @@ class TypingSessionManager(
      * Represents a single typing animation session for an NPC
      */
     inner class TypingSession(
-        val npc: NPC,
+        val npc: StoryNPC,
         val npcContext: NPCContext?,
         val fullText: String,
         val typingSpeed: Int = 4, // Characters per tick
-        val location: Location = npc.entity.location,
+        val location: Location = npc.entity!!.location,
     ) {
         var currentPosition: Int = 0
         val isComplete: Boolean get() = currentPosition >= fullText.length
@@ -79,7 +79,7 @@ class TypingSessionManager(
      * If a session already exists for this NPC, it will be replaced
      */
     fun startTyping(
-        npc: NPC,
+        npc: StoryNPC,
         npcContext: NPCContext?,
         fullText: String,
         messageFormat: String = "<npc_text>",
@@ -97,10 +97,11 @@ class TypingSessionManager(
         }
 
         val location =
-            plugin.disguiseManager
-                .isNPCBeingImpersonated(npc)
-                ?.let { plugin.disguiseManager.getDisguisedPlayer(npc)?.location }
-                ?: npc.entity.location
+            if (plugin.disguiseManager.isNPCBeingImpersonated(npc)) {
+                plugin.disguiseManager.getDisguisedPlayer(npc)?.location
+            } else {
+                null
+            } ?: npc.entity?.location
 
         if (location == null) {
             plugin.logger.warning("NPC location is null, cannot start typing session.")

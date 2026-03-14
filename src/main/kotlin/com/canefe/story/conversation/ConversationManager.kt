@@ -1,6 +1,7 @@
 package com.canefe.story.conversation
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.event.*
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.information.ConversationInformationSource
@@ -11,7 +12,6 @@ import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
@@ -46,7 +46,7 @@ class ConversationManager private constructor(
     // Core conversation management methods
     fun startConversation(
         player: Player,
-        npcs: List<NPC>,
+        npcs: List<StoryNPC>,
     ): Conversation {
         // Check if player is already in a conversation and end it
         val existingConversation = repository.getConversationByPlayer(player)
@@ -105,7 +105,7 @@ class ConversationManager private constructor(
     }
 
     // start conversation, no players
-    fun startConversation(npcs: List<NPC>): CompletableFuture<Conversation> {
+    fun startConversation(npcs: List<StoryNPC>): CompletableFuture<Conversation> {
         // Empty player ist
         val participants = mutableListOf<UUID>()
 
@@ -195,7 +195,7 @@ class ConversationManager private constructor(
     }
 
     fun endConversationWithGoodbye(
-        npc: NPC,
+        npc: StoryNPC,
         goodbyeContext: List<String>? = null,
     ) {
         // Get the conversation
@@ -414,7 +414,7 @@ class ConversationManager private constructor(
      *         false if event was cancelled or failed
      */
     fun joinConversation(
-        npc: NPC,
+        npc: StoryNPC,
         conversation: Conversation,
         greetingMessage: String? = null,
     ): CompletableFuture<Boolean> {
@@ -693,7 +693,7 @@ class ConversationManager private constructor(
 
     // * Remove NPC from a conversation
     fun removeNPC(
-        npc: NPC,
+        npc: StoryNPC,
         conversation: Conversation,
     ) {
         // Remove the NPC from the conversation
@@ -829,18 +829,18 @@ class ConversationManager private constructor(
 
     fun getAllActiveConversations(): List<Conversation> = repository.getAllActiveConversations()
 
-    fun getConversation(npc: NPC): Conversation? = repository.getConversationByNPC(npc)
+    fun getConversation(npc: StoryNPC): Conversation? = repository.getConversationByNPC(npc)
 
     fun getConversation(npcName: String): Conversation? = repository.getConversationByNPC(npcName)
 
     fun isInConversation(player: Player): Boolean = repository.getConversationByPlayer(player) != null
 
-    fun isInConversation(npc: NPC): Boolean = repository.getConversationByNPC(npc) != null
+    fun isInConversation(npc: StoryNPC): Boolean = repository.getConversationByNPC(npc) != null
 
     /**
      * Gets the entity representing an NPC, accounting for disguised players
      */
-    fun getRealEntityForNPC(npc: NPC): Entity? {
+    fun getRealEntityForNPC(npc: StoryNPC): Entity? {
         // Check if someone is disguised as this NPC
         val disguisedPlayer = plugin.disguiseManager.getDisguisedPlayer(npc)
         if (disguisedPlayer != null) {
@@ -1243,7 +1243,7 @@ class ConversationManager private constructor(
         cancelResponseTimers()
     }
 
-    fun startRadiantConversation(npcs: ArrayList<NPC>): CompletableFuture<Conversation> {
+    fun startRadiantConversation(npcs: ArrayList<StoryNPC>): CompletableFuture<Conversation> {
         // Generate normal conversation but with timeout
         val conversation =
             Conversation(
@@ -1268,12 +1268,12 @@ class ConversationManager private constructor(
         return CompletableFuture.completedFuture(conversation)
     }
 
-    fun cleanupNPCHologram(npc: NPC) {
+    fun cleanupNPCHologram(npc: StoryNPC) {
         TODO("Not yet implemented")
     }
 
     fun addNPCToConversationWalk(
-        npc: NPC?,
+        npc: StoryNPC?,
         conversation: Conversation,
         message: String,
     ): Boolean {
@@ -1342,14 +1342,14 @@ class ConversationManager private constructor(
 
     fun isPlayerInConversationWith(
         player: Player,
-        npc: NPC,
+        npc: StoryNPC,
     ): Boolean {
         val conversation = repository.getConversationByPlayer(player)
         return conversation?.npcs?.contains(npc) ?: false
     }
 
     fun isNPCInConversationWith(
-        npc: NPC,
+        npc: StoryNPC,
         player: Player,
     ): Boolean {
         val conversation = repository.getConversationByNPC(npc)
@@ -1357,8 +1357,8 @@ class ConversationManager private constructor(
     }
 
     fun isNPCInConversationWith(
-        npc: NPC,
-        npc2: NPC,
+        npc: StoryNPC,
+        npc2: StoryNPC,
     ): Boolean {
         val conversation = repository.getConversationByNPC(npc)
         return conversation?.npcs?.contains(npc2) ?: false

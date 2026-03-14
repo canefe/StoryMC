@@ -1,6 +1,6 @@
 package com.canefe.story.conversation
 
-import net.citizensnpcs.api.npc.NPC
+import com.canefe.story.api.StoryNPC
 import org.bukkit.entity.Player
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -22,7 +22,7 @@ class ConversationRepository {
 
     fun getConversationByPlayer(player: Player): Conversation? = activeConversations.find { it.hasPlayer(player) }
 
-    fun getConversationByNPC(npc: NPC): Conversation? = activeConversations.find { it.hasNPC(npc) }
+    fun getConversationByNPC(npc: StoryNPC): Conversation? = activeConversations.find { it.hasNPC(npc) }
 
     fun getConversationByNPC(npcName: String): Conversation? = activeConversations.find { it.hasNPC(npcName) }
 

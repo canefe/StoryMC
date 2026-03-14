@@ -1,8 +1,10 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.util.EssentialsUtils
@@ -10,7 +12,6 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.concurrent.CompletableFuture
@@ -24,7 +25,7 @@ class NPCResponseService(
     private val contextService = plugin.npcContextGenerator
 
     fun generateNPCResponse(
-        npc: NPC? = null,
+        npc: StoryNPC? = null,
         responseContext: List<String>,
         broadcast: Boolean = true,
         player: Player? = null,
@@ -46,7 +47,7 @@ class NPCResponseService(
         val npcContext = contextService.getOrCreateContextForNPC(originalCharName)
 
         // Check if NPC was replaced during context generation
-        var actualNPC = npc
+        var actualNPC: StoryNPC? = npc
         var actualCharName = originalCharName
 
         if (!isPlayerCharacter && npc != null) {
@@ -299,7 +300,7 @@ class NPCResponseService(
      * @return CompletableFuture<String> with the final response
      */
     fun generateNPCResponseWithTypingEffect(
-        npc: NPC,
+        npc: StoryNPC,
         npcContext: NPCContext?,
         responseContext: List<String>,
         typingSpeed: Int = 8,
@@ -359,7 +360,7 @@ class NPCResponseService(
      */
     fun generateBehavioralDirective(
         conversation: Conversation,
-        npc: NPC,
+        npc: StoryNPC,
     ): CompletableFuture<String> {
         // Get only the behavioral directive prompt - no need to duplicate context that
         // generateNPCResponse already adds
@@ -464,7 +465,7 @@ class NPCResponseService(
     }
 
     fun generateNPCGreeting(
-        npc: NPC,
+        npc: StoryNPC,
         target: String,
         greetingContext: List<String>? = null,
     ): String? {
@@ -483,7 +484,7 @@ class NPCResponseService(
     }
 
     fun generateNPCGoodbye(
-        npc: NPC,
+        npc: StoryNPC,
         goodbyeContext: List<String>? = null,
     ): CompletableFuture<String?> {
         // Use PromptService to get the NPC goodbye prompt
@@ -667,11 +668,13 @@ class NPCResponseService(
         }
 
         // Find the NPC by name
-        var npc =
-            CitizensAPI.getNPCRegistry().firstOrNull {
-                it.name.equals(npcName, ignoreCase = true) ||
-                    it.name.trim().equals(npcName.trim(), ignoreCase = true)
-            }
+        var npc: StoryNPC? =
+            CitizensAPI
+                .getNPCRegistry()
+                .firstOrNull {
+                    it.name.equals(npcName, ignoreCase = true) ||
+                        it.name.trim().equals(npcName.trim(), ignoreCase = true)
+                }?.let { CitizensStoryNPC(it) }
 
         // If still null, try searching across all registries
         if (npc == null) {
@@ -683,7 +686,7 @@ class NPCResponseService(
                     if (it.name.equals(npcName, ignoreCase = true) ||
                         it.name.trim().equals(npcName.trim(), ignoreCase = true)
                     ) {
-                        npc = it
+                        npc = CitizensStoryNPC(it)
                         if (plugin.config.debugMessages) {
                             plugin.logger.info(
                                 "Found NPC '${it.name}' in registry ${registry.name}",

@@ -1,10 +1,11 @@
 package com.canefe.story.npc.data
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.NpcStorage
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
@@ -142,13 +143,16 @@ class NPCDataManager(
         }
     }
 
-    fun getNPC(npcName: String): NPC? {
+    fun getNPC(npcName: String): StoryNPC? {
         val actualFileName = npcStorage.resolveNpcKey(npcName) ?: return null
 
-        return CitizensAPI.getNPCRegistry().find {
-            it.name.equals(actualFileName, ignoreCase = true) ||
-                it.name.equals(npcName, ignoreCase = true)
-        }
+        val npc =
+            CitizensAPI.getNPCRegistry().find {
+                it.name.equals(actualFileName, ignoreCase = true) ||
+                    it.name.equals(npcName, ignoreCase = true)
+            } ?: return null
+
+        return CitizensStoryNPC(npc)
     }
 
     fun deleteNPCFile(npcName: String) {

@@ -9,7 +9,6 @@ import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.testutils.makeNpc
 import io.mockk.*
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.api.npc.NPCRegistry
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -21,6 +20,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertNotNull
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
+import net.citizensnpcs.api.npc.NPC as CitizensNPC
 
 class NPCContextGeneratorTest {
     private lateinit var server: ServerMock
@@ -34,7 +34,7 @@ class NPCContextGeneratorTest {
 
         val mockRegistry = mockk<NPCRegistry>()
         every { mockRegistry.isNPC(any()) } returns false
-        every { mockRegistry.iterator() } returns emptyList<NPC>().iterator()
+        every { mockRegistry.iterator() } returns emptyList<CitizensNPC>().iterator()
         CitizensAPI.setNPCRegistry(mockRegistry)
 
         mockkConstructor(CommandManager::class)

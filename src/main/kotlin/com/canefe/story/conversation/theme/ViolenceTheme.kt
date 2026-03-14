@@ -3,7 +3,6 @@ package com.canefe.story.conversation.theme
 import com.canefe.story.Story
 import com.canefe.story.conversation.Conversation
 import org.bukkit.Bukkit
-import org.mcmonkey.sentinel.SentinelTrait
 
 class ViolenceTheme : ConversationTheme() {
     override val name: String = NAME
@@ -36,8 +35,7 @@ class ViolenceTheme : ConversationTheme() {
                 plugin.askForPermission(
                     "Violence theme activated — make <gold>${npc.name}</gold> attack <red>${player.name}</red>?",
                     onAccept = {
-                        val sentinel = npc.getOrAddTrait(SentinelTrait::class.java)
-                        sentinel.addTarget("player:${player.name}")
+                        npc.attack(player)
                         if (plugin.config.debugMessages) {
                             plugin.logger.info("[ViolenceTheme] ${npc.name} is now attacking ${player.name}")
                         }
@@ -57,13 +55,10 @@ class ViolenceTheme : ConversationTheme() {
 
         // Stop NPCs from attacking players when violence theme ends
         for (npc in npcs) {
-            if (!npc.hasTrait(SentinelTrait::class.java)) continue
-            val sentinel = npc.getOrAddTrait(SentinelTrait::class.java)
             for (playerUUID in playerUUIDs) {
                 val player = Bukkit.getPlayer(playerUUID) ?: continue
-                sentinel.removeTarget("player:${player.name}")
+                npc.stopAttacking(player)
             }
-            sentinel.tryUpdateChaseTarget(null)
             if (plugin.config.debugMessages) {
                 plugin.logger.info("[ViolenceTheme] ${npc.name} stopped attacking")
             }

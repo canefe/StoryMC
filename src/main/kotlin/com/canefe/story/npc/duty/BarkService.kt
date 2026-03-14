@@ -1,7 +1,7 @@
 package com.canefe.story.npc.duty
 
 import com.canefe.story.Story
-import net.citizensnpcs.api.npc.NPC
+import com.canefe.story.api.StoryNPC
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -17,7 +17,7 @@ class BarkService private constructor(
      * Try to make an NPC speak from a bark pool, respecting cooldowns
      */
     fun trySpeak(
-        npc: NPC,
+        npc: StoryNPC,
         poolName: String,
         location: com.canefe.story.location.data.StoryLocation,
     ): Boolean {
@@ -60,7 +60,7 @@ class BarkService private constructor(
      * Try to make an NPC speak with custom cooldown
      */
     fun trySpeak(
-        npc: NPC,
+        npc: StoryNPC,
         poolName: String,
         location: com.canefe.story.location.data.StoryLocation,
         cooldownSeconds: Int,
@@ -103,7 +103,7 @@ class BarkService private constructor(
     /**
      * Clear bark cooldowns for an NPC
      */
-    fun clearCooldowns(npc: NPC) {
+    fun clearCooldowns(npc: StoryNPC) {
         val npcPrefix = "${npc.uniqueId}:"
         lastBarkTimes.keys.removeIf { it.startsWith(npcPrefix) }
     }

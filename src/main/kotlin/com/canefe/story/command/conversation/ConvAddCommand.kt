@@ -1,5 +1,6 @@
 package com.canefe.story.command.conversation
 
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -54,7 +55,11 @@ class ConvAddCommand(
                                 return@CommandExecutor
                             }
                             val success: Boolean =
-                                commandUtils.conversationManager.addNPCToConversationWalk(npc, convo, message)
+                                commandUtils.conversationManager.addNPCToConversationWalk(
+                                    CitizensStoryNPC(npc),
+                                    convo,
+                                    message,
+                                )
                             if (success) {
                                 sender.sendSuccess("NPC '$npcName' added to conversation.")
                             } else {

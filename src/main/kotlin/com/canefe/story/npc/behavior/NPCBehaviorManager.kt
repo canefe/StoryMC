@@ -1,12 +1,10 @@
 package com.canefe.story.npc.behavior
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.util.PluginUtils
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
-import net.citizensnpcs.trait.EntityPoseTrait
-import net.citizensnpcs.trait.RotationTrait
-import net.citizensnpcs.util.NMS
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
@@ -54,13 +52,13 @@ class NPCBehaviorManager(
 
                     // Update behavior for NPCs that have players nearby (performance optimization)
                     val nearbyNPCs = getNearbyNPCsToActivePlayers()
-                    nearbyNPCs.forEach { npc ->
+                    nearbyNPCs.forEach { storyNpc ->
                         try {
-                            if (npc.isSpawned && npc.entity != null) {
-                                updateNPCBehavior(npc)
+                            if (storyNpc.isSpawned && storyNpc.entity != null) {
+                                updateNPCBehavior(storyNpc)
                             }
                         } catch (e: Exception) {
-                            plugin.logger.warning("Error updating NPC behavior for NPC ID ${npc.id}: ${e.message}")
+                            plugin.logger.warning("Error updating NPC behavior for NPC ID ${storyNpc.id}: ${e.message}")
                         }
                     }
 
@@ -84,13 +82,13 @@ class NPCBehaviorManager(
         CitizensAPI.getNPCRegistry().forEach { npc ->
             if (npc.isSpawned && !initializedNPCs.contains(npc.id)) {
                 // Initialize tracking data for any NPC that doesn't have it
-                initializeNPCTracking(npc)
+                initializeNPCTracking(CitizensStoryNPC(npc))
                 initializedNPCs.add(npc.id)
             }
         }
     }
 
-    private fun initializeNPCTracking(npc: NPC) {
+    private fun initializeNPCTracking(npc: StoryNPC) {
         val currentTime = System.currentTimeMillis()
         val npcId = npc.id
 
@@ -107,7 +105,7 @@ class NPCBehaviorManager(
         }
     }
 
-    private fun updateNPCBehavior(npc: NPC) {
+    private fun updateNPCBehavior(npc: StoryNPC) {
         val npcId = npc.id
         val currentTime = System.currentTimeMillis()
         val headRotationDelay = plugin.config.headRotationDelay
@@ -134,7 +132,7 @@ class NPCBehaviorManager(
                         (
                             CitizensAPI.getNPCRegistry().isNPC(entity) &&
                                 plugin.conversationManager.isNPCInConversationWith(
-                                    CitizensAPI.getNPCRegistry().getNPC(entity),
+                                    CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(entity)),
                                     npc,
                                 )
                         )
@@ -167,21 +165,11 @@ class NPCBehaviorManager(
                 }
                 // 10% chance to look in a random direction
                 decision < 0.6 -> {
-                    val rot = npc.getOrAddTrait(RotationTrait::class.java)
-
                     // Check if the NPC is sitting
-                    val isSitting =
-                        npc.getOrAddTrait(EntityPoseTrait::class.java).pose == EntityPoseTrait.EntityPose.SITTING
+                    val isSitting = npc.isSitting
 
-                    // Get current head yaw - handle sitting NPCs differently
-                    val currentYaw =
-                        if (isSitting) {
-                            // For sitting NPCs, use the entity's yaw instead of head yaw
-                            npc.entity.location.yaw
-                        } else {
-                            net.citizensnpcs.util.NMS
-                                .getHeadYaw(npc.entity)
-                        }
+                    // Get current head yaw - use entity's yaw
+                    val currentYaw = npc.entity?.location?.yaw ?: 0f
 
                     // Generate a more natural head movement for sitting NPCs
                     val yawChange =
@@ -201,9 +189,9 @@ class NPCBehaviorManager(
                             if (isSitting) {
                                 // Sitting NPCs should look slightly upward (negative pitch)
                                 // for a more natural appearance
-                                rot.physicalSession.rotateToHave(newYaw, -10f)
+                                npc.rotateTo(newYaw, -10f)
                             } else {
-                                rot.physicalSession.rotateToHave(newYaw, 0f)
+                                npc.rotateTo(newYaw, 0f)
                             }
                         },
                     )
@@ -217,50 +205,15 @@ class NPCBehaviorManager(
     }
 
     fun turnHead(
-        npc: NPC,
+        npc: StoryNPC,
         target: Entity,
     ) {
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
-                val rot = npc.getOrAddTrait(RotationTrait::class.java)
-
                 if (!npc.isSpawned) return@Runnable
 
-                // Get current yaw and calculate target yaw and pitch
-                val currentYaw = NMS.getHeadYaw(npc.entity)
-                val npcLocation = npc.entity.location
-                val targetLocation = target.location
-
-                // Calculate yaw to target (horizontal rotation)
-                val dx = targetLocation.x - npcLocation.x
-                val dz = targetLocation.z - npcLocation.z
-                val targetYaw = Math.toDegrees(Math.atan2(-dx, dz)).toFloat()
-
-                // Calculate pitch to target (vertical rotation)
-                val dy = targetLocation.y - npcLocation.y
-                val horizontalDistance = Math.sqrt(dx * dx + dz * dz)
-                val targetPitch = -Math.toDegrees(Math.atan2(dy, horizontalDistance)).toFloat()
-
-                // Calculate yaw difference (normalized to -180 to 180)
-                var yawDiff = (targetYaw - currentYaw) % 360
-                if (yawDiff > 180) yawDiff -= 360
-                if (yawDiff < -180) yawDiff += 360
-
-                // Limit rotation to 60 degrees max for natural movement
-                val maxRotation = 60f
-                val limitedYaw =
-                    if (Math.abs(yawDiff) > maxRotation) {
-                        currentYaw + Math.signum(yawDiff.toDouble()).toFloat() * maxRotation
-                    } else {
-                        targetYaw
-                    }
-
-                // Limit pitch to reasonable values (-90 to 90 degrees, but we'll use smaller range for natural look)
-                val maxPitch = 45f
-                val limitedPitch = Math.max(-maxPitch, Math.min(maxPitch, targetPitch))
-
-                rot.physicalSession.rotateToHave(limitedYaw, limitedPitch)
+                npc.lookAt(target)
             },
         )
     }
@@ -269,12 +222,12 @@ class NPCBehaviorManager(
      * Gets all NPCs that are near active players to optimize processing
      * @return List of NPCs that are within range of at least one online player
      */
-    private fun getNearbyNPCsToActivePlayers(): List<NPC> {
-        val nearbyNPCs = mutableSetOf<NPC>()
+    private fun getNearbyNPCsToActivePlayers(): List<StoryNPC> {
+        val nearbyNPCs = mutableSetOf<StoryNPC>()
         val checkRadius = plugin.config.chatRadius * 2.0 // Use a larger radius for behavior checks
 
         for (player in Bukkit.getOnlinePlayers()) {
-            // Get NPCs near this player
+            // Get NPCs near this player and wrap them as StoryNPCs
             val playerNearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, checkRadius)
             nearbyNPCs.addAll(playerNearbyNPCs)
         }
@@ -282,11 +235,11 @@ class NPCBehaviorManager(
         return nearbyNPCs.toList()
     }
 
-    private fun getNearbyEntities(npc: NPC): List<Entity> {
+    private fun getNearbyEntities(npc: StoryNPC): List<Entity> {
         if (!npc.isSpawned) return emptyList()
 
         val entities = mutableListOf<Entity>()
-        val location = npc.entity.location
+        val location = npc.entity?.location ?: return emptyList()
         val range = plugin.config.chatRadius
         val nearbyEntities = location.world.getNearbyEntities(location, range, range, range)
 
@@ -308,21 +261,16 @@ class NPCBehaviorManager(
      * Checks if the NPC has a clear line of sight to the target entity
      */
     private fun hasLineOfSight(
-        npc: NPC,
+        npc: StoryNPC,
         target: Entity,
     ): Boolean {
-        // Citizens NPCs don't directly support hasLineOfSight
-        // We can use raycasting to check this
-
         if (!npc.isSpawned) return false
 
-        val npcEntity = npc.entity
+        val npcEntity = npc.entity ?: return false
         val npcEyes =
             npcEntity.location.add(
                 0.0,
-                net.citizensnpcs.util.NMS
-                    .getHeadYaw(npc.entity)
-                    .toDouble(),
+                npcEntity.height * 0.85,
                 0.0,
             )
         val targetEyes =
@@ -350,7 +298,7 @@ class NPCBehaviorManager(
         return ray == null || (ray.hitPosition?.toLocation(npcEntity.world)?.distance(targetEyes) ?: 0.0) < 0.5
     }
 
-    private fun showIdleHologram(npc: NPC) {
+    private fun showIdleHologram(npc: StoryNPC) {
         // if in conversation, do not show idle hologram
         plugin.conversationManager.getConversation(npc)?.let { conversation ->
             if (conversation.lastSpeakingNPC == npc) {
@@ -387,7 +335,7 @@ class NPCBehaviorManager(
         if (PluginUtils.isPluginEnabled("DecentHolograms")) {
             try {
                 val npcPos =
-                    npc.entity.location
+                    (npc.entity?.location ?: return)
                         .clone()
                         .add(0.0, 2.10, 0.0)
 
@@ -503,7 +451,7 @@ class NPCBehaviorManager(
     }
 
     private fun updateIdleHolograms(
-        npc: NPC,
+        npc: StoryNPC,
         currentTime: Long,
     ) {
         val npcId = npc.id
@@ -519,7 +467,7 @@ class NPCBehaviorManager(
 
     // Called when an NPC enters a conversation
     fun setNPCInConversation(
-        npc: NPC,
+        npc: StoryNPC,
         inConversation: Boolean,
     ) {
         val npcId = npc.id
@@ -530,7 +478,7 @@ class NPCBehaviorManager(
         }
     }
 
-    fun cleanupNPC(npc: NPC) {
+    fun cleanupNPC(npc: StoryNPC) {
         val npcId = npc.id
         npcLastLookTimes.remove(npcId)
         npcLookIntervals.remove(npcId)

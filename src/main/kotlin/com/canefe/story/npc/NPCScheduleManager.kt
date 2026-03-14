@@ -1,21 +1,17 @@
 package com.canefe.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.duty.DutyLibrary
 import com.canefe.story.npc.duty.DutyLoopRunner
 import net.citizensnpcs.api.npc.NPC
-import net.citizensnpcs.trait.CurrentLocation
 import net.citizensnpcs.trait.EntityPoseTrait
-import net.citizensnpcs.trait.FollowTrait
-import net.citizensnpcs.trait.SitTrait
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
-import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.scheduler.BukkitRunnable
 import org.bukkit.scheduler.BukkitTask
-import org.mcmonkey.sentinel.SentinelTrait
 import java.io.File
 import java.io.IOException
 import java.util.*
@@ -34,7 +30,7 @@ class NPCScheduleManager private constructor(
         }
     private var scheduleTask: BukkitTask? = null
 
-    private val npcMovementQueue = LinkedHashSet<NPC>()
+    private val npcMovementQueue = LinkedHashSet<StoryNPC>()
 
     // Track when NPCs were last processed for random pathing to prevent repeated selection
     private val npcRandomPathingCooldowns = ConcurrentHashMap<String, Long>()
@@ -254,7 +250,7 @@ class NPCScheduleManager private constructor(
                             nearbyNPCs
                                 .filter { npc ->
                                     val currentLocation =
-                                        npc.entity?.location ?: npc.getOrAddTrait(CurrentLocation::class.java).location
+                                        npc.location
 
                                     if (currentLocation == null) {
                                         if (debugMessages) {
@@ -498,8 +494,8 @@ class NPCScheduleManager private constructor(
      * Gets all NPCs that are near active players to optimize processing
      * @return List of NPCs that are within range of at least one online player
      */
-    private fun getNearbyNPCsToActivePlayers(): List<NPC> {
-        val nearbyNPCs = mutableSetOf<NPC>()
+    private fun getNearbyNPCsToActivePlayers(): List<StoryNPC> {
+        val nearbyNPCs = mutableSetOf<StoryNPC>()
         val checkRadius = plugin.config.rangeBeforeTeleport * 2.0 // Use a larger radius for proximity checks
 
         for (player in plugin.server.onlinePlayers) {
@@ -511,7 +507,7 @@ class NPCScheduleManager private constructor(
         return nearbyNPCs.toList()
     }
 
-    private fun hasNearbyPlayers(npc: NPC): Boolean {
+    private fun hasNearbyPlayers(npc: StoryNPC): Boolean {
         val radius = plugin.config.rangeBeforeTeleport * 2
         val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, radius, ignoreY = true)
         return nearbyPlayers.isNotEmpty()
@@ -523,7 +519,7 @@ class NPCScheduleManager private constructor(
         return nearbyPlayers.isNotEmpty()
     }
 
-    private fun moveNPCToRandomSublocation(npc: NPC) {
+    private fun moveNPCToRandomSublocation(npc: StoryNPC) {
         val debugMessages = plugin.config.debugMessages
 
         if (debugMessages) {
@@ -531,7 +527,7 @@ class NPCScheduleManager private constructor(
         }
 
         // Early returns for invalid conditions
-        val currentLocation = npc.entity?.location ?: npc.getOrAddTrait(CurrentLocation::class.java).location
+        val currentLocation = npc.location
 
         if (currentLocation == null) {
             if (debugMessages) {
@@ -752,7 +748,7 @@ class NPCScheduleManager private constructor(
                         }
                         return@Runnable
                     }
-                    npc.teleport(randomSublocation.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
+                    npc.teleport(randomSublocation.bukkitLocation!!)
                     executeAction(npc, action, randomSublocation)
                     if (plugin.config.debugMessages) {
                         plugin.logger.info(
@@ -836,11 +832,7 @@ class NPCScheduleManager private constructor(
         val npc = plugin.npcDataManager.getNPC(npcName) ?: return
         val npcEntity = npc.entity ?: return
 
-        var isFollowing = false
-
-        // SentinelTrait
-        val sentinelTrait = npc.getOrAddTrait(SentinelTrait::class.java)
-        isFollowing = sentinelTrait?.guarding != null || npc.getOrAddTrait(FollowTrait::class.java).isActive
+        val isFollowing = npc.isFollowing
 
         // If the NPC is currently following someone, skip this entry
         if (isFollowing) {
@@ -949,8 +941,7 @@ class NPCScheduleManager private constructor(
                             mutableListOf(
                                 "\"You have a work to do at ${location.name}. Tell the people in the conversation that you are leaving.\"",
                             )
-                        npc.getOrAddTrait(SentinelTrait::class.java).guarding = null
-                        npc.getOrAddTrait(FollowTrait::class.java).follow(null)
+                        npc.stopFollowing()
                         plugin.conversationManager.endConversationWithGoodbye(npc, goodbyeContext)
                     }
 
@@ -1121,7 +1112,7 @@ class NPCScheduleManager private constructor(
      * Handle what happens when an NPC arrives at their scheduled destination
      */
     private fun handleDestinationArrival(
-        npc: NPC,
+        npc: StoryNPC,
         entry: ScheduleEntry,
         location: StoryLocation,
         dutyLibrary: DutyLibrary,
@@ -1130,7 +1121,7 @@ class NPCScheduleManager private constructor(
         // Unless it's non precise location
         if (!entry.random) {
             // teleport npc to absolute location just in case
-            npc.teleport(location.bukkitLocation!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
+            npc.teleport(location.bukkitLocation!!)
         }
         // Determine what duty to start (if any)
         val dutyToStart =
@@ -1172,7 +1163,7 @@ class NPCScheduleManager private constructor(
     }
 
     private fun moveNPCToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         location: Location,
         callback: Runnable? = null,
     ) {
@@ -1181,7 +1172,7 @@ class NPCScheduleManager private constructor(
         val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, range, ignoreY = true)
         var shouldTeleport = nearbyPlayers.isEmpty()
 
-        val npcLocation = npc.entity?.location ?: npc.getOrAddTrait(CurrentLocation::class.java).location
+        val npcLocation = npc.location ?: return
 
         if (npcLocation.world != location.world) {
             plugin.logger.warning("NPC ${npc.name} is in a different world, cannot move.")
@@ -1214,14 +1205,13 @@ class NPCScheduleManager private constructor(
         }
 
         // Set NPC pose to standing
-        npc.getOrAddTrait(EntityPoseTrait::class.java).pose = EntityPoseTrait.EntityPose.STANDING
-        npc.getOrAddTrait(SitTrait::class.java).setSitting(null)
+        npc.stand()
 
         if (shouldTeleport) {
             if (debugMessages) {
                 plugin.logger.info("Teleporting ${npc.name} to $location")
             }
-            npc.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN)
+            npc.teleport(location)
             callback?.run() // Execute callback after teleporting
         } else {
             if (debugMessages) {
@@ -1235,7 +1225,7 @@ class NPCScheduleManager private constructor(
                         if (debugMessages) {
                             plugin.logger.info("Walking failed for ${npc.name}, executing teleportOnFail callback")
                         }
-                        npc.teleport(location, PlayerTeleportEvent.TeleportCause.PLUGIN)
+                        npc.teleport(location)
                         callback?.run()
                     }
                 }
@@ -1244,12 +1234,11 @@ class NPCScheduleManager private constructor(
     }
 
     private fun moveNPCToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         location: StoryLocation,
         callback: Runnable? = null,
     ) {
-        npc.getOrAddTrait(EntityPoseTrait::class.java).pose = EntityPoseTrait.EntityPose.STANDING
-        npc.getOrAddTrait(SitTrait::class.java).setSitting(null)
+        npc.stand()
 
         val bukkitLocation = location.bukkitLocation
         if (bukkitLocation == null) {
@@ -1260,13 +1249,10 @@ class NPCScheduleManager private constructor(
     }
 
     private fun executeAction(
-        npc: NPC,
+        npc: StoryNPC,
         action: String,
         location: StoryLocation? = null,
     ) {
-        val entityPoseTrait = npc.getOrAddTrait(EntityPoseTrait::class.java)
-        val sitTrait = npc.getOrAddTrait(SitTrait::class.java)
-
         // Clear any existing occupancy for this NPC EXCEPT for the location they're about to occupy
         location?.let { targetLocation ->
             val targetLocationKey = "${targetLocation.name}:$action"
@@ -1276,8 +1262,8 @@ class NPCScheduleManager private constructor(
         // Implement actions like sitting, working, etc.
         when (action.lowercase()) {
             "sit" -> {
-                if (!sitTrait.isSitting) {
-                    sitTrait.setSitting(npc.entity.location)
+                if (!npc.isSitting) {
+                    npc.sit(npc.entity?.location)
                     // Only mark location as occupied if it's not already occupied by this NPC
                     location?.let { loc ->
                         val locationKey = "${loc.name}:$action"
@@ -1291,12 +1277,14 @@ class NPCScheduleManager private constructor(
 
             "work" -> {
                 // Make NPC perform work animation
-                sitTrait.setSitting(null) // Ensure NPC is not sitting
+                npc.stand() // Ensure NPC is not sitting
             }
 
             "sleep" -> {
                 // Make NPC sleep
-                entityPoseTrait.pose = EntityPoseTrait.EntityPose.SLEEPING
+                npc.unwrap(NPC::class.java)?.let { citizensNPC ->
+                    citizensNPC.getOrAddTrait(EntityPoseTrait::class.java).pose = EntityPoseTrait.EntityPose.SLEEPING
+                }
                 // Only mark location as occupied if it's not already occupied by this NPC
                 location?.let { loc ->
                     val locationKey = "${loc.name}:$action"
@@ -1309,8 +1297,7 @@ class NPCScheduleManager private constructor(
 
             "idle" -> {
                 // Default idle behavior
-                entityPoseTrait.pose = EntityPoseTrait.EntityPose.STANDING
-                sitTrait.setSitting(null) // Ensure NPC is not sitting
+                npc.stand()
             }
 
             else -> {
@@ -1335,7 +1322,7 @@ class NPCScheduleManager private constructor(
         onlyIncludeNPCs: List<String> = emptyList(),
     ) {
         // Get all NPCs within proximity of the target location
-        val allNPCs = mutableListOf<NPC>()
+        val allNPCs = mutableListOf<StoryNPC>()
 
         // Get NPCs from all online players within range
         for (player in plugin.server.onlinePlayers) {
@@ -1351,7 +1338,7 @@ class NPCScheduleManager private constructor(
             allNPCs
                 .distinct()
                 .filter { npc ->
-                    val npcLocation = npc.entity?.location ?: npc.getOrAddTrait(CurrentLocation::class.java).location
+                    val npcLocation = npc.location
                     npcLocation != null &&
                         npcLocation.world == targetLocation.world &&
                         npcLocation.distance(targetLocation) <= proximityRadius
@@ -1614,7 +1601,11 @@ class NPCScheduleManager private constructor(
             return false
         }
 
-        val npcLocation = occupyingNPC.entity.location
+        val npcLocation =
+            occupyingNPC.location ?: run {
+                locationOccupancy.remove(locationKey)
+                return false
+            }
         val locationDistance = npcLocation.distanceSquared(location.bukkitLocation ?: return false)
         val tolerance = 25.0 // 5 block radius squared
 
@@ -1628,10 +1619,12 @@ class NPCScheduleManager private constructor(
         // Check if NPC is still performing the expected action
         val isStillPerformingAction =
             when (action.lowercase()) {
-                "sit" -> occupyingNPC.getOrAddTrait(SitTrait::class.java).isSitting
+                "sit" -> occupyingNPC.isSitting
                 "sleep" ->
-                    occupyingNPC.getOrAddTrait(EntityPoseTrait::class.java).pose ==
-                        EntityPoseTrait.EntityPose.SLEEPING
+                    occupyingNPC.unwrap(NPC::class.java)?.let { citizensNPC ->
+                        citizensNPC.getOrAddTrait(EntityPoseTrait::class.java).pose ==
+                            EntityPoseTrait.EntityPose.SLEEPING
+                    } ?: false
 
                 else -> true // For other actions, assume still valid
             }

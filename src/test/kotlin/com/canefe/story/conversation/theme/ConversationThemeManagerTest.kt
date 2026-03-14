@@ -2,7 +2,7 @@ package com.canefe.story.conversation.theme
 
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -19,7 +19,7 @@ class ConversationThemeManagerTest {
         registry.register(ViolenceTheme.NAME) { ViolenceTheme() }
         manager = ConversationThemeManager(registry)
 
-        val npc = makeNpc("Guard")
+        val npc = makeStoryNpc("Guard")
         conversation =
             Conversation(
                 id = 1,

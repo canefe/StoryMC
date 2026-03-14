@@ -1,13 +1,13 @@
 package com.canefe.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.ai.event.NavigationCompleteEvent
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.attribute.Attribute
@@ -105,8 +105,9 @@ class NPCManager private constructor(
         // Apply scales to all NPCs that have saved scale values
         scaledNPCs.forEach { (uuid, scale) ->
             // Find the NPC by UUID
-            val npc = CitizensAPI.getNPCRegistry().getByUniqueId(uuid)
-            if (npc != null && npc.isSpawned && npc.entity is LivingEntity) {
+            val citizensNpc = CitizensAPI.getNPCRegistry().getByUniqueId(uuid) ?: return@forEach
+            val npc: StoryNPC = CitizensStoryNPC(citizensNpc)
+            if (npc.isSpawned && npc.entity is LivingEntity) {
                 val livingEntity = npc.entity as LivingEntity
                 livingEntity.getAttribute(Attribute.GENERIC_SCALE)?.baseValue = scale
                 plugin.logger.info("Applied scale $scale to NPC ${npc.name}")
@@ -117,7 +118,7 @@ class NPCManager private constructor(
     /**
      * Check if an NPC is on cooldown
      */
-    fun isNPCOnCooldown(npc: NPC): Boolean {
+    fun isNPCOnCooldown(npc: StoryNPC): Boolean {
         val uuid = npc.uniqueId
         val lastInteraction = npcCooldowns[uuid] ?: return false
         val currentTime = System.currentTimeMillis()
@@ -130,14 +131,14 @@ class NPCManager private constructor(
     /**
      * Set cooldown for an NPC
      */
-    fun setNPCCooldown(npc: NPC) {
+    fun setNPCCooldown(npc: StoryNPC) {
         npcCooldowns[npc.uniqueId] = System.currentTimeMillis()
     }
 
     /**
      * Get remaining cooldown time in seconds
      */
-    fun getRemainingCooldown(npc: NPC): Int {
+    fun getRemainingCooldown(npc: StoryNPC): Int {
         val uuid = npc.uniqueId
         val lastInteraction = npcCooldowns[uuid] ?: return 0
         val currentTime = System.currentTimeMillis()
@@ -150,13 +151,13 @@ class NPCManager private constructor(
     /**
      * Check if NPC is disabled
      */
-    fun isNPCDisabled(npc: NPC): Boolean = disabledNPCs.contains(npc.id)
+    fun isNPCDisabled(npc: StoryNPC): Boolean = disabledNPCs.contains(npc.id)
 
     /**
      * Toggle NPC enabled/disabled status
      */
     fun toggleNPC(
-        npc: NPC,
+        npc: StoryNPC,
         executor: CommandSender,
     ) {
         if (disabledNPCs.contains(npc.id)) {
@@ -180,8 +181,8 @@ class NPCManager private constructor(
 
         player.sendInfo("Disabled NPCs:")
         disabledNPCs.forEach { id ->
-            val npc = CitizensAPI.getNPCRegistry().getById(id)
-            val name = npc?.name ?: "Unknown NPC"
+            val citizensNpc = CitizensAPI.getNPCRegistry().getById(id)
+            val name = citizensNpc?.name ?: "Unknown NPC"
             player.sendInfo(" - <gold>$name</gold> (ID: $id)")
         }
     }
@@ -190,7 +191,7 @@ class NPCManager private constructor(
      * Makes an NPC walk to a player and speak a message
      */
     fun eventGoToPlayerAndTalk(
-        npc: NPC,
+        npc: StoryNPC,
         player: Player,
         message: String,
         onCompleteAction: Runnable?,
@@ -198,8 +199,7 @@ class NPCManager private constructor(
     ) {
         if (!npc.isSpawned || isNPCDisabled(npc)) return
 
-        val navigator = npc.navigator
-        navigator.setTarget(player, false)
+        npc.navigateTo(player)
 
         var taskId = -1
         taskId =
@@ -210,14 +210,14 @@ class NPCManager private constructor(
                 }
 
                 if (isNearTarget(npc, player.location)) {
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     Bukkit.getScheduler().cancelTask(taskId)
 
                     // Have the NPC face the player
                     makeNPCFaceLocation(npc, player.location)
 
                     // create a list consisting of npc
-                    val npcs = ArrayList<NPC>()
+                    val npcs = ArrayList<StoryNPC>()
                     npcs.add(npc)
 
                     val conversation = plugin.conversationManager.startConversation(player, npcs)
@@ -241,15 +241,14 @@ class NPCManager private constructor(
      * Makes an NPC walk to another NPC and initiate conversation
      */
     fun walkToNPC(
-        initiator: NPC,
-        target: NPC,
+        initiator: StoryNPC,
+        target: StoryNPC,
         firstMessage: String,
         radiant: Boolean = false,
     ) {
         if (!initiator.isSpawned || !target.isSpawned || isNPCDisabled(initiator) || isNPCDisabled(target)) return
 
-        val navigator = initiator.navigator
-        navigator.setTarget(target.entity, false)
+        initiator.navigateTo(target.entity!!)
 
         var taskId = -1
         taskId =
@@ -259,18 +258,18 @@ class NPCManager private constructor(
                     return@scheduleSyncRepeatingTask
                 }
 
-                if (isNearTarget(initiator, target.entity.location)) {
+                if (isNearTarget(initiator, target.entity!!.location)) {
                     Bukkit.getScheduler().cancelTask(taskId)
-                    navigator.cancelNavigation()
+                    initiator.cancelNavigation()
 
                     // Have the initiator face the target
-                    makeNPCFaceLocation(initiator, target.entity.location)
+                    makeNPCFaceLocation(initiator, target.entity!!.location)
 
                     // Send the message
                     plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator, streaming = true)
                     plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator)
                     // Start a conversation between the NPCs
-                    val npcs = ArrayList<NPC>()
+                    val npcs = ArrayList<StoryNPC>()
                     npcs.add(initiator)
                     npcs.add(target)
 
@@ -338,7 +337,7 @@ class NPCManager private constructor(
      * Scales an NPC
      */
     fun scaleNPC(
-        npc: NPC,
+        npc: StoryNPC,
         scale: Double,
     ): Boolean {
         scaledNPCs[npc.uniqueId] = scale
@@ -359,28 +358,28 @@ class NPCManager private constructor(
      * Makes an NPC face toward a specific location
      */
     private fun makeNPCFaceLocation(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
     ) {
         if (!npc.isSpawned) return
 
-        val npcLoc = npc.entity.location
+        val npcLoc = npc.entity!!.location
         val direction = targetLocation.clone().subtract(npcLoc).toVector()
-        val npcLocation = npc.entity.location.clone()
+        val npcLocation = npc.entity!!.location.clone()
         npcLocation.direction = direction
-        npc.entity.teleport(npcLocation)
+        npc.entity!!.teleport(npcLocation)
     }
 
     /**
      * Checks if an NPC is close enough to a target location
      */
     private fun isNearTarget(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
     ): Boolean {
         if (!npc.isSpawned) return false
 
-        val npcLocation = npc.entity.location
+        val npcLocation = npc.entity!!.location
         val distance = npcLocation.distance(targetLocation)
         return distance < 3.0 // Consider "near" if within 3 blocks
     }
@@ -406,7 +405,7 @@ class NPCManager private constructor(
      * @return Navigation task ID that can be used to cancel the movement
      */
     fun walkToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
         distanceMargin: Double,
         speedModifier: Float,
@@ -419,7 +418,7 @@ class NPCManager private constructor(
             return -1
         }
 
-        val npcLocation = npc.entity.location
+        val npcLocation = npc.entity!!.location
         // check if it is in the same world
         if (npcLocation.world != targetLocation.world) {
             onFailed?.run()
@@ -544,7 +543,7 @@ class NPCManager private constructor(
      * Makes an NPC walk to an entity with progress monitoring
      */
     fun walkToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         target: Entity,
         distanceMargin: Double,
         speedModifier: Float,
@@ -565,7 +564,7 @@ class NPCManager private constructor(
      * Internal method that handles navigation through a sequence of waypoints
      */
     private fun walkToWaypoints(
-        npc: NPC,
+        npc: StoryNPC,
         waypoints: List<Location>,
         currentIndex: Int,
         distanceMargin: Double,
@@ -621,7 +620,7 @@ class NPCManager private constructor(
      * Direct walk method for a single segment of movement to a location
      */
     private fun directWalkToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
         distanceMargin: Double,
         speedModifier: Float,
@@ -641,19 +640,12 @@ class NPCManager private constructor(
             return -1
         }
 
-        // Set up navigation parameters
-        val navigator = npc.navigator
-        navigator.defaultParameters
-            .speedModifier(speedModifier)
-            .range(100f)
-            .distanceMargin(distanceMargin)
-
-        // Start navigation
-        navigator.cancelNavigation()
-        navigator.setTarget(targetLocation)
+        // Start navigation with parameters
+        npc.cancelNavigation()
+        npc.navigateTo(targetLocation, speedModifier, 100f, distanceMargin)
 
         // Check if navigation actually started
-        if (!navigator.isNavigating) {
+        if (!npc.isNavigating) {
             addNavigationEvent(npc.name, "failed", "Navigation failed to start")
             onFailed?.let {
                 Bukkit.getScheduler().runTask(plugin, it)
@@ -662,7 +654,7 @@ class NPCManager private constructor(
         }
 
         // Variables for tracking movement
-        var lastLocation = npc.entity.location
+        var lastLocation = npc.entity!!.location
         var stuckCounter = 0
         var retryAttempts = 0
         val maxRetries = 3
@@ -685,18 +677,18 @@ class NPCManager private constructor(
                 // Check if NPC is in a conversation
                 if (plugin.conversationManager.isInConversation(npc)) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, false, "NPC entered conversation")
                     return@scheduleSyncRepeatingTask
                 }
 
-                val currentLocation = npc.entity.location
+                val currentLocation = npc.entity!!.location
 
                 // Check if reached destination (use consistent distance margin)
                 val distanceToTarget = currentLocation.distance(targetLocation)
                 if (distanceToTarget <= distanceMargin) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, true, "Reached destination")
                     onArrival?.run()
                     return@scheduleSyncRepeatingTask
@@ -714,14 +706,14 @@ class NPCManager private constructor(
                         if (retryAttempts >= maxRetries) {
                             // Max retries reached, fail the navigation
                             Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                            navigator.cancelNavigation()
+                            npc.cancelNavigation()
                             completeNavigationTask(npc.name, false, "Max retries reached ($maxRetries)")
                             onFailed?.run()
                             return@scheduleSyncRepeatingTask
                         }
 
                         // Try to reestablish navigation with slightly adjusted target
-                        navigator.cancelNavigation()
+                        npc.cancelNavigation()
 
                         // Create a slightly offset target to avoid exact same path
                         val offsetTarget =
@@ -733,7 +725,7 @@ class NPCManager private constructor(
 
                         // Find safe ground for offset target
                         val safeTarget = findSafeLocation(offsetTarget) ?: targetLocation
-                        navigator.setTarget(safeTarget)
+                        npc.navigateTo(safeTarget, speedModifier, 100f, distanceMargin)
 
                         stuckCounter = 0 // Reset counter after attempting to fix
                         addNavigationEvent(npc.name, "retry", "Attempt $retryAttempts/$maxRetries")
@@ -744,9 +736,9 @@ class NPCManager private constructor(
                 }
 
                 // Check if navigation stopped and reestablish if needed
-                if (!navigator.isNavigating && stuckCounter < 3) {
-                    navigator.cancelNavigation()
-                    navigator.setTarget(targetLocation)
+                if (!npc.isNavigating && stuckCounter < 3) {
+                    npc.cancelNavigation()
+                    npc.navigateTo(targetLocation, speedModifier, 100f, distanceMargin)
                     addNavigationEvent(npc.name, "restarted", "Navigation stopped, restarting")
                 }
 
@@ -765,7 +757,7 @@ class NPCManager private constructor(
                     Bukkit.getScheduler().isCurrentlyRunning(taskIdHolder[0])
                 ) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, false, "Timeout after ${timeout}s")
                     onFailed?.run()
                 }
@@ -779,7 +771,7 @@ class NPCManager private constructor(
      * Direct walk method for a single segment of movement to an entity
      */
     private fun directWalkToLocation(
-        npc: NPC,
+        npc: StoryNPC,
         target: Entity,
         distanceMargin: Double,
         speedModifier: Float,
@@ -798,19 +790,12 @@ class NPCManager private constructor(
             return -1
         }
 
-        // Set up navigation parameters
-        val navigator = npc.navigator
-        navigator.defaultParameters
-            .speedModifier(speedModifier)
-            .range(100f)
-            .distanceMargin(distanceMargin)
-
-        // Start navigation
-        navigator.cancelNavigation()
-        navigator.setTarget(target, false)
+        // Start navigation with parameters
+        npc.cancelNavigation()
+        npc.navigateTo(target, speedModifier, 100f, distanceMargin)
 
         // Check if navigation actually started
-        if (!navigator.isNavigating) {
+        if (!npc.isNavigating) {
             addNavigationEvent(npc.name, "failed", "Navigation to entity failed to start")
             onFailed?.let {
                 Bukkit.getScheduler().runTask(plugin, it)
@@ -819,7 +804,7 @@ class NPCManager private constructor(
         }
 
         // Variables for tracking movement
-        var lastLocation = npc.entity.location
+        var lastLocation = npc.entity!!.location
         var stuckCounter = 0
         var retryAttempts = 0
         val maxRetries = 3
@@ -842,7 +827,7 @@ class NPCManager private constructor(
                 // Check if NPC is in a conversation
                 if (plugin.conversationManager.isInConversation(npc)) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, false, "NPC entered conversation")
                     return@scheduleSyncRepeatingTask
                 }
@@ -850,13 +835,13 @@ class NPCManager private constructor(
                 // Check if target is still valid
                 if (!target.isValid) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, false, "Target entity became invalid")
                     onFailed?.run()
                     return@scheduleSyncRepeatingTask
                 }
 
-                val currentLocation = npc.entity.location
+                val currentLocation = npc.entity!!.location
 
                 // Update task target location to entity's current position
                 task.targetLocation = target.location.clone()
@@ -865,7 +850,7 @@ class NPCManager private constructor(
                 val distanceToTarget = currentLocation.distance(target.location)
                 if (distanceToTarget <= distanceMargin) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, true, "Reached entity target")
                     onArrival?.run()
                     return@scheduleSyncRepeatingTask
@@ -883,15 +868,15 @@ class NPCManager private constructor(
                         if (retryAttempts >= maxRetries) {
                             // Max retries reached, fail the navigation
                             Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                            navigator.cancelNavigation()
+                            npc.cancelNavigation()
                             completeNavigationTask(npc.name, false, "Max retries reached for entity target")
                             onFailed?.run()
                             return@scheduleSyncRepeatingTask
                         }
 
                         // Try to reestablish navigation
-                        navigator.cancelNavigation()
-                        navigator.setTarget(target, false)
+                        npc.cancelNavigation()
+                        npc.navigateTo(target, speedModifier, 100f, distanceMargin)
 
                         stuckCounter = 0 // Reset counter after attempting to fix
                         addNavigationEvent(npc.name, "retry", "Entity target attempt $retryAttempts/$maxRetries")
@@ -902,9 +887,9 @@ class NPCManager private constructor(
                 }
 
                 // Check if navigation stopped and reestablish if needed
-                if (!navigator.isNavigating && stuckCounter < 3) {
-                    navigator.cancelNavigation()
-                    navigator.setTarget(target, false)
+                if (!npc.isNavigating && stuckCounter < 3) {
+                    npc.cancelNavigation()
+                    npc.navigateTo(target, speedModifier, 100f, distanceMargin)
                     addNavigationEvent(npc.name, "restarted", "Entity navigation stopped, restarting")
                 }
 
@@ -923,7 +908,7 @@ class NPCManager private constructor(
                     Bukkit.getScheduler().isCurrentlyRunning(taskIdHolder[0])
                 ) {
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                    navigator.cancelNavigation()
+                    npc.cancelNavigation()
                     completeNavigationTask(npc.name, false, "Entity navigation timeout after ${timeout}s")
                     onFailed?.run()
                 }
@@ -937,27 +922,22 @@ class NPCManager private constructor(
      * Makes an NPC walk away from a conversation
      */
     fun makeNPCWalkAway(
-        npc: NPC,
+        npc: StoryNPC,
         convo: Conversation,
     ) {
         if (!npc.isSpawned) return
 
-        val npcLocation = npc.entity.location
+        val npcLocation = npc.entity!!.location
         val targetLocation =
             findWalkableLocation(npc, convo) ?: run {
                 // If we can't find a walkable location, just cancel any navigation
-                npc.navigator.cancelNavigation()
+                npc.cancelNavigation()
                 return
             }
 
         // Set up navigation
-        val navigator = npc.navigator
-        navigator.localParameters
-            .speedModifier(1.0f)
-            .distanceMargin(1.5)
-
-        navigator.cancelNavigation()
-        navigator.setTarget(targetLocation)
+        npc.cancelNavigation()
+        npc.navigateTo(targetLocation, 1.0f, 100f, 1.5)
 
         // Create a task ID holder
         val taskIdHolder = intArrayOf(-1)
@@ -965,16 +945,16 @@ class NPCManager private constructor(
         // Create a task that periodically updates the navigation target and checks completion
         taskIdHolder[0] =
             Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, {
-                if (!npc.isSpawned || !navigator.isNavigating) {
+                if (!npc.isSpawned || !npc.isNavigating) {
                     // Cancel task if NPC is no longer valid or navigation has stopped
                     Bukkit.getScheduler().cancelTask(taskIdHolder[0])
                     return@scheduleSyncRepeatingTask
                 }
 
                 // If NPC is stuck, try to find a new target
-                if (!navigator.isNavigating) {
-                    navigator.cancelNavigation()
-                    navigator.setTarget(targetLocation)
+                if (!npc.isNavigating) {
+                    npc.cancelNavigation()
+                    npc.navigateTo(targetLocation, 1.0f, 100f, 1.5)
                 }
             }, 20L, 20L) // Check every second (20 ticks)
 
@@ -982,8 +962,8 @@ class NPCManager private constructor(
         Bukkit.getScheduler().scheduleSyncDelayedTask(plugin, {
             if (taskIdHolder[0] != -1) {
                 Bukkit.getScheduler().cancelTask(taskIdHolder[0])
-                if (npc.isSpawned && navigator.isNavigating) {
-                    navigator.cancelNavigation()
+                if (npc.isSpawned && npc.isNavigating) {
+                    npc.cancelNavigation()
                 }
             }
         }, 200L) // 10 seconds (200 ticks)
@@ -993,7 +973,7 @@ class NPCManager private constructor(
      * Makes an NPC speak without walking
      */
     fun makeNPCTalk(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
     ) {
         if (!npc.isSpawned || isNPCDisabled(npc)) return
@@ -1009,13 +989,12 @@ class NPCManager private constructor(
      * Makes an NPC follow a player
      */
     fun followPlayer(
-        npc: NPC,
+        npc: StoryNPC,
         player: Player,
     ) {
         if (!npc.isSpawned || !player.isOnline || isNPCDisabled(npc)) return
 
-        val navigator = npc.navigator
-        navigator.setTarget(player, false)
+        npc.navigateTo(player)
 
         var taskId = -1
         taskId =
@@ -1025,9 +1004,10 @@ class NPCManager private constructor(
                     return@scheduleSyncRepeatingTask
                 }
 
-                val currentTarget = navigator.targetAsLocation
-                if (currentTarget == null || currentTarget.distanceSquared(player.location) > 5.0) {
-                    navigator.setTarget(player, false)
+                // Re-target the player if they've moved significantly
+                val npcLoc = npc.entity?.location
+                if (npcLoc == null || npcLoc.distanceSquared(player.location) > 5.0) {
+                    npc.navigateTo(player)
                 }
             }, 20L, 20L)
     }
@@ -1035,9 +1015,9 @@ class NPCManager private constructor(
     /**
      * Stops an NPC's current navigation
      */
-    fun stopNavigation(npc: NPC) {
+    fun stopNavigation(npc: StoryNPC) {
         if (npc.isSpawned) {
-            npc.navigator.cancelNavigation()
+            npc.cancelNavigation()
         }
     }
 
@@ -1054,14 +1034,16 @@ class NPCManager private constructor(
         }
 
         // Create the NPC
-        val npc = CitizensAPI.getNPCRegistry().createNPC(EntityType.PLAYER, npcName)
+        val citizensNpc = CitizensAPI.getNPCRegistry().createNPC(EntityType.PLAYER, npcName)
 
         // Set the NPC location
-        npc.spawn(location)
+        citizensNpc.spawn(location)
 
         // Add traits to the NPC (e.g., text, skin)
-        npc.name = npcName
-        npc.isProtected = true // Prevent NPC from taking damage
+        citizensNpc.name = npcName
+        citizensNpc.isProtected = true // Prevent NPC from taking damage
+
+        val npc: StoryNPC = CitizensStoryNPC(citizensNpc)
 
         // Add a delay before calling eventGoToPlayerAndSay
         Bukkit.getScheduler().runTaskLater(
@@ -1139,12 +1121,12 @@ class NPCManager private constructor(
      * Find a walkable location for an NPC to move to away from a conversation
      */
     private fun findWalkableLocation(
-        npc: NPC,
+        npc: StoryNPC,
         convo: Conversation,
     ): Location? {
         if (!npc.isSpawned) return null
 
-        val npcLocation = npc.entity.location
+        val npcLocation = npc.entity!!.location
         val world = npcLocation.world
 
         // Try 5 random directions
@@ -1206,7 +1188,7 @@ class NPCManager private constructor(
             npcUtils.getNPCByNameAsync(task.npcName).thenAccept { npc ->
                 val distance =
                     if (npc?.isSpawned == true) {
-                        val currentDistance = npc.entity.location.distance(task.targetLocation)
+                        val currentDistance = npc.entity!!.location.distance(task.targetLocation)
                         String.format("%.1f", currentDistance)
                     } else {
                         "N/A"
@@ -1259,7 +1241,7 @@ class NPCManager private constructor(
                     .getInstance(plugin)
             npcUtils.getNPCByNameAsync(npcName).thenAccept { npc ->
                 if (npc?.isSpawned == true) {
-                    npc.navigator.cancelNavigation()
+                    npc.cancelNavigation()
                 }
             }
 
@@ -1291,7 +1273,7 @@ class NPCManager private constructor(
             // Cancel the NPC navigation using NPCUtils
             npcUtils.getNPCByNameAsync(task.npcName).thenAccept { npc ->
                 if (npc?.isSpawned == true) {
-                    npc.navigator.cancelNavigation()
+                    npc.cancelNavigation()
                 }
             }
 
@@ -1323,7 +1305,7 @@ class NPCManager private constructor(
      * Register a navigation task for tracking
      */
     private fun registerNavigationTask(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
         targetType: String,
         distanceMargin: Double,
@@ -1343,7 +1325,7 @@ class NPCManager private constructor(
                 distanceMargin = distanceMargin,
                 timeout = timeout,
                 taskId = taskId,
-                lastPosition = npc.entity.location.clone(),
+                lastPosition = npc.entity!!.location.clone(),
             )
 
         activeNavigationTasks[npc.name.lowercase()] = task
@@ -1403,12 +1385,12 @@ class NPCManager private constructor(
      * Improved pathfinding validation
      */
     private fun validatePath(
-        npc: NPC,
+        npc: StoryNPC,
         targetLocation: Location,
     ): Boolean {
         if (!npc.isSpawned) return false
 
-        val startLoc = npc.entity.location
+        val startLoc = npc.entity!!.location
         val distance = startLoc.distance(targetLocation)
 
         // Check if target is too far

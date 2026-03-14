@@ -1,13 +1,12 @@
 package com.canefe.story.command.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import de.myzelyam.api.vanish.VanishAPI
 import me.libraryaddict.disguise.DisguiseAPI
 import me.libraryaddict.disguise.disguisetypes.PlayerDisguise
-import net.citizensnpcs.api.npc.NPC
-import net.citizensnpcs.trait.SkinTrait
 import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerTeleportEvent
 
@@ -16,11 +15,10 @@ class DisguiseUtil(
 ) {
     fun disguisePlayer(
         player: Player,
-        npc: NPC,
+        npc: StoryNPC,
     ) {
-        val skin = npc.getOrAddTrait(SkinTrait::class.java)
-        val texture = skin.texture
-        val signature = skin.signature
+        val texture = npc.skinTexture
+        val signature = npc.skinSignature
 
         // Create JSON with the actual texture and signature from the NPC
         val userProfile =
@@ -39,7 +37,7 @@ class DisguiseUtil(
         if (!npc.isSpawned) {
             npc.spawn(player.location)
         }
-        player.teleport(npc.entity.location, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        player.teleport(npc.location!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
         npc.despawn()
         // unvanish the player
         VanishAPI
@@ -58,7 +56,7 @@ class DisguiseUtil(
             eu.decentsoftware.holograms.api.DHAPI
                 .removeHologram(player.uniqueId.toString())
             VanishAPI.hidePlayer(player)
-            disguisedNPC.teleport(player.location, PlayerTeleportEvent.TeleportCause.PLUGIN)
+            disguisedNPC.teleport(player.location)
             disguisedNPC.spawn(player.location)
             player.sendInfo("You are no longer disguised as ${disguisedNPC.name}.")
         } else {

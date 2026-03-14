@@ -1,6 +1,7 @@
 package com.canefe.story.quest
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
 import com.canefe.story.storage.QuestStorage
@@ -9,7 +10,6 @@ import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
@@ -58,7 +58,7 @@ class QuestManager(
     // Get valid locations
     fun getValidLocations(): List<String> = plugin.locationManager.getAllLocations().map { it.name }
 
-    fun getValidTalkTargets(npc: NPC): List<String> {
+    fun getValidTalkTargets(npc: StoryNPC): List<String> {
         // First get the location of npc (Get his npcData)
         val npcData = plugin.npcDataManager.getNPCData(npc.name)
         val location = npcData?.storyLocation
@@ -209,7 +209,7 @@ class QuestManager(
      */
     fun registerQuest(
         quest: Quest,
-        npc: NPC? = null,
+        npc: StoryNPC? = null,
     ) {
         val turnInObjective =
             npc?.let {

@@ -1,6 +1,8 @@
 // kotlin
 package com.canefe.story.testutils
 
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import io.mockk.every
 import io.mockk.mockk
 import net.citizensnpcs.api.npc.NPC
@@ -8,6 +10,8 @@ import org.bukkit.Location
 import org.bukkit.World
 import org.bukkit.entity.Entity
 import org.mockbukkit.mockbukkit.ServerMock
+
+fun makeStoryNpc(name: String = "Guard"): StoryNPC = CitizensStoryNPC(makeNpc(name))
 
 fun makeNpc(name: String = "Guard"): NPC {
     val npc = mockk<NPC>()

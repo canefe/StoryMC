@@ -3,7 +3,7 @@ package com.canefe.story
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationManager
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import dev.jorel.commandapi.CommandAPI
 import io.mockk.*
 import net.citizensnpcs.api.CitizensAPI
@@ -68,7 +68,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `messagesSinceLastSummary increments on player messages`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -87,7 +87,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `messagesSinceLastSummary increments on NPC messages`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -104,7 +104,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `messagesSinceLastSummary does not increment on system messages`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -118,7 +118,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `messagesSinceLastSummary does not count ellipsis user messages`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -138,7 +138,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `replaceHistoryWithSummary decrements counter and removes summarized messages`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -175,7 +175,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `replaceHistoryWithSummary preserves messages added during async summarization`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -217,7 +217,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `replaceHistoryWithSummary is a no-op when count exceeds history size`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     _players = mutableListOf(player.uniqueId),
@@ -241,7 +241,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `summarization is not triggered below threshold`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Set threshold to 5 (default)
             plugin.configService.summarizationThreshold = 5
@@ -263,7 +263,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `summarization is triggered at threshold`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             plugin.configService.summarizationThreshold = 5
 
@@ -289,7 +289,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `summarization replaces old messages and keeps recent ones`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             plugin.configService.summarizationThreshold = 5
 
@@ -327,7 +327,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `configurable threshold is respected`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Set a higher threshold
             plugin.configService.summarizationThreshold = 10
@@ -359,7 +359,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `summarization handles null AI response gracefully`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             plugin.configService.summarizationThreshold = 5
 
@@ -385,7 +385,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `summarization handles AI exception gracefully`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             plugin.configService.summarizationThreshold = 5
 
@@ -414,7 +414,7 @@ class MessageHistorySummarizationTest {
         @Test
         fun `counter decrements after successful summarization allowing re-trigger`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             plugin.configService.summarizationThreshold = 5
 

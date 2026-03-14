@@ -1,12 +1,11 @@
 package com.canefe.story.npc.name
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCData
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
-import net.citizensnpcs.trait.SkinTrait
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import java.util.*
@@ -24,11 +23,11 @@ class NPCNameResolver(
      * Resolves an NPC's canonical name from their display name or entity.
      * This is the primary integration point for the name aliasing system.
      */
-    fun resolveCanonicalName(npc: NPC): String =
+    fun resolveCanonicalName(npc: StoryNPC): String =
         resolveCanonicalNameInternal(
             npc.name,
             npc.uniqueId.toString(),
-            plugin.locationManager.getLocationByPosition2D(npc.entity.location, 150.0)?.name,
+            plugin.locationManager.getLocationByPosition2D(npc.entity!!.location, 150.0)?.name,
         )
 
     /**
@@ -125,9 +124,9 @@ class NPCNameResolver(
      * This is called when a generic NPC gets aliased and needs to be replaced with a properly named Citizens NPC.
      */
     fun createAndReplaceNPCInConversations(
-        originalNPC: NPC,
+        originalNPC: StoryNPC,
         alias: NPCNameManager.NPCAlias,
-    ): NPC? {
+    ): StoryNPC? {
         try {
             // Create a new Citizens NPC with the canonical name
             val newNPC = createCitizensNPCWithAlias(originalNPC, alias)
@@ -159,9 +158,9 @@ class NPCNameResolver(
      * Creates a new Citizens NPC with the canonical name at the same location as the original
      */
     private fun createCitizensNPCWithAlias(
-        originalNPC: NPC,
+        originalNPC: StoryNPC,
         alias: NPCNameManager.NPCAlias,
-    ): NPC? {
+    ): StoryNPC? {
         try {
             if (!originalNPC.isSpawned) {
                 plugin.logger.warning("Cannot create alias NPC - original NPC '${originalNPC.name}' is not spawned")
@@ -176,28 +175,31 @@ class NPCNameResolver(
             val npcRegistry =
                 net.citizensnpcs.api.CitizensAPI
                     .getNPCRegistry()
-            val newNPC = npcRegistry.createNPC(entityType, alias.displayHandle)
+            val citizensNewNPC = npcRegistry.createNPC(entityType, alias.displayHandle)
 
             // Despawn the original NPC
             originalNPC.despawn()
             val clone = originalNPC.clone() // do this so id is different
             clone.despawn()
 
-            val skin = originalNPC.getOrAddTrait(SkinTrait::class.java)
-            val texture = skin.texture
-            val signature = skin.signature
-            val skinTrait = newNPC.getOrAddTrait(SkinTrait::class.java)
-            Bukkit.getScheduler().runTask(
-                CitizensAPI.getPlugin(),
-                Runnable {
-                    try {
-                        skinTrait.setSkinPersistent(skin.skinName, signature, texture)
-                    } catch (e: IllegalArgumentException) {
-                    }
-                },
-            )
+            val texture = originalNPC.skinTexture
+            val signature = originalNPC.skinSignature
+            val newNPC =
+                com.canefe.story.npc
+                    .CitizensStoryNPC(citizensNewNPC)
+            if (texture != null && signature != null) {
+                Bukkit.getScheduler().runTask(
+                    CitizensAPI.getPlugin(),
+                    Runnable {
+                        try {
+                            newNPC.setSkin(alias.displayHandle, signature, texture)
+                        } catch (e: IllegalArgumentException) {
+                        }
+                    },
+                )
+            }
 
-            // execute conosle command
+            // execute console command
             Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "npc remove ${originalNPC.id}")
 
             // Spawn the new NPC at the same location
@@ -222,8 +224,8 @@ class NPCNameResolver(
      * Copies basic properties and traits from the original NPC to the new aliased NPC
      */
     private fun copyNPCProperties(
-        originalNPC: NPC,
-        newNPC: NPC,
+        originalNPC: StoryNPC,
+        newNPC: StoryNPC,
     ) {
         try {
             val originalEntity = originalNPC.entity
@@ -262,8 +264,8 @@ class NPCNameResolver(
      */
     private fun replaceNPCInConversation(
         conversation: Conversation,
-        oldNPC: NPC,
-        newNPC: NPC,
+        oldNPC: StoryNPC,
+        newNPC: StoryNPC,
     ) {
         // Remove the old NPC from the conversation
         conversation.removeNPC(oldNPC)
