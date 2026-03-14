@@ -2,6 +2,10 @@ package com.canefe.story.npc.service
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.CharacterSkills
+import com.canefe.story.api.character.PlayerCharacter
+import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.util.EssentialsUtils
@@ -158,6 +162,23 @@ class NPCMessageService(
         streaming: Boolean = false,
         shouldBroadcast: Boolean = true,
     ) {
+        val npcData = plugin.npcDataManager.getNPCData(npc.name)
+        if (npcData != null) {
+            val speaker =
+                AICharacter(
+                    npc = npc,
+                    name = npcData.name,
+                    role = npcData.role,
+                    appearance = npcData.appearance,
+                    context = npcData.context,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(npc.uniqueId, false)),
+                )
+            val nearby = buildNearbyFromNPC(npc, speaker)
+            val event = CharacterSpeakEvent(speaker, nearby, message)
+            Bukkit.getPluginManager().callEvent(event)
+            if (event.isCancelled) return
+        }
+
         // First check if we already have the gender cached
         val cachedGender = genderCache[npc.name]
 
@@ -320,6 +341,16 @@ class NPCMessageService(
         player: Player,
         color: String? = null,
     ) {
+        val speaker =
+            PlayerCharacter(
+                player = player,
+                skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(player.uniqueId, true), player),
+            )
+        val nearby = buildNearbyFromPlayer(player, speaker)
+        val event = CharacterSpeakEvent(speaker, nearby, message)
+        Bukkit.getPluginManager().callEvent(event)
+        if (event.isCancelled) return
+
         val playerName = EssentialsUtils.getNickname(player.name)
 
         // Get player context for avatar support (using NPC data system for players)
@@ -666,6 +697,82 @@ class NPCMessageService(
         } else {
             ""
         }
+    }
+
+    private fun buildNearbyFromNPC(
+        npc: StoryNPC,
+        exclude: AICharacter,
+    ): Set<com.canefe.story.api.character.Character> {
+        val location = npc.entity?.location ?: return emptySet()
+        val radius = plugin.config.radiantRadius
+        val result = mutableSetOf<com.canefe.story.api.character.Character>()
+
+        plugin.npcUtils
+            .getNearbyNPCs(npc, radius)
+            .filter { it.uniqueId != npc.uniqueId }
+            .forEach { nearby ->
+                val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+                result.add(
+                    AICharacter(
+                        npc = nearby,
+                        name = data.name,
+                        role = data.role,
+                        appearance = data.appearance,
+                        context = data.context,
+                        skills =
+                            CharacterSkills(
+                                plugin.skillManager.createProviderForCharacter(nearby.uniqueId, false),
+                            ),
+                    ),
+                )
+            }
+
+        plugin.npcUtils.getNearbyPlayers(npc, radius).forEach { p ->
+            result.add(
+                PlayerCharacter(
+                    player = p,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
+                ),
+            )
+        }
+
+        return result
+    }
+
+    private fun buildNearbyFromPlayer(
+        player: Player,
+        exclude: PlayerCharacter,
+    ): Set<com.canefe.story.api.character.Character> {
+        val radius = plugin.config.radiantRadius
+        val result = mutableSetOf<com.canefe.story.api.character.Character>()
+
+        plugin.npcUtils.getNearbyNPCs(player, radius).forEach { nearby ->
+            val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+            result.add(
+                AICharacter(
+                    npc = nearby,
+                    name = data.name,
+                    role = data.role,
+                    appearance = data.appearance,
+                    context = data.context,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(nearby.uniqueId, false)),
+                ),
+            )
+        }
+
+        plugin.npcUtils
+            .getNearbyPlayers(player, radius)
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { p ->
+                result.add(
+                    PlayerCharacter(
+                        player = p,
+                        skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
+                    ),
+                )
+            }
+
+        return result
     }
 
     companion object {
