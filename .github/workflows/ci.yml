@@ -155,7 +155,7 @@ jobs:
           files: '*.jar'
           overwrite_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   dev-release:
     needs: build
@@ -254,7 +254,7 @@ jobs:
               gh api repos/${{ github.repository }}/releases/$RELEASE_ID -X DELETE
             fi
         env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       - name: Read version from built plugin.yml
         id: get_version
@@ -274,4 +274,4 @@ jobs:
           overwrite_files: true
           body_path: changelog.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
