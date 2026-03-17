@@ -32,11 +32,13 @@ class PlayerEventListener(
     @EventHandler
     fun onPlayerDropItem(event: PlayerDropItemEvent) {
         val player = event.player
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
 
+        plugin.playerAgentManager.observe(
+            player,
+            "Dropped ${event.itemDrop.itemStack.type.name} x${event.itemDrop.itemStack.amount}",
+        )
+
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
             "${EssentialsUtils.getNickname(
                 player.name,
@@ -54,11 +56,6 @@ class PlayerEventListener(
 
         if (player !is Player) return
 
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
-
         val name =
             if (damager is LivingEntity) {
                 damager.customName() ?: damager.type.name
@@ -66,10 +63,14 @@ class PlayerEventListener(
                 damager.type.name
             }
 
+        plugin.playerAgentManager.observe(
+            player,
+            "Took ${event.finalDamage.toInt()} damage from $name",
+        )
+
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} was damaged by $name amount ${event.finalDamage}",
+            "${EssentialsUtils.getNickname(player.name)} was damaged by $name amount ${event.finalDamage}",
         )
     }
 
@@ -79,11 +80,13 @@ class PlayerEventListener(
     @EventHandler
     fun onPlayerPickupItem(event: PlayerAttemptPickupItemEvent) {
         val player = event.player
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
 
+        plugin.playerAgentManager.observe(
+            player,
+            "Picked up ${event.item.itemStack.type.name} x${event.item.itemStack.amount}",
+        )
+
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
             "${EssentialsUtils.getNickname(
                 player.name,
@@ -99,6 +102,10 @@ class PlayerEventListener(
     fun onPlayerJoin(event: PlayerJoinEvent) {
         val player = event.player
         val playerUUID = player.uniqueId
+
+        // Start a background agent for this player
+        plugin.playerAgentManager.startAgent(player)
+
         // Show current quest to the player
         val currentQuest = plugin.questManager.getCurrentQuest(player) ?: return
         // wait a few seconds before showing the quest, waiting for the player to load
@@ -121,6 +128,9 @@ class PlayerEventListener(
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player
         val playerUUID = player.uniqueId
+
+        // Stop the background agent for this player
+        plugin.playerAgentManager.stopAgent(player)
 
         // Remove player from NPC tracking
         plugin.playerManager.playerCurrentNPC.remove(playerUUID)
@@ -150,6 +160,11 @@ class PlayerEventListener(
         // Fire the event
         val changeEvent = PlayerLocationChangeEvent(player, prevLoc, toLoc)
         Bukkit.getPluginManager().callEvent(changeEvent)
+
+        // Observe location change for player agent
+        if (toLoc != null) {
+            plugin.playerAgentManager.observe(player, "Moved to location: ${toLoc.name}")
+        }
 
         // Optional debug
         plugin.logger.info("[LocationChange: ${player.name}]  ${prevLoc?.name} -> ${toLoc?.name}")

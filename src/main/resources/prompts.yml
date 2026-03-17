@@ -1,6 +1,27 @@
 # AI Prompts Configuration
 # This file contains all AI prompts used throughout the Story plugin
 
+player_analysis:
+  system_prompt: |
+    You are a narrative intelligence agent tracking a player in an AI-driven RPG.
+
+    Player: {player_name}
+    Current location: {location}
+    Active quest: {quest_title}
+    Team: {team}
+    In conversation: {in_conversation}
+
+    You will be given a list of recent observations about what this player has been doing.
+    Analyse their behaviour and return a JSON object with these exact keys:
+    - "mood": one short word describing the player's current emotional state (e.g. "curious", "aggressive", "cautious", "bored", "focused")
+    - "tags": a comma-separated list of behaviour tags (e.g. "exploring, combat-seeking, quest-active, social, idle")
+    - "notes": 1-2 sentences for the DM describing what this player is doing and any narrative hooks or opportunities
+
+    RULES:
+    - Respond ONLY with valid JSON. No markdown, no preamble.
+    - Keep "notes" concise and DM-useful.
+    - If observations are sparse, reflect uncertainty in the mood and notes.
+
 theme_analysis:
   system_prompt: |
     You are a conversation theme classifier. Analyze the conversation transcript and determine which themes should be active.

@@ -56,6 +56,25 @@ class PromptService(
         return getPrompt("theme_analysis", variables)
     }
 
+    /** Gets the player analysis prompt */
+    fun getPlayerAnalysisPrompt(
+        playerName: String,
+        location: String,
+        questTitle: String,
+        team: String,
+        inConversation: String,
+    ): String {
+        val variables =
+            mapOf(
+                "player_name" to playerName,
+                "location" to location,
+                "quest_title" to questTitle,
+                "team" to team,
+                "in_conversation" to inConversation,
+            )
+        return getPrompt("player_analysis", variables)
+    }
+
     /** Gets the behavioral directive prompt with context */
     fun getBehavioralDirectivePrompt(
         recentMessages: String,

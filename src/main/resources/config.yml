@@ -58,6 +58,15 @@ npc:
   randomPathingCooldown: 100
   maxProcessPerTick: 3
 
+# Player Agent Settings
+player-agent:
+  # Whether to spawn a background AI agent for each online player
+  enabled: false
+  # How often (in seconds) each agent runs an LLM analysis cycle
+  intervalSeconds: 60
+  # Optional: custom LLM endpoint URL. Leave blank to use the StoryAI (openrouter) endpoint
+  customEndpoint: ""
+
 # Faction Settings
 faction:
   dailyEventsEnabled: false

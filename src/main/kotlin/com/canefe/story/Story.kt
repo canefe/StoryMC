@@ -32,6 +32,7 @@ import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.service.TypingSessionManager
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.player.PlayerManager
+import com.canefe.story.player.agent.PlayerAgentManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
@@ -160,6 +161,9 @@ open class Story :
 
     // lateinit var aiDungeonMaster: AIDungeonMaster
 
+    lateinit var playerAgentManager: PlayerAgentManager
+        private set
+
     lateinit var api: StoryAPI
         private set
 
@@ -273,6 +277,7 @@ open class Story :
         npcManager = NPCManager.getInstance(this)
         scheduleManager = NPCScheduleManager.getInstance(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
+        playerAgentManager = PlayerAgentManager(this)
         npcMessageService = NPCMessageService.getInstance(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
@@ -428,6 +433,7 @@ open class Story :
             commandManager.onDisable()
             if (::eventManager.isInitialized) eventManager.unregisterAll()
             if (::sessionManager.isInitialized) sessionManager.shutdown()
+            if (::playerAgentManager.isInitialized) playerAgentManager.shutdown()
             if (::aiResponseService.isInitialized) aiResponseService.shutdown()
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
@@ -475,6 +481,9 @@ open class Story :
             scheduleManager.shutdown()
 
             sessionManager.shutdown()
+
+            // Shutdown player agent manager
+            if (::playerAgentManager.isInitialized) playerAgentManager.shutdown()
 
             // Shutdown AI response service (virtual thread executor)
             aiResponseService.shutdown()
