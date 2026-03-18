@@ -68,7 +68,8 @@ jobs:
             JAR_URL="${{ steps.release.outputs.jar_url }}"
             echo "Deploying devbuild..."
             rm -f "$PLUGINS_DIR"/Story-*.jar
-            curl -sL "$JAR_URL" -o "$PLUGINS_DIR/Story-${TAG}.jar"
+            FILENAME=$(basename "$JAR_URL")
+            curl -sL "$JAR_URL" -o "$PLUGINS_DIR/$FILENAME"
             echo "$TAG" > /opt/scripts/.story-plugin-version
             echo "Done — devbuild deployed"
         env:
