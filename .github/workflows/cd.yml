@@ -49,11 +49,12 @@ jobs:
           echo "jar_url=$JAR_URL" >> $GITHUB_OUTPUT
 
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-client-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
           tags: tag:ci
+          ping: ${{ secrets.SERVER_HOST }}
 
       - name: Deploy devbuild to Minecraft Server
         uses: appleboy/ssh-action@v1.0.3
@@ -95,11 +96,12 @@ jobs:
           echo "jar_url=$JAR_URL" >> $GITHUB_OUTPUT
 
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v4tskey-client-kiTdiPxLVu11CNTRL-AEmCeWfSC1VBg8K35TR31VudX7CJdKxy
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-client-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
           tags: tag:ci
+          ping: ${{ secrets.SERVER_HOST }}
 
       - name: Deploy stable to Minecraft Server
         uses: appleboy/ssh-action@v1.0.3
