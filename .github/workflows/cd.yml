@@ -1,15 +1,53 @@
 name: CD
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["CI"]   # must match the exact `name:` in your CI file
+    types: [completed]
 
 jobs:
-  deploy-devbuild:
+  # Gate job — figures out what we're deploying (or nothing, e.g. on a PR run)
+  determine:
     runs-on: ubuntu-latest
-    if: github.event.release.prerelease == true
-
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      deploy_type: ${{ steps.check.outputs.deploy_type }}
+      tag: ${{ steps.check.outputs.tag }}
     steps:
+      - id: check
+        run: |
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          EVENT="${{ github.event.workflow_run.event }}"
+
+          if [ "$BRANCH" = "dev" ] && [ "$EVENT" = "push" ]; then
+            echo "deploy_type=devbuild" >> $GITHUB_OUTPUT
+            echo "tag=devbuild" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" =~ ^v[0-9] ]] && [ "$EVENT" = "push" ]; then
+            echo "deploy_type=stable" >> $GITHUB_OUTPUT
+            echo "tag=$BRANCH" >> $GITHUB_OUTPUT
+          else
+            echo "deploy_type=none" >> $GITHUB_OUTPUT
+            echo "tag=" >> $GITHUB_OUTPUT
+          fi
+
+  deploy-devbuild:
+    needs: determine
+    runs-on: ubuntu-latest
+    if: needs.determine.outputs.deploy_type == 'devbuild'
+    steps:
+      - name: Get devbuild JAR URL from GitHub Release
+        id: release
+        run: |
+          JAR_URL=$(curl -sf \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/devbuild" \
+            | jq -r '.assets[0].browser_download_url')
+          if [ -z "$JAR_URL" ] || [ "$JAR_URL" = "null" ]; then
+            echo "ERROR: Could not fetch JAR URL from devbuild release"
+            exit 1
+          fi
+          echo "jar_url=$JAR_URL" >> $GITHUB_OUTPUT
+
       - name: Deploy devbuild to Minecraft Server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -18,25 +56,38 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             PLUGINS_DIR="/srv/minecraft/plugins"
-            TAG="${{ github.event.release.tag_name }}"
-            JAR_URL="${{ github.event.release.assets[0].browser_download_url }}"
-
-            echo "Deploying devbuild $TAG..."
+            TAG="devbuild"
+            JAR_URL="${{ steps.release.outputs.jar_url }}"
+            echo "Deploying devbuild..."
             rm -f "$PLUGINS_DIR"/Story-*.jar
             curl -sL "$JAR_URL" -o "$PLUGINS_DIR/Story-${TAG}.jar"
             echo "$TAG" > /opt/scripts/.story-plugin-version
             mcrcon -H localhost -P 25575 -p "$MCRCON_PASS" "reload confirm"
-            echo "Done - devbuild $TAG deployed"
+            echo "Done — devbuild deployed"
         env:
           MCRCON_PASS: ${{ secrets.MCRCON_PASS }}
 
   deploy-stable:
+    needs: determine
     runs-on: ubuntu-latest
-    if: github.event.release.prerelease == false
+    if: needs.determine.outputs.deploy_type == 'stable'
     environment: production
-
     steps:
-      - name: Deploy stable release to Minecraft Server
+      - name: Get stable JAR URL from GitHub Release
+        id: release
+        run: |
+          TAG="${{ needs.determine.outputs.tag }}"
+          JAR_URL=$(curl -sf \
+            -H "Authorization: token ${{ secrets.PAT_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            | jq -r '.assets[0].browser_download_url')
+          if [ -z "$JAR_URL" ] || [ "$JAR_URL" = "null" ]; then
+            echo "ERROR: Could not fetch JAR URL from release $TAG"
+            exit 1
+          fi
+          echo "jar_url=$JAR_URL" >> $GITHUB_OUTPUT
+
+      - name: Deploy stable to Minecraft Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -44,20 +95,16 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             PLUGINS_DIR="/srv/minecraft/plugins"
-            TAG="${{ github.event.release.tag_name }}"
-            JAR_URL="${{ github.event.release.assets[0].browser_download_url }}"
-
+            TAG="${{ needs.determine.outputs.tag }}"
+            JAR_URL="${{ steps.release.outputs.jar_url }}"
             echo "Deploying stable $TAG..."
-
-            # Back up current jar before replacing
             BACKUP_DIR="/srv/minecraft/plugins/backups"
             mkdir -p "$BACKUP_DIR"
             cp "$PLUGINS_DIR"/Story-*.jar "$BACKUP_DIR/Story-pre-${TAG}.jar" 2>/dev/null || true
-
             rm -f "$PLUGINS_DIR"/Story-*.jar
             curl -sL "$JAR_URL" -o "$PLUGINS_DIR/Story-${TAG}.jar"
             echo "$TAG" > /opt/scripts/.story-plugin-version
             mcrcon -H localhost -P 25575 -p "$MCRCON_PASS" "reload confirm"
-            echo "Done - stable $TAG deployed"
+            echo "Done — stable $TAG deployed"
         env:
           MCRCON_PASS: ${{ secrets.MCRCON_PASS }}
