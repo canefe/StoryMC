@@ -2,6 +2,7 @@ package com.canefe.story.api.character
 
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.memory.Memory
+import com.canefe.story.util.EssentialsUtils
 import org.bukkit.entity.Player
 import java.util.UUID
 
@@ -15,5 +16,5 @@ class PlayerCharacter(
     override val skills: CharacterSkills,
 ) : Character {
     override val id: UUID get() = player.uniqueId
-    override val name: String get() = player.name
+    override val name: String get() = EssentialsUtils.getNickname(player.name)
 }
