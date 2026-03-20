@@ -19,13 +19,13 @@ import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.NPCManager
-import com.canefe.story.npc.NPCScheduleManager
 import com.canefe.story.npc.behavior.NPCBehaviorManager
 import com.canefe.story.npc.data.NPCDataManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.name.NPCNameManager
 import com.canefe.story.npc.name.NPCNameResolver
 import com.canefe.story.npc.relationship.RelationshipManager
+import com.canefe.story.npc.schedule.ScheduleManager
 import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
@@ -121,7 +121,7 @@ open class Story :
 
     lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
 
-    lateinit var scheduleManager: NPCScheduleManager
+    lateinit var scheduleManager: ScheduleManager
     lateinit var npcContextGenerator: NPCContextGenerator
     lateinit var lorebookManager: LoreBookManager
     lateinit var sessionManager: SessionManager
@@ -275,7 +275,7 @@ open class Story :
         questManager = QuestManager(this, storageFactory.questStorage)
         npcUtils = NPCUtils.getInstance(this)
         npcManager = NPCManager.getInstance(this)
-        scheduleManager = NPCScheduleManager.getInstance(this)
+        scheduleManager = ScheduleManager.getInstance(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
         playerAgentManager = PlayerAgentManager(this)
         npcMessageService = NPCMessageService.getInstance(this)
