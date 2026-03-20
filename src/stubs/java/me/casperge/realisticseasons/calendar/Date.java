@@ -1,9 +1,9 @@
 package me.casperge.realisticseasons.calendar;
 
 public class Date {
-    public int day;
-    public int month;
-    public int year;
+    private int day;
+    private int month;
+    private int year;
 
     public Date() {}
 
@@ -23,9 +23,6 @@ public class Date {
     public int getYear() { return year; }
 
     public String toString(boolean formatted) {
-        if (formatted) {
-            return day + "/" + month + "/" + year;
-        }
         return day + "/" + month + "/" + year;
     }
 }

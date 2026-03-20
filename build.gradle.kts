@@ -109,7 +109,6 @@ dependencies {
     // Local plugin dependencies
     compileOnly(
         fileTree("lib") {
-            include("RealisticSeasons.jar")
             include("ReviveMe-API.jar")
         },
     )
@@ -130,7 +129,6 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
     testImplementation("org.mockito:mockito-inline:4.8.0")
-    testImplementation(files("lib/RealisticSeasons.jar"))
 
     // Add Gson if used by the plugin
     implementation("com.google.code.gson:gson:2.10.1") // Or the latest version
@@ -294,6 +292,8 @@ sourceSets {
     }
 
     test {
+        compileClasspath += stubs.output
+        runtimeClasspath += stubs.output
         resources {
             srcDir("src/test/resources")
             exclude("plugin.yml")

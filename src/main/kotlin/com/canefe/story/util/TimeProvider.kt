@@ -74,29 +74,21 @@ class RealisticSeasonsTimeProvider : TimeProvider {
 }
 
 class FallbackTimeProvider : TimeProvider {
-    // Use a base epoch for game time
     private val startEpoch = Instant.now().toEpochMilli()
 
     override fun getCurrentGameTime(): Long {
-        // Simple implementation based on server ticks
-        // 1 minecraft day = 24000 ticks
-        // We'll use a 20:1 ratio, so 1 game minute = 20 real minutes
         val currentTime = Instant.now().toEpochMilli()
         val elapsed = currentTime - startEpoch
-        return elapsed / 1000 // Convert to seconds as the game time unit
+        return elapsed / 1000
     }
 
-    override fun getFormattedDate(): String {
-        return "Day 1" // Simple fallback
-    }
+    override fun getFormattedDate(): String = "Day 1"
 
     override fun getHours(): Int = (System.currentTimeMillis() / 1000 % 24).toInt()
 
     override fun getMinutes(): Int = (System.currentTimeMillis() / 1000 % 60).toInt()
 
-    override fun getSeason(): String {
-        return "Spring" // Default season
-    }
+    override fun getSeason(): String = "Spring"
 }
 
 /**
