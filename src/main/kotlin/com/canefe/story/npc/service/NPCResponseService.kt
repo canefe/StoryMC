@@ -4,14 +4,12 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.util.EssentialsUtils
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
-import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.concurrent.CompletableFuture
@@ -667,36 +665,8 @@ class NPCResponseService(
             return future
         }
 
-        // Find the NPC by name
-        var npc: StoryNPC? =
-            CitizensAPI
-                .getNPCRegistry()
-                .firstOrNull {
-                    it.name.equals(npcName, ignoreCase = true) ||
-                        it.name.trim().equals(npcName.trim(), ignoreCase = true)
-                }?.let { CitizensStoryNPC(it) }
-
-        // If still null, try searching across all registries
-        if (npc == null) {
-            if (plugin.config.debugMessages) {
-                plugin.logger.info("Searching for NPC '$npcName' across all registries...")
-            }
-            for (registry in CitizensAPI.getNPCRegistries()) {
-                registry.forEach {
-                    if (it.name.equals(npcName, ignoreCase = true) ||
-                        it.name.trim().equals(npcName.trim(), ignoreCase = true)
-                    ) {
-                        npc = CitizensStoryNPC(it)
-                        if (plugin.config.debugMessages) {
-                            plugin.logger.info(
-                                "Found NPC '${it.name}' in registry ${registry.name}",
-                            )
-                        }
-                        return@forEach
-                    }
-                }
-            }
-        }
+        // Find the NPC by name — use Story's NPC manager first, no Citizens registry required
+        var npc: StoryNPC? = plugin.npcDataManager.getNPC(npcName)
 
         val player =
             Bukkit.getOnlinePlayers().firstOrNull {
