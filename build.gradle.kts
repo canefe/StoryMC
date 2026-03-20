@@ -280,8 +280,9 @@ sourceSets {
     // make stubs for local jar files that we should not publish for CI
     val stubs by creating {
         java {
-            srcDir("src/stubs/kotlin")
+            srcDir("src/stubs/java")
         }
+        compileClasspath += main.get().compileClasspath
     }
 
     main {

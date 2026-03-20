@@ -32,7 +32,7 @@ class RealisticSeasonsTimeProvider : TimeProvider {
         seasonsAPI =
             try {
                 SeasonsAPI.getInstance()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 null
             }
 
@@ -125,7 +125,7 @@ class TimeService(
         if (Bukkit.getPluginManager().isPluginEnabled("RealisticSeasons")) {
             try {
                 return RealisticSeasonsTimeProvider()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 plugin.logger.warning("Failed to initialize RealisticSeasonsTimeProvider: ${e.message}")
                 return FallbackTimeProvider()
             }
