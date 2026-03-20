@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture
 class VoiceManager(
     private val plugin: Story,
 ) {
-    private val audioManager: ElevenLabsAudioManager = ElevenLabsAudioManager(plugin)
+    val audioManager: ElevenLabsAudioManager = ElevenLabsAudioManager(plugin)
 
     // Track which NPC is currently speaking to which players
     private val activeSpeakers = mutableMapOf<UUID, String>() // NPC UUID -> Current message

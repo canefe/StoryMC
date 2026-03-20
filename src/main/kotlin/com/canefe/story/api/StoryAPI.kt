@@ -5,6 +5,7 @@ import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.ConversationMessage
 import org.bukkit.entity.Player
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 /** Public API for the Story plugin */
@@ -145,6 +146,88 @@ interface StoryAPI {
             // Use getAIResponse to generate the response
             return instance.getAIResponse(messages, lowCost = true).thenApply { response ->
                 response?.trim() ?: ""
+            }
+        }
+        // --- Audio API ---
+
+        /**
+         * Generate speech from text using ElevenLabs and send it to a specific player.
+         *
+         * @param player The player to send the audio to
+         * @param text The text to convert to speech
+         * @param voiceId The ElevenLabs voice ID to use
+         * @param npcUuid Optional NPC UUID for client-side positioning
+         * @return CompletableFuture that completes when audio is sent
+         */
+        @JvmStatic
+        fun sendSpeech(
+            player: Player,
+            text: String,
+            voiceId: String,
+            npcUuid: UUID? = null,
+        ): CompletableFuture<Void?> {
+            val audioManager = instance.voiceManager.audioManager
+            return audioManager.generateSpeechOnce(text, voiceId, "api").thenAccept { audioData ->
+                if (audioData != null) {
+                    audioManager.sendAudioToPlayer(player, audioData, npcUuid)
+                }
+            }
+        }
+
+        /**
+         * Generate speech from text and send it to all online players.
+         *
+         * @param text The text to convert to speech
+         * @param voiceId The ElevenLabs voice ID to use
+         * @param npcUuid Optional NPC UUID for client-side positioning
+         * @return CompletableFuture that completes when audio is sent to all players
+         */
+        @JvmStatic
+        fun broadcastSpeech(
+            text: String,
+            voiceId: String,
+            npcUuid: UUID? = null,
+        ): CompletableFuture<Void?> {
+            val audioManager = instance.voiceManager.audioManager
+            return audioManager.generateSpeechOnce(text, voiceId, "api").thenAccept { audioData ->
+                if (audioData != null) {
+                    for (player in instance.server.onlinePlayers) {
+                        audioManager.sendAudioToPlayer(player, audioData, npcUuid)
+                    }
+                }
+            }
+        }
+
+        /**
+         * Send pre-generated audio data directly to a specific player.
+         * Bypasses ElevenLabs generation — use for custom audio sources.
+         *
+         * @param player The player to send the audio to
+         * @param audioData WAV audio bytes (44.1kHz, 16-bit PCM)
+         * @param npcUuid Optional NPC UUID for client-side positioning
+         */
+        @JvmStatic
+        fun sendAudio(
+            player: Player,
+            audioData: ByteArray,
+            npcUuid: UUID? = null,
+        ) {
+            instance.voiceManager.audioManager.sendAudioToPlayer(player, audioData, npcUuid)
+        }
+
+        /**
+         * Send pre-generated audio data to all online players.
+         *
+         * @param audioData WAV audio bytes (44.1kHz, 16-bit PCM)
+         * @param npcUuid Optional NPC UUID for client-side positioning
+         */
+        @JvmStatic
+        fun broadcastAudio(
+            audioData: ByteArray,
+            npcUuid: UUID? = null,
+        ) {
+            for (player in instance.server.onlinePlayers) {
+                instance.voiceManager.audioManager.sendAudioToPlayer(player, audioData, npcUuid)
             }
         }
     }
