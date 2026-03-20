@@ -106,7 +106,19 @@ class TimeService(
     private val plugin: Story,
     private var provider: TimeProvider? = null,
 ) {
-    private var timeProvider: TimeProvider = provider ?: determineTimeProvider()
+    private var timeProvider: TimeProvider = provider ?: FallbackTimeProvider()
+
+    init {
+        if (provider == null) {
+            // Defer by 1 tick so all plugins (including RealisticSeasons) have finished enabling
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable {
+                    timeProvider = determineTimeProvider()
+                },
+            )
+        }
+    }
 
     fun determineTimeProvider(): TimeProvider {
         // Check if RealisticSeasons is available
