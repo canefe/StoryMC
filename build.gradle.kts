@@ -290,7 +290,6 @@ sourceSets {
         }
 
         compileClasspath += stubs.output
-        runtimeClasspath += stubs.output
     }
 
     test {
