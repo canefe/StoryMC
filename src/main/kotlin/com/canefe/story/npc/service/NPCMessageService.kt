@@ -171,7 +171,7 @@ class NPCMessageService(
                     role = npcData.role,
                     appearance = npcData.appearance,
                     context = npcData.context,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(npc.uniqueId, false)),
+                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
                 )
             val nearby = buildNearbyFromNPC(npc, speaker)
             val event = CharacterSpeakEvent(speaker, nearby, message)
@@ -721,7 +721,7 @@ class NPCMessageService(
                         context = data.context,
                         skills =
                             CharacterSkills(
-                                plugin.skillManager.createProviderForCharacter(nearby.uniqueId, false),
+                                plugin.skillManager.createProviderForNPC(nearby.name),
                             ),
                     ),
                 )
@@ -755,7 +755,7 @@ class NPCMessageService(
                     role = data.role,
                     appearance = data.appearance,
                     context = data.context,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(nearby.uniqueId, false)),
+                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(nearby.name)),
                 ),
             )
         }

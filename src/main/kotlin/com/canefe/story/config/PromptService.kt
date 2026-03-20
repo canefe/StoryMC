@@ -292,4 +292,57 @@ class PromptService(
 
         return getPrompt("recent_events_generation", variables)
     }
+
+    /** Gets the NPC skill generation prompt */
+    fun getNpcSkillGenerationPrompt(
+        npcName: String,
+        role: String,
+        context: String,
+        availableSkills: String,
+    ): String {
+        val variables =
+            mapOf(
+                "npc_name" to npcName,
+                "role" to role,
+                "context" to context,
+                "available_skills" to availableSkills,
+            )
+        return getPrompt("npc_skill_generation", variables)
+    }
+
+    /** Gets the skill check speech generation prompt */
+    fun getSkillCheckSpeechPrompt(
+        characterName: String,
+        skill: String,
+        action: String,
+        result: String,
+        roll: Int,
+        dc: Int,
+    ): String {
+        val variables =
+            mapOf(
+                "character_name" to characterName,
+                "skill" to skill,
+                "action" to action,
+                "result" to result,
+                "roll" to roll.toString(),
+                "dc" to dc.toString(),
+            )
+        return getPrompt("skill_check_speech", variables)
+    }
+
+    /** Gets the skill check evaluation prompt */
+    fun getSkillCheckEvaluationPrompt(
+        npcNames: String,
+        playerNames: String,
+        conversation: String,
+    ): String {
+        val variables =
+            mapOf(
+                "npc_names" to npcNames,
+                "player_names" to playerNames,
+                "conversation" to conversation,
+            )
+        return getPrompt("skill_check_evaluation", variables)
+    }
 }

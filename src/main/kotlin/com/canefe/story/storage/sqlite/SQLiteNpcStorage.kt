@@ -48,6 +48,21 @@ class SQLiteNpcStorage(
         npcData.displayHandle = rs.getString("display_handle")
         npcData.callsign = rs.getString("callsign")
 
+        val skillsJson = rs.getString("skills")
+        npcData.skills =
+            if (skillsJson != null) {
+                try {
+                    gson.fromJson<MutableMap<String, Int>>(
+                        skillsJson,
+                        object : com.google.gson.reflect.TypeToken<MutableMap<String, Int>>() {}.type,
+                    )
+                } catch (_: Exception) {
+                    mutableMapOf()
+                }
+            } else {
+                mutableMapOf()
+            }
+
         val categoriesJson = rs.getString("knowledge_categories")
         npcData.knowledgeCategories =
             if (categoriesJson != null) {
@@ -75,8 +90,8 @@ class SQLiteNpcStorage(
             conn.prepareStatement(
                 """REPLACE INTO npcs (filename, name, role, location, context, appearance, avatar,
                custom_voice, generic, random_pathing, knowledge_categories, name_bank, npc_id,
-               anchor_key, canonical_name, display_handle, callsign)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               anchor_key, canonical_name, display_handle, callsign, skills)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
 
         stmt.setString(1, key)
@@ -96,6 +111,7 @@ class SQLiteNpcStorage(
         stmt.setString(15, npcData.canonicalName)
         stmt.setString(16, npcData.displayHandle)
         stmt.setString(17, npcData.callsign)
+        stmt.setString(18, if (npcData.skills.isNotEmpty()) gson.toJson(npcData.skills) else null)
         stmt.executeUpdate()
         stmt.close()
 

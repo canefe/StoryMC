@@ -678,11 +678,29 @@ class ConversationManager private constructor(
                 .runTaskLater(
                     plugin,
                     Runnable {
-                        // Generate NPC responses
-                        generateResponses(conversation).thenAccept {
-                            // Response timer completed, remove it from tracking
-                            responseTimers.remove(conversation.id)
-                        }
+                        // Evaluate for skill checks, then generate NPC responses
+                        plugin.skillCheckService
+                            .evaluateForSkillCheck(conversation)
+                            .thenCompose { result ->
+                                if (result != null) {
+                                    if (plugin.config.debugMessages) {
+                                        plugin.logger.info(
+                                            "Skill check triggered: ${result.actor.name} ${result.skill} vs ${result.target.name} " +
+                                                "(roll ${result.roll} vs DC ${result.dc}) -> ${if (result.passed) "PASS" else "FAIL"}",
+                                        )
+                                    }
+                                    // Generate actor's speech first, then inject context and respond
+                                    plugin.skillCheckService.generateActorSpeech(result, conversation).thenCompose {
+                                        val context = plugin.skillCheckService.formatAsConversationContext(result)
+                                        conversation.addSystemMessage(context)
+                                        generateResponses(conversation)
+                                    }
+                                } else {
+                                    generateResponses(conversation)
+                                }
+                            }.thenAccept {
+                                responseTimers.remove(conversation.id)
+                            }
                     },
                     responseDelay * 20, // Convert seconds to ticks (20 ticks = 1 second)
                 ).taskId

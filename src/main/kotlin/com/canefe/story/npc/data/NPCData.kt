@@ -24,6 +24,7 @@ data class NPCData(
     var canonicalName: String? = null // Full name for dialogue (e.g., "Arik Mossveil")
     var displayHandle: String? = null // Short name for MC display (e.g., "A. Mossveil")
     var callsign: String? = null // Optional differentiator (e.g., "Spearhand")
+    var skills: MutableMap<String, Int> = mutableMapOf() // Skill name -> level
 
     // Transient field used by storage to pass the location name before the manager resolves it
     @Transient

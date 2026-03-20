@@ -96,20 +96,39 @@ class CitizensStoryNPC(
 
     // -- Following --
 
+    private val isSentinelAvailable: Boolean by lazy {
+        try {
+            Class.forName("org.mcmonkey.sentinel.SentinelTrait")
+            true
+        } catch (_: ClassNotFoundException) {
+            false
+        }
+    }
+
     override fun follow(target: Player) {
-        npc.getOrAddTrait(SentinelTrait::class.java).guarding = target.uniqueId
-        npc.getOrAddTrait(SentinelTrait::class.java).guardDistanceMinimum = 3.0
+        if (isSentinelAvailable) {
+            npc.getOrAddTrait(SentinelTrait::class.java).guarding = target.uniqueId
+            npc.getOrAddTrait(SentinelTrait::class.java).guardDistanceMinimum = 3.0
+        }
     }
 
     override fun stopFollowing() {
-        npc.getOrAddTrait(SentinelTrait::class.java).guarding = null
+        if (isSentinelAvailable) {
+            npc.getOrAddTrait(SentinelTrait::class.java).guarding = null
+        }
         npc.getOrAddTrait(FollowTrait::class.java).follow(null)
     }
 
     override val isFollowing: Boolean
-        get() =
-            npc.getOrAddTrait(SentinelTrait::class.java).guarding != null ||
-                npc.getOrAddTrait(FollowTrait::class.java).isActive
+        get() {
+            val sentinelGuarding =
+                if (isSentinelAvailable) {
+                    npc.getOrAddTrait(SentinelTrait::class.java).guarding != null
+                } else {
+                    false
+                }
+            return sentinelGuarding || npc.getOrAddTrait(FollowTrait::class.java).isActive
+        }
 
     // -- Rotation --
 

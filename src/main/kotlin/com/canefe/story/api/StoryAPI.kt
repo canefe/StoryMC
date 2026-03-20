@@ -230,6 +230,30 @@ interface StoryAPI {
                 instance.voiceManager.audioManager.sendAudioToPlayer(player, audioData, npcUuid)
             }
         }
+        // --- Skill Check API ---
+
+        /**
+         * Trigger a skill check between two characters.
+         * Rolls d20 + skill modifier, fires [SkillCheckEvent], and returns the result.
+         * If the actor is in a conversation, the result is injected as context
+         * and an in-character line is generated for the actor.
+         *
+         * @param actor The character attempting the action
+         * @param target The character being targeted
+         * @param skill The skill being checked (e.g. "intimidation", "persuasion")
+         * @param action A description of the action (e.g. "haggle the price down")
+         * @param dc The difficulty class (1-30)
+         * @return The result, or null if the event was cancelled by a listener
+         */
+        @JvmStatic
+        fun triggerSkillCheck(
+            actor: com.canefe.story.api.character.Character,
+            target: com.canefe.story.api.character.Character,
+            skill: String,
+            action: String,
+            dc: Int,
+        ): com.canefe.story.conversation.skillcheck.SkillCheckResult? =
+            instance.skillCheckService.triggerSkillCheck(actor, target, skill, action, dc)
     }
 }
 

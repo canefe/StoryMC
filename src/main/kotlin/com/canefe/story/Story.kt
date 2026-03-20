@@ -152,6 +152,10 @@ open class Story :
         private set
     lateinit var themeAgent: com.canefe.story.conversation.theme.ConversationThemeAgent
         private set
+    lateinit var skillCheckService: com.canefe.story.conversation.skillcheck.SkillCheckService
+        private set
+    lateinit var npcSkillGenerator: com.canefe.story.character.skill.NPCSkillGenerator
+        private set
 
     // NPC Name Aliasing System
     lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
@@ -311,6 +315,12 @@ open class Story :
         themeAgent =
             com.canefe.story.conversation.theme
                 .ConversationThemeAgent(this, themeManager, themeRegistry)
+        skillCheckService =
+            com.canefe.story.conversation.skillcheck
+                .SkillCheckService(this)
+        npcSkillGenerator =
+            com.canefe.story.character.skill
+                .NPCSkillGenerator(this)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()

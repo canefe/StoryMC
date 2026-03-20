@@ -44,7 +44,9 @@ class SkillManager(
     }
 
     /**
-     * Create a skill provider for a character
+     * Create a skill provider for a character.
+     * For players, delegates to the active provider (e.g. MMOCore).
+     * For NPCs, use [createProviderForNPC] instead.
      */
     fun createProviderForCharacter(
         characterId: UUID,
@@ -52,6 +54,26 @@ class SkillManager(
     ): SkillProvider {
         val factory = skillProviders[activeProvider] ?: return NoopSkillProvider()
         return factory(characterId, isPlayer)
+    }
+
+    /**
+     * Create a skill provider for an NPC using their stored skills.
+     * Returns a provider with empty skills if not yet generated.
+     */
+    fun createProviderForNPC(npcName: String): SkillProvider {
+        val npcData = plugin.npcDataManager.getNPCData(npcName)
+        val skills = npcData?.skills ?: emptyMap()
+        val availableSkills = getAvailableSkills()
+        return NPCSkillProvider(skills, availableSkills)
+    }
+
+    /**
+     * Get the list of all available skills from any online player's provider.
+     */
+    fun getAvailableSkills(): List<String> {
+        val player = plugin.server.onlinePlayers.firstOrNull() ?: return emptyList()
+        val factory = skillProviders[activeProvider] ?: return emptyList()
+        return factory(player.uniqueId, true).getAllSkills()
     }
 
     /**

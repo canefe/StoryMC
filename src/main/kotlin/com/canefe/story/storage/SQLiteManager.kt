@@ -102,10 +102,18 @@ class SQLiteManager(
                     anchor_key TEXT,
                     canonical_name TEXT,
                     display_handle TEXT,
-                    callsign TEXT
+                    callsign TEXT,
+                    skills TEXT
                 )
                 """.trimIndent(),
             )
+
+            // Migration: add skills column if missing
+            try {
+                stmt.executeUpdate("ALTER TABLE npcs ADD COLUMN skills TEXT")
+            } catch (_: Exception) {
+                // Column already exists
+            }
 
             // NPC Memories
             stmt.executeUpdate(
