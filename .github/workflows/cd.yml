@@ -71,7 +71,10 @@ jobs:
             FILENAME=$(basename "$JAR_URL")
             curl -sL "$JAR_URL" -o "$PLUGINS_DIR/$FILENAME"
             echo "$TAG" > /opt/scripts/.story-plugin-version
-            echo "Done — devbuild deployed"
+            cd ${{ secrets.COMPOSE_DIR }}
+            docker compose stop ${{ secrets.MC_CONTAINER }}
+            docker compose up -d ${{ secrets.MC_CONTAINER }}
+            echo "Done — devbuild deployed and server restarted"
         env:
           PLUGINS_DIR: ${{ secrets.PLUGINS_DIR }}
 
@@ -96,7 +99,7 @@ jobs:
           echo "jar_url=$JAR_URL" >> $GITHUB_OUTPUT
 
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v4tskey-client-kiTdiPxLVu11CNTRL-AEmCeWfSC1VBg8K35TR31VudX7CJdKxy
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
