@@ -543,6 +543,13 @@ class NPCScheduleManager private constructor(
             return // Don't move NPCs in conversation
         }
 
+        if (npc.isFollowing) {
+            if (debugMessages) {
+                plugin.logger.info("NPC ${npc.name} is following someone, skipping random movement.")
+            }
+            return
+        }
+
         // Get story location and potential sublocations
         val currentStoryLocation = plugin.locationManager.getLocationByPosition2D(currentLocation, 200.0)
 
