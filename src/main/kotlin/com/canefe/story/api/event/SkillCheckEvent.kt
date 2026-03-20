@@ -32,7 +32,7 @@ class SkillCheckEvent(
     var roll: Int,
     var passed: Boolean,
     val conversationId: Int,
-) : Event(),
+) : Event(true),
     Cancellable {
     private var cancelled = false
 

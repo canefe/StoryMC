@@ -449,10 +449,11 @@ npc_skill_generation:
 
     Available skills: {available_skills}
 
-    Respond with ONLY a JSON object mapping each skill to a level.
-    Example: {"strength": 8, "agility": 12, "persuasion": 5}
+    Respond with ONLY a JSON object mapping each skill name to a number.
+    Example format: "strength": 8, "agility": 12, "persuasion": 5
 
     Assign ALL listed skills. Consider the NPC's occupation and personality.
+    CRITICAL: Respond with raw JSON only. No markdown, no code blocks, no backticks.
 
 skill_check_speech:
   system_prompt: |
@@ -492,8 +493,15 @@ skill_check_evaluation:
     Recent conversation:
     {conversation}
 
-    If a skill check is warranted, respond with ONLY a JSON object:
-    {\"check\": true, \"actor\": \"name of character performing action\", \"target\": \"name of character being targeted\", \"skill\": \"skill name\", \"action\": \"brief description of the action\", \"dc\": number between 5 and 25}
+    If a skill check is warranted, respond with ONLY a JSON object with these fields:
+    - "check": true
+    - "actor": name of character performing the action
+    - "target": name of character being targeted
+    - "skill": skill name (e.g. "intimidation", "persuasion")
+    - "action": brief description of the action
+    - "dc": difficulty number between 5 and 25
 
-    If no skill check is needed, respond with ONLY:
-    {\"check\": false}
+    If no skill check is needed, respond with ONLY a JSON object:
+    - "check": false
+
+    CRITICAL: Respond with raw JSON only. No markdown, no code blocks, no backticks.
