@@ -17,10 +17,14 @@ class DisguiseManager(
     // Map to track which player is disguised as which NPC
     private val disguisedPlayers = ConcurrentHashMap<UUID, UUID>() // Player UUID -> NPC UUID
 
+    private val isLibsDisguisesEnabled: Boolean
+        get() = plugin.server.pluginManager.isPluginEnabled("LibsDisguises")
+
     /**
      * Check if an entity is a player disguised as an NPC
      */
     fun isDisguisedAsNPC(entity: Entity): Boolean {
+        if (!isLibsDisguisesEnabled) return false
         if (entity !is Player) return false
         return DisguiseAPI.isDisguised(entity) &&
             DisguiseAPI.getDisguise(entity) is PlayerDisguise
