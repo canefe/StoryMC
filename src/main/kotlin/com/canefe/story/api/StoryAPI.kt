@@ -1,9 +1,13 @@
 package com.canefe.story.api
 
 import com.canefe.story.Story
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.CitizensStoryNPC
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -254,6 +258,188 @@ interface StoryAPI {
             dc: Int,
         ): com.canefe.story.conversation.skillcheck.SkillCheckResult? =
             instance.skillCheckService.triggerSkillCheck(actor, target, skill, action, dc)
+
+        // --- Character API ---
+
+        /**
+         * Get an [AICharacter] from a Citizens NPC.
+         *
+         * @param npc The Citizens NPC instance
+         * @return An AICharacter wrapping the NPC, or null if no Story data exists for it
+         */
+        @JvmStatic
+        fun getCharacterByNPC(npc: net.citizensnpcs.api.npc.NPC): AICharacter? {
+            val storyNpc = CitizensStoryNPC(npc)
+            val npcData = instance.npcDataManager.getNPCData(npc.name) ?: return null
+            val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(npc.name))
+            return AICharacter(
+                npc = storyNpc,
+                name = npcData.name,
+                role = npcData.role,
+                appearance = npcData.appearance,
+                context = npcData.context,
+                skills = skills,
+            )
+        }
+
+        /**
+         * Get an [AICharacter] from a Bukkit Entity (Citizens NPC or MythicMob).
+         *
+         * @param entity The Bukkit entity
+         * @return An AICharacter wrapping the entity, or null if not a Story NPC
+         */
+        @JvmStatic
+        fun getCharacterByEntity(entity: Entity): AICharacter? {
+            // Try Citizens first
+            try {
+                val citizensNpc =
+                    net.citizensnpcs.api.CitizensAPI
+                        .getNPCRegistry()
+                        .getNPC(entity)
+                if (citizensNpc != null) return getCharacterByNPC(citizensNpc)
+            } catch (_: Throwable) {
+            }
+
+            // Try MythicMobs
+            try {
+                val storyNpc = instance.mythicMobConversation.getOrCreateNPCAdapter(entity)
+                if (storyNpc != null) {
+                    val npcData = instance.npcDataManager.getNPCData(storyNpc.name)
+                    val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(storyNpc.name))
+                    return AICharacter(
+                        npc = storyNpc,
+                        name = storyNpc.name,
+                        role = npcData?.role ?: "NPC",
+                        appearance = npcData?.appearance ?: "",
+                        context = npcData?.context ?: "",
+                        skills = skills,
+                    )
+                }
+            } catch (_: Throwable) {
+            }
+
+            return null
+        }
+
+        // --- Speech API ---
+
+        /**
+         * Make a character speak a message.
+         *
+         * For players: runs the same flow as the player chat system — generates
+         * an in-character line via LLM (if [llm] is true), broadcasts it, and
+         * feeds it into the conversation.
+         *
+         * For NPCs: runs the same flow as /g — generates an NPC response via LLM
+         * (if [llm] is true), broadcasts it, and adds it to the conversation.
+         *
+         * If [llm] is false, the raw message is broadcast and added to the
+         * conversation without LLM rewriting.
+         *
+         * @param character The character who should speak
+         * @param message The message (or draft if llm=true)
+         * @param llm Whether to rewrite the message through the LLM (default: true)
+         * @return CompletableFuture with the final spoken message
+         */
+        @JvmStatic
+        fun speakCharacter(
+            character: Character,
+            message: String,
+            llm: Boolean = true,
+        ): CompletableFuture<String> =
+            when (character) {
+                is PlayerCharacter -> speakAsPlayer(character, message, llm)
+                is AICharacter -> speakAsNPC(character, message, llm)
+                else -> CompletableFuture.completedFuture(message)
+            }
+
+        private fun speakAsPlayer(
+            character: PlayerCharacter,
+            message: String,
+            llm: Boolean,
+        ): CompletableFuture<String> {
+            val player = character.player
+            val conversation = instance.conversationManager.getConversation(player)
+
+            if (!llm) {
+                // Raw broadcast, no LLM
+                instance.npcMessageService.broadcastPlayerMessage(message, player)
+                conversation?.addPlayerMessage(player, message)
+                return CompletableFuture.completedFuture(message)
+            }
+
+            // LLM rewrite using the talk_as_npc prompt (same as player chat flow)
+            val playerName =
+                com.canefe.story.util.EssentialsUtils
+                    .getNickname(player.name)
+            val talkAsPrompt = instance.promptService.getTalkAsNpcPrompt(playerName, message)
+
+            val responseContext = mutableListOf<String>()
+            if (conversation != null) {
+                val recentMessages = conversation.history.map { it.content }
+                responseContext.add(
+                    "====CURRENT CONVERSATION====\n${recentMessages.joinToString("\n")}\n=========================",
+                )
+            }
+            responseContext.add(talkAsPrompt)
+
+            return instance.npcResponseService
+                .generateNPCResponse(
+                    null,
+                    responseContext,
+                    false,
+                    player,
+                    rich = false,
+                    isConversation = conversation != null,
+                ).thenApply { response ->
+                    val finalMessage = response?.trim() ?: message
+                    instance.npcMessageService.broadcastPlayerMessage(finalMessage, player)
+                    conversation?.addPlayerMessage(player, finalMessage)
+                    finalMessage
+                }
+        }
+
+        private fun speakAsNPC(
+            character: AICharacter,
+            message: String,
+            llm: Boolean,
+        ): CompletableFuture<String> {
+            val npc = character.npc
+            val conversation = instance.conversationManager.getConversation(npc)
+            val npcContext = instance.npcContextGenerator.getOrCreateContextForNPC(npc.name)
+
+            if (!llm) {
+                // Raw broadcast, no LLM
+                instance.npcMessageService.broadcastNPCMessage(message, npc, npcContext = npcContext)
+                conversation?.addNPCMessage(npc, message)
+                return CompletableFuture.completedFuture(message)
+            }
+
+            // LLM rewrite using the /g flow
+            val responseContext = mutableListOf<String>()
+            if (conversation != null) {
+                val recentMessages = conversation.history.map { it.content }
+                responseContext.add(
+                    "====CURRENT CONVERSATION====\n${recentMessages.joinToString("\n")}\n=========================",
+                )
+            }
+            val talkAsPrompt = instance.promptService.getTalkAsNpcPrompt(npc.name, message)
+            responseContext.add(talkAsPrompt)
+
+            return instance.npcResponseService
+                .generateNPCResponse(
+                    npc,
+                    responseContext,
+                    false,
+                    rich = false,
+                    isConversation = conversation != null,
+                ).thenApply { response ->
+                    val finalMessage = response?.trim() ?: message
+                    instance.npcMessageService.broadcastNPCMessage(finalMessage, npc, npcContext = npcContext)
+                    conversation?.addNPCMessage(npc, finalMessage)
+                    finalMessage
+                }
+        }
     }
 }
 

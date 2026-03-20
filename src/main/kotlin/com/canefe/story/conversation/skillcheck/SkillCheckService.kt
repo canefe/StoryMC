@@ -288,9 +288,40 @@ class SkillCheckService(
                 dc = result.dc,
             )
 
+        val messages = mutableListOf<ConversationMessage>()
+
+        // Add character context
+        val characterContext = plugin.npcContextGenerator.getOrCreateContextForNPC(result.actor.name)
+        if (characterContext != null) {
+            messages.add(
+                ConversationMessage(
+                    "system",
+                    "You are roleplaying as ${result.actor.name}.\n" +
+                        "===CHARACTER===\n${characterContext.context}\n" +
+                        "===APPEARANCE===\n${characterContext.appearance}",
+                ),
+            )
+        }
+
+        // Add conversation history for context
+        val recentHistory =
+            conversation.history
+                .filter { it.role != "system" }
+                .takeLast(8)
+        if (recentHistory.isNotEmpty()) {
+            messages.add(
+                ConversationMessage(
+                    "system",
+                    "===RECENT CONVERSATION===\n${recentHistory.joinToString("\n") { it.content }}",
+                ),
+            )
+        }
+
+        messages.add(ConversationMessage("system", prompt))
+
         return plugin
             .getAIResponse(
-                listOf(ConversationMessage("system", prompt)),
+                messages,
                 lowCost = true,
             ).thenApplyAsync { response ->
                 if (response.isNullOrBlank()) return@thenApplyAsync null
