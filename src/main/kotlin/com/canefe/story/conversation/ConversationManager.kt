@@ -240,10 +240,11 @@ class ConversationManager private constructor(
         conversation: Conversation,
         dontRemember: Boolean = false,
     ): CompletableFuture<Void> {
-        // Check if the conversation is already being ended
-        if (endingConversations.contains(conversation.id)) {
-            // Return a completed future since the conversation is already being ended
-            plugin.logger.info("Conversation ${conversation.id} is already being ended, ignoring duplicate request")
+        // Check if the conversation is already being ended or already ended
+        if (endingConversations.contains(conversation.id) || !conversation.active) {
+            plugin.logger.info(
+                "Conversation ${conversation.id} is already being ended or inactive, ignoring duplicate request",
+            )
             return CompletableFuture.completedFuture(null)
         }
 
