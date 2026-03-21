@@ -53,6 +53,10 @@ class ConversationManagerTest {
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )
+
+        // Disable features that cause issues in tests
+        plugin.configService.npcReactionsEnabled = false
+        plugin.configService.autoModeEnabledByDefault = false
     }
 
     @AfterEach

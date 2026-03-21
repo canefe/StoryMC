@@ -49,6 +49,10 @@ class MessageHistorySummarizationTest {
         plugin.sessionManager = mockk(relaxed = true)
         plugin.aiResponseService = mockk(relaxed = true)
 
+        // Disable features that access NPC internals not mocked in tests
+        plugin.configService.npcReactionsEnabled = false
+        plugin.configService.autoModeEnabledByDefault = false
+
         plugin.conversationManager =
             ConversationManager.getInstance(
                 plugin,

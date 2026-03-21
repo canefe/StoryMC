@@ -62,6 +62,10 @@ class NPCInteractionListenerTest {
 
         plugin.saveDefaultConfig()
         plugin.reloadConfig()
+
+        // Disable features that cause issues in tests
+        plugin.configService.npcReactionsEnabled = false
+        plugin.configService.autoModeEnabledByDefault = false
     }
 
     @AfterEach
