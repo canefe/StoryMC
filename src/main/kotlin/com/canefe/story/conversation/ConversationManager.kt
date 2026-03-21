@@ -366,6 +366,7 @@ class ConversationManager private constructor(
 
         // Remove from repository
         repository.removeConversation(conversation)
+        endingConversations.remove(conversation.id)
     }
 
     /**
@@ -841,15 +842,22 @@ class ConversationManager private constructor(
         if (!npc.isSpawned || npc.entity == null) return
         val npcUuid = npc.entity!!.uniqueId
         val endMessage = "<npc_typing_end>id:$npcUuid"
-        val mm = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage()
+        val mm =
+            net.kyori.adventure.text.minimessage.MiniMessage
+                .miniMessage()
         val component = mm.deserialize(endMessage)
 
         val npcLocation = npc.entity?.location ?: return
         for (p in Bukkit.getOnlinePlayers()) {
-            val inRange = p.world == npcLocation.world &&
-                p.location.distance(npcLocation) <= plugin.config.radiantRadius
-            val shouldSee = (p.hasPermission("story.conversation.hearglobal") &&
-                !plugin.playerManager.disabledHearing.contains(p.uniqueId)) || inRange
+            val inRange =
+                p.world == npcLocation.world &&
+                    p.location.distance(npcLocation) <= plugin.config.radiantRadius
+            val shouldSee =
+                (
+                    p.hasPermission("story.conversation.hearglobal") &&
+                        !plugin.playerManager.disabledHearing.contains(p.uniqueId)
+                ) ||
+                    inRange
             if (shouldSee) {
                 p.sendMessage(component)
             }
