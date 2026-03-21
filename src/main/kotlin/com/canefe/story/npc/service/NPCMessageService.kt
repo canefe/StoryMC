@@ -162,23 +162,6 @@ class NPCMessageService(
         streaming: Boolean = false,
         shouldBroadcast: Boolean = true,
     ) {
-        val npcData = plugin.npcDataManager.getNPCData(npc.name)
-        if (npcData != null) {
-            val speaker =
-                AICharacter(
-                    npc = npc,
-                    name = npcData.name,
-                    role = npcData.role,
-                    appearance = npcData.appearance,
-                    context = npcData.context,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
-                )
-            val nearby = buildNearbyFromNPC(npc, speaker)
-            val event = CharacterSpeakEvent(speaker, nearby, message)
-            Bukkit.getPluginManager().callEvent(event)
-            if (event.isCancelled) return
-        }
-
         // First check if we already have the gender cached
         val cachedGender = genderCache[npc.name]
 
@@ -214,6 +197,24 @@ class NPCMessageService(
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
+                // Fire CharacterSpeakEvent on the main thread
+                val npcData = plugin.npcDataManager.getNPCData(npc.name)
+                if (npcData != null) {
+                    val speaker =
+                        AICharacter(
+                            npc = npc,
+                            name = npcData.name,
+                            role = npcData.role,
+                            appearance = npcData.appearance,
+                            context = npcData.context,
+                            skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
+                        )
+                    val nearby = buildNearbyFromNPC(npc, speaker)
+                    val event = CharacterSpeakEvent(speaker, nearby, message)
+                    Bukkit.getPluginManager().callEvent(event)
+                    if (event.isCancelled) return@Runnable
+                }
+
                 val entity =
                     if (plugin.disguiseManager.isNPCBeingImpersonated(npc)) {
                         plugin.disguiseManager.getDisguisedPlayer(npc)

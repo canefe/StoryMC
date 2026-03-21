@@ -10,13 +10,11 @@ import io.lumine.mythic.core.config.MythicLineConfigImpl
 import io.lumine.mythic.core.skills.SkillExecutor
 import io.lumine.mythic.core.skills.SkillMetadataImpl
 import io.lumine.mythic.core.skills.mechanics.RunAIGoalSelectorMechanic
-import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.util.*
-import kotlin.random.Random
 
 /**
  * Handler for MythicMobs NPCs to integrate them with the conversation system
@@ -74,63 +72,7 @@ class MythicMobsHandler(
      * Show idle behavior hologram above MythicMob
      */
     fun showIdleHologram(entity: Entity) {
-        if (!isMythicMob(entity)) return
-
-        val idleActions =
-            listOf(
-                "&7&o*adjusts posture*",
-                "&7&o*scratches head*",
-                "&7&o*hums quietly*",
-                "&7&o*yawns*",
-                "&7&o*stretches*",
-                "&7&o*looks around*",
-                "&7&o*coughs*",
-            )
-
-        val randomAction = idleActions[Random.nextInt(idleActions.size)]
-        val mobUUID = entity.uniqueId
-        val hologramName = "idle_mythic_$mobUUID"
-
-        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-            try {
-                val mobPos = entity.location.clone().add(0.0, 2.10, 0.0)
-
-                // Check if the hologram already exists and remove it first
-                val existingHologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .getHologram(hologramName)
-                if (existingHologram != null) {
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .removeHologram(hologramName)
-                }
-
-                // Create new hologram
-                val hologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .createHologram(hologramName, mobPos)
-                eu.decentsoftware.holograms.api.DHAPI
-                    .addHologramLine(hologram, 0, randomAction)
-
-                // Remove after a short delay
-                Bukkit.getScheduler().runTaskLater(
-                    plugin,
-                    Runnable {
-                        try {
-                            eu.decentsoftware.holograms.api.DHAPI
-                                .removeHologram(hologramName)
-                        } catch (e: Exception) {
-                            // Hologram might already be removed, just ignore
-                        }
-                    },
-                    40L,
-                ) // 2 seconds
-
-                // Track when we last showed an idle hologram
-                mobIdleHologramTimes[mobUUID] = System.currentTimeMillis()
-            } catch (e: Exception) {
-                plugin.logger.warning("Error showing idle hologram: ${e.message}")
-            }
-        }
+        // Idle holograms removed — now handled by client-side action text
     }
 
     /**
@@ -283,19 +225,6 @@ class MythicMobsHandler(
      * Clean up all resources when plugin disables
      */
     fun onDisable() {
-        // Remove any active holograms
-        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-            mythicMobsInConversation.forEach { uuid ->
-                try {
-                    val hologramName = "idle_mythic_$uuid"
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .removeHologram(hologramName)
-                } catch (e: Exception) {
-                    // Ignore errors during shutdown
-                }
-            }
-        }
-
         // Clear tracking collections
         mythicMobsInConversation.clear()
         mobIdleHologramTimes.clear()

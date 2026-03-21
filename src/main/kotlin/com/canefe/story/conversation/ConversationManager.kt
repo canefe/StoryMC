@@ -22,11 +22,11 @@ class ConversationManager private constructor(
     private val plugin: Story,
     private val npcContextGenerator: NPCContextGenerator,
     private val npcResponseService: NPCResponseService,
-    private val worldInformationManager: WorldInformationManager, // Add this dependency
+    private val worldInformationManager: WorldInformationManager,
 ) {
     private val repository = ConversationRepository()
-    private val hologramManager = ConversationHologramManager(plugin)
-    private val voiceManager = VoiceManager(plugin) // Add VoiceManager
+
+    private val voiceManager = VoiceManager(plugin)
 
     // Map to store scheduled tasks by conversation
     private val scheduledTasks = mutableMapOf<Conversation, Int>()
@@ -480,8 +480,8 @@ class ConversationManager private constructor(
                     "${npc.name} has joined the conversation.",
                 )
 
-                // Update NPC state
-                hologramManager.showListeningHolo(npc, false)
+                // Mark NPC as in conversation
+                plugin.npcBehaviorManager.setNPCInConversation(npc, true)
 
                 result.complete(true)
             },
@@ -801,26 +801,57 @@ class ConversationManager private constructor(
         speakerName: String? = null,
     ) {
         for (npc in conversation.npcs) {
-            val entity = getRealEntityForNPC(npc)
+            // Mark NPC as in conversation for behavior manager
+            plugin.npcBehaviorManager.setNPCInConversation(npc, true)
 
-            if (entity != null) {
-                if (speakerName == null || speakerName == npc.name) {
-                    hologramManager.showThinkingHolo(entity)
-                } else {
-                    hologramManager.showListeningHolo(entity, false)
-                }
+            // Send thinking indicator to client via action text
+            if (speakerName == null || speakerName == npc.name) {
+                sendThinkingIndicator(npc)
             }
         }
     }
 
     /**
-     * Clean up holograms from NPCs or disguised players
+     * Clean up thinking indicators from NPCs
      */
     fun cleanupHolograms(conversation: Conversation) {
         for (npc in conversation.npcs) {
-            val entity = getRealEntityForNPC(npc)
-            if (entity != null) {
-                hologramManager.cleanupNPCHologram(entity)
+            clearThinkingIndicator(npc)
+        }
+    }
+
+    /**
+     * Sends a thinking indicator to nearby players via the streaming message system.
+     * Shows as action text (e.g. *thinking...*) on the client's bubble renderer.
+     */
+    private fun sendThinkingIndicator(npc: StoryNPC) {
+        if (!npc.isSpawned || npc.entity == null) return
+        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc)
+        plugin.npcMessageService.broadcastNPCStreamMessage(
+            message = "*thinking...*",
+            npc = npc,
+            npcContext = npcContext,
+        )
+    }
+
+    /**
+     * Clears the thinking indicator for an NPC by sending a typing end signal.
+     */
+    private fun clearThinkingIndicator(npc: StoryNPC) {
+        if (!npc.isSpawned || npc.entity == null) return
+        val npcUuid = npc.entity!!.uniqueId
+        val endMessage = "<npc_typing_end>id:$npcUuid"
+        val mm = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage()
+        val component = mm.deserialize(endMessage)
+
+        val npcLocation = npc.entity?.location ?: return
+        for (p in Bukkit.getOnlinePlayers()) {
+            val inRange = p.world == npcLocation.world &&
+                p.location.distance(npcLocation) <= plugin.config.radiantRadius
+            val shouldSee = (p.hasPermission("story.conversation.hearglobal") &&
+                !plugin.playerManager.disabledHearing.contains(p.uniqueId)) || inRange
+            if (shouldSee) {
+                p.sendMessage(component)
             }
         }
     }

@@ -3,8 +3,6 @@ package com.canefe.story.npc.service
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.data.NPCContext
-import com.canefe.story.util.PluginUtils
-import eu.decentsoftware.holograms.api.DHAPI
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import java.util.*
@@ -12,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.compareTo
 import kotlin.text.compareTo
 import kotlin.times
-import kotlin.toString
 import kotlin.unaryMinus
 
 /**
@@ -86,16 +83,6 @@ class TypingSessionManager(
         typingSpeed: Int = 2,
         radius: Double = 30.0,
     ): TypingSession {
-        // clear hologram if it exists
-        try {
-            if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-                val npcUUID = npc.uniqueId.toString()
-                DHAPI.removeHologram(npcUUID)
-            }
-        } catch (e: Exception) {
-            plugin.logger.warning("Error clearing existing hologram: ${e.message}")
-        }
-
         val location =
             if (plugin.disguiseManager.isNPCBeingImpersonated(npc)) {
                 plugin.disguiseManager.getDisguisedPlayer(npc)?.location
@@ -142,22 +129,6 @@ class TypingSessionManager(
     fun stopTyping(npcId: UUID) {
         val session = activeSessions.remove(npcId) ?: return
 
-        // Clean up the hologram (wait 3 seconds before removing)
-        Bukkit.getScheduler().runTaskLater(
-            plugin,
-            Runnable {
-                try {
-                    if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-                        val npcUUID = session.npc.uniqueId.toString()
-                        DHAPI.removeHologram(npcUUID)
-                    }
-                } catch (e: Exception) {
-                    plugin.logger.warning("Error removing NPC typing hologram: ${e.message}")
-                }
-            },
-            60L,
-        )
-
         // If no more sessions, stop the ticker
         if (activeSessions.isEmpty()) {
             stopTicker()
@@ -168,18 +139,6 @@ class TypingSessionManager(
      * Cleans up all resources - call this when plugin disables
      */
     fun shutdown() {
-        // Clean up all holograms
-        activeSessions.values.forEach { session ->
-            try {
-                if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-                    val npcUUID = session.npc.uniqueId.toString()
-                    DHAPI.removeHologram(npcUUID)
-                }
-            } catch (e: Exception) {
-                plugin.logger.warning("Error removing NPC typing hologram during shutdown: ${e.message}")
-            }
-        }
-
         stopTicker()
         activeSessions.clear()
     }

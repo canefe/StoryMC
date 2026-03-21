@@ -3,7 +3,6 @@ package com.canefe.story.npc.behavior
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.CitizensStoryNPC
-import com.canefe.story.util.PluginUtils
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
@@ -299,155 +298,11 @@ class NPCBehaviorManager(
     }
 
     private fun showIdleHologram(npc: StoryNPC) {
-        // if in conversation, do not show idle hologram
-        plugin.conversationManager.getConversation(npc)?.let { conversation ->
-            if (conversation.lastSpeakingNPC == npc) {
-                return
-            }
-        }
-
-        val idleActions =
-            listOf(
-                "&7&osighs",
-                "&7&oshuffles feet",
-                "&7&oglances around",
-                "&7&oblinks slowly",
-                "&7&oyawns",
-                "&7&oclears throat",
-                "&7&omumbles",
-                "&7&oscratches head",
-                "&7&omutters",
-                "&7&obreathes deeply",
-                "&7&ogroans quietly",
-                "&7&ofidgets",
-                "&7&osniffs",
-                "&7&ostretches neck",
-                "&7&otilts head",
-                "&7&onarrows eyes",
-                "&7&onods slowly",
-            )
-
-        val randomAction = idleActions[Random.nextInt(idleActions.size)]
-        val npcUUID = npc.uniqueId.toString()
-        val hologramName = npcUUID
-
-        // Use your existing hologram system to show the action
-        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-            try {
-                val npcPos =
-                    (npc.entity?.location ?: return)
-                        .clone()
-                        .add(0.0, 2.10, 0.0)
-
-                // Check if the hologram already exists and remove it first
-                val existingHologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .getHologram(hologramName)
-                if (existingHologram != null) {
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .removeHologram(hologramName)
-                }
-
-                // Create new hologram
-                val hologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .createHologram(hologramName, npcPos)
-                eu.decentsoftware.holograms.api.DHAPI
-                    .addHologramLine(hologram, 0, randomAction)
-
-                // Remove after a short delay
-                Bukkit.getScheduler().runTaskLater(
-                    plugin,
-                    Runnable {
-                        try {
-                            eu.decentsoftware.holograms.api.DHAPI
-                                .removeHologram(hologramName)
-                        } catch (e: Exception) {
-                            // Hologram might already be removed, just ignore
-                        }
-                    },
-                    40L,
-                ) // 2 seconds
-
-                // Track when we last showed an idle hologram
-                npcIdleHologramTimes[npc.id] = System.currentTimeMillis()
-            } catch (e: Exception) {
-                plugin.logger.warning("Error showing idle hologram: ${e.message}")
-            }
-        }
+        // Idle holograms removed — now handled by client-side action text
     }
 
     private fun showIdleHologram(player: Player) {
-        // if in conversation, do not show idle hologram
-        val impersonatedNPC = plugin.disguiseManager.getImitatedNPC(player)
-
-        if (impersonatedNPC != null && plugin.conversationManager.isInConversation(impersonatedNPC)) {
-            return
-        }
-
-        val idleActions =
-            listOf(
-                "&7&osighs",
-                "&7&oshuffles feet",
-                "&7&oglances around",
-                "&7&oblinks slowly",
-                "&7&oyawns",
-                "&7&oclears throat",
-                "&7&omumbles",
-                "&7&oscratches head",
-                "&7&omutters",
-                "&7&obreathes deeply",
-                "&7&ogroans quietly",
-                "&7&ofidgets",
-                "&7&osniffs",
-                "&7&ostretches neck",
-                "&7&otilts head",
-                "&7&onarrows eyes",
-                "&7&onods slowly",
-            )
-
-        val randomAction = idleActions[Random.nextInt(idleActions.size)]
-
-        val hologramName = player.uniqueId.toString()
-
-        if (PluginUtils.isPluginEnabled("DecentHolograms")) {
-            try {
-                val playerPos =
-                    player.location
-                        .clone()
-                        .add(0.0, 2.10, 0.0)
-
-                val existingHologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .getHologram(hologramName)
-                if (existingHologram != null) {
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .removeHologram(hologramName)
-                }
-
-                val hologram =
-                    eu.decentsoftware.holograms.api.DHAPI
-                        .createHologram(hologramName, playerPos)
-                eu.decentsoftware.holograms.api.DHAPI
-                    .addHologramLine(hologram, 0, randomAction)
-
-                Bukkit.getScheduler().runTaskLater(
-                    plugin,
-                    Runnable {
-                        try {
-                            eu.decentsoftware.holograms.api.DHAPI
-                                .removeHologram(hologramName)
-                        } catch (e: Exception) {
-                            // Hologram might already be removed, just ignore
-                        }
-                    },
-                    40L,
-                ) // 2 seconds
-            } catch (e: Exception) {
-                e.printStackTrace()
-                plugin.logger.warning("Error showing idle hologram: ${e.message}")
-            }
-        }
+        // Idle holograms removed — now handled by client-side action text
     }
 
     private fun updateIdleHolograms(

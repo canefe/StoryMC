@@ -9,8 +9,11 @@ class ConversationRepository {
     private val nextConversationId = AtomicInteger(1)
     val lockedConversations: MutableList<Int> = mutableListOf()
 
+    @Synchronized
     fun addConversation(conversation: Conversation): Int {
-        val newId = nextConversationId.getAndIncrement()
+        val usedIds = activeConversations.map { it.id }.toSet()
+        var newId = 1
+        while (newId in usedIds) newId++
         conversation.id = newId
         activeConversations.add(conversation)
         return newId
