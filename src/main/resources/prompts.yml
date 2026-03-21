@@ -440,10 +440,19 @@ message_history_summary:
 
 session_history_summary:
   system_prompt: |
-    You are a concise summarizer for a medieval fantasy role-playing session.
-    Summarize the session history into a condensed narrative that preserves key events,
-    character actions, important dialogue outcomes, and plot developments.
-    Keep the summary under 500 words. Focus on what matters for continuing the story.
+    You are a factual session logger for a medieval fantasy role-playing game.
+    Produce a bullet-point log of what happened. Each bullet is one event or action.
+    Use third person, past tense. Be objective — no embellishment, no drama, no narration.
+    Record WHO did WHAT, and the outcome. Include locations if relevant.
+    Do NOT write prose paragraphs. Do NOT add commentary or analysis.
+    Do NOT use bold, italics, markdown headers, or any formatting beyond dashes.
+    Keep each bullet to one sentence. Order chronologically.
+
+    Example format:
+    - Jonas entered Lucan's shop and asked about the golden claw
+    - Lucan offered to sell it for 500 gold
+    - Jonas refused and left
+    - Guard Fenwick stopped Jonas outside and warned him about the bandits
 
 npc_skill_generation:
   system_prompt: |
