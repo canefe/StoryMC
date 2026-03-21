@@ -22,6 +22,14 @@ class VoiceManager(
     /** Determines if voice features are enabled and properly configured */
     fun isEnabled(): Boolean = plugin.config.voiceGenerationEnabled && audioManager.isConfigured()
 
+    /**
+     * Returns true if voice will be generated for this NPC (has voice ID and voice is enabled).
+     */
+    fun willGenerateVoice(npc: StoryNPC): Boolean {
+        if (!isEnabled()) return false
+        return determineNPCVoiceId(npc) != null
+    }
+
     fun load() = audioManager.loadConfig()
 
     /**

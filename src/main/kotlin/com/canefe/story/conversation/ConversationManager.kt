@@ -1008,12 +1008,14 @@ class ConversationManager private constructor(
         // Add to history and broadcast
         conversation.addNPCMessage(npc, message)
         val npcContext = npcContextGenerator.getOrCreateContextForNPC(npcName)
+        val voiceWillFollow = plugin.voiceManager.willGenerateVoice(npc)
 
         // Send streaming message first (triggers bubble on client)
         plugin.npcMessageService.broadcastNPCStreamMessage(
             message = message,
             npc = npc,
             npcContext = npcContext,
+            voicePending = voiceWillFollow,
         )
         // Send the final non-streaming message after a short delay
         // so the client has time to render the bubble before receiving the final message

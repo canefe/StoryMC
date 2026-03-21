@@ -52,6 +52,7 @@ class NPCMessageService(
         isClientPlayer: Boolean = false,
         formatColor: String? = "<white>",
         formatColorSuffix: String? = "</white>",
+        voicePending: Boolean = false,
     ): List<Component> {
         val mm = MiniMessage.miniMessage()
         val maxLineWidth = plugin.config.maxLineWidth // Use configurable value from config
@@ -144,10 +145,11 @@ class NPCMessageService(
         }
 
         if (characterId != null) {
+            val voiceFlag = if (voicePending) " voice:1" else ""
             return listOf(
                 MiniMessage
                     .miniMessage()
-                    .deserialize("<npc_typing>color:$nameColor id:$characterId:$stringBuilder"),
+                    .deserialize("<npc_typing>color:${nameColor}$voiceFlag id:$characterId:$stringBuilder"),
             )
         }
 
@@ -161,6 +163,7 @@ class NPCMessageService(
         npcContext: NPCContext? = null,
         streaming: Boolean = false,
         shouldBroadcast: Boolean = true,
+        voicePending: Boolean = false,
     ) {
         // First check if we already have the gender cached
         val cachedGender = genderCache[npc.name]
@@ -192,6 +195,7 @@ class NPCMessageService(
                 color = color,
                 avatar = context?.avatar,
                 characterId = if (streaming && npc.entity != null) npc.entity!!.uniqueId else null,
+                voicePending = voicePending,
             )
 
         Bukkit.getScheduler().runTask(
@@ -324,6 +328,7 @@ class NPCMessageService(
         npc: StoryNPC,
         color: String? = null,
         npcContext: NPCContext? = null,
+        voicePending: Boolean = false,
     ) {
         broadcastNPCMessage(
             message = message,
@@ -331,6 +336,7 @@ class NPCMessageService(
             color = color,
             npcContext = npcContext,
             streaming = true,
+            voicePending = voicePending,
         )
     }
 
