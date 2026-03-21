@@ -677,8 +677,18 @@ class ConversationManager private constructor(
         conversation.addPlayerMessage(player, message)
         handleHolograms(conversation, player.name)
 
-        // Generate physical reactions from NPCs
+        // Publish player message through event bus
         val playerName = EssentialsUtils.getNickname(player.name)
+        plugin.eventBus.emit(
+            com.canefe.story.bridge.PlayerMessageEvent(
+                playerName = playerName,
+                message = message,
+                npcName = conversation.npcNames.firstOrNull(),
+                conversationId = conversation.id,
+            ),
+        )
+
+        // Generate physical reactions from NPCs
         generateNPCReactions(conversation, playerName, message)
 
         // Analyze and update conversation themes
@@ -923,6 +933,102 @@ class ConversationManager private constructor(
     fun isInConversation(player: Player): Boolean = repository.getConversationByPlayer(player) != null
 
     fun isInConversation(npc: StoryNPC): Boolean = repository.getConversationByNPC(npc) != null
+
+    /**
+     * Makes an NPC speak a message in the context of a conversation.
+     * Finds or creates a conversation with nearby entities, adds the message to history,
+     * and broadcasts it. This is the externalised logic from the /g command.
+     *
+     * @param npc The NPC to speak
+     * @param message The final message to say (no LLM paraphrasing)
+     */
+    fun speakAsNPC(
+        npc: StoryNPC,
+        message: String,
+    ) {
+        if (!npc.isSpawned || npc.entity == null) return
+
+        val npcName = npc.name
+        val chatRadius = plugin.config.chatRadius
+
+        // Find or create conversation
+        val conversation =
+            getConversation(npcName) ?: run {
+                val nearbyNPCs = plugin.npcUtils.getNearbyNPCs(npc, chatRadius) + listOf(npc)
+                var players = plugin.npcUtils.getNearbyPlayers(npc, chatRadius)
+                players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
+
+                // Check for existing conversations among nearby entities
+                val existingConversation =
+                    nearbyNPCs.firstNotNullOfOrNull { getConversation(it.name) }
+
+                val playerConversation =
+                    players
+                        .flatMap { player ->
+                            getAllActiveConversations()
+                                .filter { conv -> conv.players.contains(player.uniqueId) }
+                        }.firstOrNull()
+
+                if (existingConversation != null) {
+                    if (!existingConversation.hasNPC(npc)) {
+                        existingConversation.addNPC(npc)
+                    }
+                    players.forEach { p ->
+                        if (!existingConversation.hasPlayer(p)) {
+                            existingConversation.addPlayer(p)
+                        }
+                    }
+                    return@run existingConversation
+                } else if (playerConversation != null) {
+                    if (!playerConversation.hasNPC(npc)) {
+                        playerConversation.addNPC(npc)
+                    }
+                    return@run playerConversation
+                }
+
+                // No existing conversation — create new one
+                if (players.isEmpty() && nearbyNPCs.size <= 1) {
+                    // No one around — just broadcast without conversation
+                    plugin.npcMessageService.broadcastNPCStreamMessage(message = message, npc = npc)
+                    Bukkit.getScheduler().runTaskLater(
+                        plugin,
+                        Runnable {
+                            plugin.npcMessageService.broadcastNPCMessage(message = message, npc = npc)
+                        },
+                        1L,
+                    )
+                    return
+                }
+
+                val newConv = startConversation(nearbyNPCs).join()
+                players.forEach { p -> newConv.addPlayer(p) }
+                newConv
+            }
+
+        // Add to history and broadcast
+        conversation.addNPCMessage(npc, message)
+        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npcName)
+
+        // Send streaming message first (triggers bubble on client)
+        plugin.npcMessageService.broadcastNPCStreamMessage(
+            message = message,
+            npc = npc,
+            npcContext = npcContext,
+        )
+        // Send the final non-streaming message after a short delay
+        // so the client has time to render the bubble before receiving the final message
+        Bukkit.getScheduler().runTaskLater(
+            plugin,
+            Runnable {
+                plugin.npcMessageService.broadcastNPCMessage(
+                    message = message,
+                    npc = npc,
+                    npcContext = npcContext,
+                )
+            },
+            1L, // 1 tick delay
+        )
+    }
 
     /**
      * Gets the entity representing an NPC, accounting for disguised players

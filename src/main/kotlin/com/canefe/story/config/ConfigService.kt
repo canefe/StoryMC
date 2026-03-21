@@ -17,6 +17,10 @@ class ConfigService(
     var mongoMaxPoolSize: Int = 10
     var mongoConnectTimeoutMs: Int = 10000
 
+    // Bridge settings — WebSocket connection to external orchestrator
+    var bridgeEnabled: Boolean = false
+    var bridgeUri: String = "ws://localhost:8080/story"
+
     // OpenAI API settings
     var openAIUrl: String = ""
     var openAIKey: String = ""
@@ -148,6 +152,10 @@ class ConfigService(
             plugin.sessionManager.load()
             plugin.voiceManager.load()
             plugin.npcNameManager.reloadNameBanks()
+
+            // Reconnect event bus transports (Redis)
+            plugin.eventBus.shutdown()
+            plugin.initializeEventBus()
         } catch (e: Exception) {
             plugin.logger.severe("Failed to reload configuration: ${e.message}")
         } finally {
@@ -157,6 +165,10 @@ class ConfigService(
 
     private fun loadConfigValues() {
         // Storage settings
+        // Bridge settings
+        bridgeEnabled = config.getBoolean("bridge.enabled", false)
+        bridgeUri = config.getString("bridge.uri", "ws://localhost:8080/story") ?: "ws://localhost:8080/story"
+
         storageBackend = config.getString("storage.backend", "sqlite") ?: "sqlite"
         mongoUri = config.getString("storage.mongodb.uri", "mongodb://localhost:27017") ?: "mongodb://localhost:27017"
         mongoDatabase = config.getString("storage.mongodb.database", "story") ?: "story"

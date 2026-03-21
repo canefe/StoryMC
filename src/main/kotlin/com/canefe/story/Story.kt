@@ -171,6 +171,11 @@ open class Story :
     lateinit var api: StoryAPI
         private set
 
+    // Central event bus for all Story events
+    val eventBus =
+        com.canefe.story.bridge
+            .StoryEventBus()
+
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
     var itemsAdderEnabled = false
@@ -226,6 +231,7 @@ open class Story :
         server.pluginManager.registerEvents(QuestListener(this), this)
         // initializeWebUIServer()
         // Load configuration
+        // reload() also initializes the event bus
         configService.reload()
         StoryAPI.initialize(this)
     }
@@ -419,6 +425,43 @@ open class Story :
         }
     }
 
+    fun initializeEventBus() {
+        // Always register Bukkit transport — bridges Bukkit events into the event bus
+        val bukkitTransport =
+            com.canefe.story.bridge
+                .BukkitTransport(this)
+        eventBus.registerTransport(bukkitTransport)
+
+        // Register WebSocket transport if enabled
+        if (configService.bridgeEnabled) {
+            val wsTransport =
+                com.canefe.story.bridge.WebSocketTransport(
+                    plugin = this,
+                    serverUri = configService.bridgeUri,
+                )
+            wsTransport.connect()
+            eventBus.registerTransport(wsTransport)
+        }
+
+        // Register intent handlers for inbound events from orchestrator
+        eventBus.on<com.canefe.story.bridge.NPCSpeakIntent> { intent ->
+            com.canefe.story.bridge.IntentExecutor
+                .executeSpeakIntent(this, intent)
+        }
+        eventBus.on<com.canefe.story.bridge.NPCMoveIntent> { intent ->
+            com.canefe.story.bridge.IntentExecutor
+                .executeMoveIntent(this, intent)
+        }
+        eventBus.on<com.canefe.story.bridge.NPCEmoteIntent> { intent ->
+            com.canefe.story.bridge.IntentExecutor
+                .executeEmoteIntent(this, intent)
+        }
+
+        logger.info(
+            "Event bus initialized with transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}",
+        )
+    }
+
     private fun initializeWebUIServer() {
         val port = 7777
         webUIServer = WebUIServer(this, port)
@@ -447,6 +490,7 @@ open class Story :
             if (::aiResponseService.isInitialized) aiResponseService.shutdown()
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
+            eventBus.shutdown()
 
             logger.info("Story plugin has been successfully disabled.")
         } catch (e: Exception) {

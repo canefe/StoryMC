@@ -1,5 +1,10 @@
 # Story Configuration File
 
+# Bridge — WebSocket connection to external orchestrator (Go service, etc.)
+bridge:
+  enabled: false
+  uri: 'ws://localhost:8080/story'
+
 # Storage Backend Configuration
 # backend: 'sqlite' (default, recommended), 'mongodb', or 'yaml' (deprecated, buggy)
 storage:
