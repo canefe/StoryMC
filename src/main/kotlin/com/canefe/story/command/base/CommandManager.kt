@@ -125,6 +125,8 @@ class CommandManager(
 
                     val successMessage = plugin.miniMessage.deserialize("<green>NPC '$npc' is now talking.</green>")
                     sender.sendMessage(successMessage)
+                    // Reset auto mode timer (debounce)
+                    plugin.conversationManager.resetAutoTimer(conversation)
                     // Generate NPC responses
                     plugin.conversationManager.generateResponses(conversation, npc)
                 },

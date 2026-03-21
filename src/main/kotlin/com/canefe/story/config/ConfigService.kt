@@ -51,6 +51,8 @@ class ConfigService(
         false // Whether to enable dialogue path selection for DMs
     var delayedPlayerMessageProcessing: Boolean =
         false // Whether to delay player message processing like /g command
+    var autoModeEnabledByDefault: Boolean = true // Whether auto mode is enabled for new conversations
+    var autoModeInterval: Int = 15 // Seconds between auto-generated responses
     var summarizationThreshold: Int =
         5 // Summarize conversation history every N messages
 

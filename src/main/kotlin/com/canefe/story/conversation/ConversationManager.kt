@@ -34,6 +34,9 @@ class ConversationManager private constructor(
     // Map to store debounce timers for each conversation
     private val responseTimers = mutableMapOf<Int, Int>()
 
+    // Map to store auto mode timers for each conversation
+    private val autoTimers = mutableMapOf<Int, Int>()
+
     private val endingConversations = Collections.synchronizedSet(mutableSetOf<Int>())
     private val summarizingConversations = Collections.synchronizedSet(mutableSetOf<Int>())
 
@@ -65,6 +68,11 @@ class ConversationManager private constructor(
         // If chat is not enabled, allow manual conversation
         if (!plugin.config.chatEnabled) {
             conversation.chatEnabled = false
+        }
+
+        // Enable auto mode if configured
+        if (plugin.config.autoModeEnabledByDefault) {
+            startAutoMode(conversation)
         }
 
         // Add to repository
@@ -121,6 +129,11 @@ class ConversationManager private constructor(
             conversation.chatEnabled = false
         }
 
+        // Enable auto mode if configured
+        if (plugin.config.autoModeEnabledByDefault) {
+            startAutoMode(conversation)
+        }
+
         // Add to repository
         repository.addConversation(conversation)
 
@@ -152,6 +165,11 @@ class ConversationManager private constructor(
         // If chat is not enabled, allow manual conversation
         if (!plugin.config.chatEnabled) {
             conversation.chatEnabled = false
+        }
+
+        // Enable auto mode if configured
+        if (plugin.config.autoModeEnabledByDefault) {
+            startAutoMode(conversation)
         }
 
         // Add to repository
@@ -231,6 +249,8 @@ class ConversationManager private constructor(
 
         // Mark this conversation as being ended
         endingConversations.add(conversation.id)
+        conversation.active = false
+        conversation.autoMode = false
 
         val future = CompletableFuture<Void>()
 
@@ -240,6 +260,9 @@ class ConversationManager private constructor(
             Bukkit.getScheduler().cancelTask(taskId)
             scheduledTasks.remove(conversation)
         }
+
+        // Cancel auto mode timer if running
+        cancelAutoTimer(conversation)
 
         // If we are streaming, remove dialogue boxes by sending a secret message to client players
         // "<npc_typing_end>id:npc_uuid"
@@ -707,6 +730,9 @@ class ConversationManager private constructor(
 
         // Store the new timer
         responseTimers[conversation.id] = taskId
+
+        // Reset auto mode timer (debounce)
+        resetAutoTimer(conversation)
     }
 
     // * Remove NPC from a conversation
@@ -1250,6 +1276,81 @@ class ConversationManager private constructor(
         responseTimers.clear()
     }
 
+    /**
+     * Starts auto mode for a conversation — generates responses every autoModeInterval seconds.
+     * Resets the timer if already running.
+     */
+    fun startAutoMode(conversation: Conversation) {
+        conversation.autoMode = true
+        scheduleAutoTimer(conversation)
+    }
+
+    /**
+     * Stops auto mode for a conversation.
+     */
+    fun stopAutoMode(conversation: Conversation) {
+        conversation.autoMode = false
+        cancelAutoTimer(conversation)
+    }
+
+    /**
+     * Toggles auto mode for a conversation.
+     */
+    fun toggleAutoMode(conversation: Conversation) {
+        if (conversation.autoMode) {
+            stopAutoMode(conversation)
+        } else {
+            startAutoMode(conversation)
+        }
+    }
+
+    /**
+     * Resets the auto mode timer for a conversation (debounce).
+     * Called when a player message, /maketalk, or /conv continue triggers.
+     */
+    fun resetAutoTimer(conversation: Conversation) {
+        if (!conversation.autoMode) return
+        cancelAutoTimer(conversation)
+        scheduleAutoTimer(conversation)
+    }
+
+    private fun scheduleAutoTimer(conversation: Conversation) {
+        cancelAutoTimer(conversation)
+        if (!conversation.active || !conversation.autoMode) return
+        val intervalTicks = plugin.config.autoModeInterval.toLong() * 20L
+        val taskId = Bukkit.getScheduler().runTaskLater(
+            plugin,
+            Runnable {
+                if (!conversation.active || !conversation.autoMode) return@Runnable
+                if (repository.getConversationById(conversation.id) == null) return@Runnable
+                autoTimers.remove(conversation.id)
+                generateResponses(conversation).thenRun {
+                    // Schedule the next auto response after this one completes
+                    if (conversation.active && conversation.autoMode) {
+                        Bukkit.getScheduler().runTask(plugin, Runnable {
+                            scheduleAutoTimer(conversation)
+                        })
+                    }
+                }
+            },
+            intervalTicks,
+        ).taskId
+        autoTimers[conversation.id] = taskId
+    }
+
+    private fun cancelAutoTimer(conversation: Conversation) {
+        autoTimers.remove(conversation.id)?.let { taskId ->
+            Bukkit.getScheduler().cancelTask(taskId)
+        }
+    }
+
+    private fun cancelAllAutoTimers() {
+        for (taskId in autoTimers.values) {
+            Bukkit.getScheduler().cancelTask(taskId)
+        }
+        autoTimers.clear()
+    }
+
     // Update the existing cancelScheduledTasks method to also cancel response timers
     fun cancelScheduledTasks() {
         for (taskId in scheduledTasks.values) {
@@ -1259,6 +1360,7 @@ class ConversationManager private constructor(
 
         // Also cancel any pending response timers
         cancelResponseTimers()
+        cancelAllAutoTimers()
     }
 
     fun startRadiantConversation(npcs: ArrayList<StoryNPC>): CompletableFuture<Conversation> {

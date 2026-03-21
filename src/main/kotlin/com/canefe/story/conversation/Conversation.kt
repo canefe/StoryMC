@@ -24,6 +24,7 @@ class Conversation(
     // Public properties
     var active: Boolean = true
     var chatEnabled: Boolean = true
+    var autoMode: Boolean = false
     var radiant: Boolean = false
     val mutedNPCs: MutableList<StoryNPC> = ArrayList()
 
