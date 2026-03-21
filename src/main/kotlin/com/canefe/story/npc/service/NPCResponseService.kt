@@ -408,8 +408,17 @@ class NPCResponseService(
         // Create a list of Messages for the AI to analyze
         val speakerSelectionPrompt: MutableList<ConversationMessage> = ArrayList()
 
-        // Get recent conversation history (last 10 messages)
-        val recentHistory: List<ConversationMessage> = conversation.history
+        // Get recent conversation history (last 10 messages), excluding reaction-only messages
+        // Reactions are action-only messages like "NpcName: *nods thoughtfully*"
+        val recentHistory: List<ConversationMessage> =
+            conversation.history.filter { msg ->
+                if (msg.role == "system" || msg.content == "...") return@filter true
+                // Extract the content after "Name: " prefix
+                val content = msg.content.substringAfter(": ", msg.content).trim()
+                // Keep messages that have non-action text (not purely *action*)
+                val withoutActions = content.replace(Regex("\\*[^*]+\\*"), "").trim()
+                withoutActions.isNotEmpty()
+            }
         val historySize = min(recentHistory.size.toDouble(), 10.0).toInt()
         val contextMessages =
             recentHistory.subList(
