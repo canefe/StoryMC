@@ -51,6 +51,7 @@ class ConfigService(
         false // Whether to enable dialogue path selection for DMs
     var delayedPlayerMessageProcessing: Boolean =
         false // Whether to delay player message processing like /g command
+    var npcReactionsEnabled: Boolean = true // Whether NPCs physically react to messages
     var autoModeEnabledByDefault: Boolean = true // Whether auto mode is enabled for new conversations
     var autoModeInterval: Int = 15 // Seconds between auto-generated responses
     var summarizationThreshold: Int =
@@ -183,6 +184,9 @@ class ConfigService(
         radiantCooldown = config.getInt("conversation.radiantCooldown", 30) // 30 seconds per NPC
         chatRadius = config.getDouble("conversation.chatRadius", 5.0)
         responseDelay = config.getDouble("conversation.responseDelay", 2.0)
+        npcReactionsEnabled = config.getBoolean("conversation.npcReactionsEnabled", true)
+        autoModeEnabledByDefault = config.getBoolean("conversation.autoModeEnabledByDefault", true)
+        autoModeInterval = config.getInt("conversation.autoModeInterval", 15)
         mythicMobsEnabled =
             config.getBoolean(
                 "conversation.mythicMobsEnabled",
@@ -304,6 +308,9 @@ class ConfigService(
         config.set("conversation.radiantCooldown", radiantCooldown)
         config.set("conversation.chatRadius", chatRadius)
         config.set("conversation.responseDelay", responseDelay)
+        config.set("conversation.npcReactionsEnabled", npcReactionsEnabled)
+        config.set("conversation.autoModeEnabledByDefault", autoModeEnabledByDefault)
+        config.set("conversation.autoModeInterval", autoModeInterval)
         config.set("conversation.mythicMobsEnabled", mythicMobsEnabled)
         config.set("conversation.streamMessages", streamMessages)
         config.set("conversation.behavioralDirectivesEnabled", behavioralDirectivesEnabled)

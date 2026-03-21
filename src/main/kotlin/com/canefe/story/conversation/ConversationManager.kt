@@ -676,6 +676,10 @@ class ConversationManager private constructor(
         conversation.addPlayerMessage(player, message)
         handleHolograms(conversation, player.name)
 
+        // Generate physical reactions from NPCs
+        val playerName = EssentialsUtils.getNickname(player.name)
+        generateNPCReactions(conversation, playerName, message)
+
         // Analyze and update conversation themes
         plugin.themeAgent.analyzeAndUpdateThemes(conversation)
 
@@ -1012,6 +1016,100 @@ class ConversationManager private constructor(
             }
     }
 
+    /**
+     * Generates physical reactions for non-speaking NPCs in the conversation.
+     * Each NPC that isn't the speaker gets a short action like *listens carefully*.
+     */
+    fun generateNPCReactions(
+        conversation: Conversation,
+        speakerName: String,
+        message: String,
+    ): CompletableFuture<Unit> {
+        if (!plugin.config.npcReactionsEnabled) return CompletableFuture.completedFuture(Unit)
+
+        val reactingNPCs =
+            conversation.npcs.filter {
+                it.name != speakerName && !conversation.mutedNPCs.contains(it)
+            }
+        if (reactingNPCs.isEmpty()) return CompletableFuture.completedFuture(Unit)
+
+        // Build NPC context summaries
+        val npcDescriptions =
+            reactingNPCs.joinToString("\n") { npc ->
+                val context = npcContextGenerator.getOrCreateContextForNPC(npc)
+                val role = context?.role ?: "unknown"
+                val personality = context?.context?.take(150) ?: "no details"
+                "- ${npc.name} ($role): $personality"
+            }
+
+        // Get recent conversation history for context
+        val recentHistory =
+            conversation.history
+                .filter { it.role != "system" && it.content != "..." }
+                .takeLast(6)
+                .joinToString("\n") { it.content }
+
+        val systemPrompt = plugin.promptService.getNpcReactionsPrompt()
+        val prompts =
+            mutableListOf(
+                ConversationMessage("system", systemPrompt),
+                ConversationMessage(
+                    "user",
+                    """NPCs in conversation:
+$npcDescriptions
+
+Recent conversation:
+$recentHistory
+
+The following was just said:
+"$speakerName: $message"
+
+Generate brief physical reactions for each NPC listed above.""",
+                ),
+            )
+
+        val result = CompletableFuture<Unit>()
+        plugin
+            .getAIResponse(prompts, lowCost = true)
+            .thenAccept { response ->
+                if (response.isNullOrBlank()) {
+                    result.complete(Unit)
+                    return@thenAccept
+                }
+
+                // Parse reactions - each line should be "NPCName: *action*"
+                for (line in response.lines()) {
+                    val trimmed = line.trim()
+                    if (trimmed.isEmpty()) continue
+
+                    val colonIndex = trimmed.indexOf(':')
+                    if (colonIndex == -1) continue
+
+                    val npcName = trimmed.substring(0, colonIndex).trim()
+                    val reaction = trimmed.substring(colonIndex + 1).trim()
+
+                    val npc = reactingNPCs.find { it.name.equals(npcName, ignoreCase = true) } ?: continue
+
+                    // Add reaction to conversation history so next speaker selection sees it
+                    conversation.addNPCMessage(npc, reaction)
+
+                    // Broadcast the reaction via npcMessageService
+                    Bukkit.getScheduler().runTask(
+                        plugin,
+                        Runnable {
+                            plugin.npcMessageService.broadcastNPCMessage(reaction, npc, streaming = true)
+                        },
+                    )
+                }
+                result.complete(Unit)
+            }.exceptionally { e ->
+                plugin.logger.warning("Error generating NPC reactions: ${e.message}")
+                result.complete(Unit)
+                null
+            }
+        return result
+    }
+
     // NPC conversation coordination
     fun generateResponses(
         conversation: Conversation,
@@ -1170,7 +1268,9 @@ class ConversationManager private constructor(
                                         )
                                     }
 
-                                    result.complete(Unit)
+                                    // Generate physical reactions from other NPCs, then complete
+                                    generateNPCReactions(conversation, npcEntity.name, npcResponse)
+                                        .thenRun { result.complete(Unit) }
                                 }.exceptionally { e ->
                                     plugin.logger.warning(
                                         "Error generating NPC response for ${npcEntity.name}: ${e.message}",
@@ -1318,23 +1418,29 @@ class ConversationManager private constructor(
         cancelAutoTimer(conversation)
         if (!conversation.active || !conversation.autoMode) return
         val intervalTicks = plugin.config.autoModeInterval.toLong() * 20L
-        val taskId = Bukkit.getScheduler().runTaskLater(
-            plugin,
-            Runnable {
-                if (!conversation.active || !conversation.autoMode) return@Runnable
-                if (repository.getConversationById(conversation.id) == null) return@Runnable
-                autoTimers.remove(conversation.id)
-                generateResponses(conversation).thenRun {
-                    // Schedule the next auto response after this one completes
-                    if (conversation.active && conversation.autoMode) {
-                        Bukkit.getScheduler().runTask(plugin, Runnable {
-                            scheduleAutoTimer(conversation)
-                        })
-                    }
-                }
-            },
-            intervalTicks,
-        ).taskId
+        val taskId =
+            Bukkit
+                .getScheduler()
+                .runTaskLater(
+                    plugin,
+                    Runnable {
+                        if (!conversation.active || !conversation.autoMode) return@Runnable
+                        if (repository.getConversationById(conversation.id) == null) return@Runnable
+                        autoTimers.remove(conversation.id)
+                        generateResponses(conversation).thenRun {
+                            // Schedule the next auto response after this one completes
+                            if (conversation.active && conversation.autoMode) {
+                                Bukkit.getScheduler().runTask(
+                                    plugin,
+                                    Runnable {
+                                        scheduleAutoTimer(conversation)
+                                    },
+                                )
+                            }
+                        }
+                    },
+                    intervalTicks,
+                ).taskId
         autoTimers[conversation.id] = taskId
     }
 

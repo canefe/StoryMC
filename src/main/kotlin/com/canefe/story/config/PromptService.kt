@@ -203,6 +203,9 @@ class PromptService(
         return getPrompt("talk_as_npc", variables)
     }
 
+    /** Gets the NPC reactions prompt */
+    fun getNpcReactionsPrompt(): String = getPrompt("npc_reactions")
+
     /** Gets the quest book generation prompt */
     fun getQuestBookPrompt(contextInformation: String): String {
         val variables = mapOf("context_information" to contextInformation)

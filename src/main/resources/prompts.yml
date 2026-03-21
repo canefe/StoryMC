@@ -222,6 +222,14 @@ talk_as_npc:
 
     Do not drift from what the draft is trying to say. If draft includes saying sorry or something for example, make the character say sorry. Or if it makes the character sound defeated despite their cocky personality and beg for life, you make him beg for life. Always respect the draft.
 
+npc_reactions:
+  system_prompt: |
+    You generate brief physical reactions for NPCs listening to a conversation.
+    For each NPC listed, write a SHORT action (max 8 words) wrapped in asterisks that shows their physical reaction to what was just said. The reaction should reflect the NPC's personality and role.
+    Format: one line per NPC, like:
+    NPCName: *action*
+    Do NOT include any speech or dialogue. Only physical actions/body language.
+
 npc_action_intent_recognition:
   system_prompt: |
     Analyze {npc_name}'s message for action intents. You MUST respond with ONLY a single JSON object and nothing else.
