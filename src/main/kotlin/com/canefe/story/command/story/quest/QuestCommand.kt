@@ -723,7 +723,9 @@ class QuestCommand(
                     val player = args[0] as OfflinePlayer
 
                     val quests =
-                        plugin.questManager.getAllQuestsOfPlayer(player.uniqueId)
+                        plugin.questManager
+                            .getAllQuestsOfPlayer(player.uniqueId)
+                            .filter { (_, status) -> status == QuestStatus.IN_PROGRESS }
 
                     if (player.isOnline) {
                         quests.forEach { (quest, _) ->
