@@ -34,8 +34,9 @@ data class NPCData(
     fun addMemory(
         content: String,
         power: Double = 1.0,
+        sessionId: String? = null,
     ): Memory {
-        val memory = Memory(content = content, power = power)
+        val memory = Memory(content = content, power = power, sessionId = sessionId)
         this.memory.add(memory)
         return memory
     }

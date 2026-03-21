@@ -124,8 +124,8 @@ class SQLiteNpcStorage(
         val memStmt =
             conn.prepareStatement(
                 """INSERT INTO npc_memories (npc_filename, memory_id, content, real_created_at,
-               game_created_at, power, last_accessed, significance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               game_created_at, power, last_accessed, significance, session_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
 
         for (memory in npcData.memory.filter { it.id.isNotBlank() }) {
@@ -137,6 +137,7 @@ class SQLiteNpcStorage(
             memStmt.setDouble(6, memory.power)
             memStmt.setLong(7, memory.lastAccessed)
             memStmt.setDouble(8, memory.significance)
+            memStmt.setString(9, memory.sessionId)
             memStmt.addBatch()
         }
 
@@ -197,6 +198,12 @@ class SQLiteNpcStorage(
                     power = rs.getDouble("power"),
                     lastAccessed = rs.getLong("last_accessed"),
                     _significance = rs.getDouble("significance"),
+                    sessionId =
+                        try {
+                            rs.getString("session_id")
+                        } catch (_: Exception) {
+                            null
+                        },
                 ),
             )
         }

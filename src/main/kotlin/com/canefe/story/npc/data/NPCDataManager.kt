@@ -101,11 +101,20 @@ class NPCDataManager(
         }
     }
 
+    /**
+     * Creates a memory for an NPC. Requires an active session — if no session
+     * is active, the memory is silently dropped to prevent non-canon mutations.
+     */
     fun createMemoryForNPC(
         npcName: String,
         content: String,
         significance: Double = 1.0,
     ) {
+        if (!plugin.sessionManager.hasActiveSession()) {
+            plugin.logger.info("Memory skipped for $npcName — no active session (content: ${content.take(60)}...)")
+            return
+        }
+
         val npcData = getNPCData(npcName) ?: return
 
         val memory =
@@ -115,10 +124,41 @@ class NPCDataManager(
                 lastAccessed = plugin.timeService.getCurrentGameTime(),
                 power = 1.0,
                 _significance = significance,
+                sessionId = plugin.sessionManager.getCurrentSessionId(),
             )
 
         npcData.memory.add(memory)
         saveNPCData(npcName, npcData)
+    }
+
+    /**
+     * Removes all memories tagged with the given session ID from an NPC.
+     * Returns the number of memories removed.
+     */
+    fun removeMemoriesBySession(
+        npcName: String,
+        sessionId: String,
+    ): Int {
+        val npcData = getNPCData(npcName) ?: return 0
+        val before = npcData.memory.size
+        npcData.memory.removeAll { it.sessionId == sessionId }
+        val removed = before - npcData.memory.size
+        if (removed > 0) {
+            saveNPCData(npcName, npcData)
+        }
+        return removed
+    }
+
+    /**
+     * Removes all memories tagged with the given session ID from ALL NPCs.
+     * Returns the total number of memories removed.
+     */
+    fun removeAllMemoriesBySession(sessionId: String): Int {
+        var total = 0
+        for (npcName in getAllNPCNames()) {
+            total += removeMemoriesBySession(npcName, sessionId)
+        }
+        return total
     }
 
     fun loadNPCMemory(npcName: String): MutableList<Memory> = npcStorage.loadNpcMemories(npcName)

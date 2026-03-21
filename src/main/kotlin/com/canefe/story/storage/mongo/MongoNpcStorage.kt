@@ -99,6 +99,7 @@ class MongoNpcStorage(
                     .append("power", memory.power)
                     .append("lastAccessed", memory.lastAccessed)
                     .append("significance", memory.significance)
+                    .apply { memory.sessionId?.let { append("sessionId", it) } }
             }
 
         return Document()
@@ -185,6 +186,7 @@ class MongoNpcStorage(
                     power = memDoc.getDouble("power") ?: 1.0,
                     lastAccessed = memDoc.getLong("lastAccessed") ?: 0L,
                     _significance = memDoc.getDouble("significance") ?: 1.0,
+                    sessionId = memDoc.getString("sessionId"),
                 ),
             )
         }

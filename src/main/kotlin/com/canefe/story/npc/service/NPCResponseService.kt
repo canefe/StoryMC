@@ -846,20 +846,13 @@ class NPCResponseService(
                 )
             }
 
-            val memory =
-                Memory(
-                    id =
-                        "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
-                    content = memoryContent,
-                    gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-                    lastAccessed = plugin.timeService.getCurrentGameTime(),
-                    power = 0.85,
-                    _significance = significance,
-                )
+            plugin.npcDataManager.createMemoryForNPC(npcName, memoryContent, significance)
 
-            npcDataForMemory.memory.add(memory)
-            plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
-            plugin.npcDataManager.saveNPCData(npcName, npcDataForMemory)
+            // Update relationships from the memory content
+            val savedMemories = plugin.npcDataManager.loadNPCMemory(npcName)
+            savedMemories.lastOrNull()?.let { memory ->
+                plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
+            }
 
             val endTime = System.currentTimeMillis()
             if (plugin.config.debugMessages) {

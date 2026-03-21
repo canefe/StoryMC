@@ -241,11 +241,8 @@ class WorldInformationManager(
                     else -> 0.6
                 }
 
-            // Create a new memory with appropriate power
-            npcData.addMemory(information, memoryPower)
-
-            // Save the updated NPC data
-            plugin.npcDataManager.saveNPCData(npcName, npcData)
+            // Create memory through the session-gated manager
+            plugin.npcDataManager.createMemoryForNPC(npcName, information)
 
             plugin.logger.info("Added memory to $npcName with power $memoryPower: $information")
         } catch (e: Exception) {

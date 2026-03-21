@@ -17,6 +17,7 @@ data class Memory(
     var power: Double = 1.0,
     var lastAccessed: Long = 0, // Store game time when accessed
     private var _significance: Double = 1.0, // How emotionally significant this memory is
+    var sessionId: String? = null, // Session that created this memory (null = pre-session or migrated)
 ) {
     // Property with custom getter and setter
     var significance: Double

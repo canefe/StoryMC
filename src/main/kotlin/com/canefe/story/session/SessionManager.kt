@@ -60,6 +60,12 @@ class SessionManager(
         plugin.logger.info("Started new session: $currentSessionId")
     }
 
+    /** Returns true if a session is currently active. */
+    fun hasActiveSession(): Boolean = current.get() != null
+
+    /** Returns the current session ID, or null if no session is active. */
+    fun getCurrentSessionId(): String? = currentSessionId
+
     /** Add a player name to the active session. */
     fun addPlayer(name: String) {
         current.get()?.players?.add(name)
