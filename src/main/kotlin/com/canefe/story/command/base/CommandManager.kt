@@ -36,6 +36,9 @@ class CommandManager(
 ) {
     private val commandExecutors = mutableMapOf<String, CommandExecutor>()
 
+    // Stores pending NPC resolve callbacks per player UUID
+    private val pendingNPCResolve = mutableMapOf<UUID, (StoryNPC) -> Unit>()
+
     /**
      * Called during plugin load to initialize CommandAPI
      */
@@ -186,54 +189,58 @@ class CommandManager(
         // npctalk
         CommandAPICommand("npctalk")
             .withPermission("storymaker.npc.talk")
-            .withArguments(IntegerArgument("npc_id"))
-            .withArguments(IntegerArgument("npc_id_target"))
-            .withArguments(GreedyStringArgument("message"))
-            .executesPlayer(
-                PlayerCommandExecutor { player: Player, args: CommandArguments ->
-                    val npcId = args["npc_id"] as Int
-                    val npcIdTarget = args["npc_id_target"] as Int
-                    val message = args["message"] as String
-                    val npc: StoryNPC? = CitizensAPI.getNPCRegistry().getById(npcId)?.let { CitizensStoryNPC(it) }
-                    val target: StoryNPC? =
+            .withArguments(
+                TextArgument("npc_name").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
                         CitizensAPI
                             .getNPCRegistry()
-                            .getById(
-                                npcIdTarget,
-                            )?.let { CitizensStoryNPC(it) }
-                    if (npc == null || target == null) {
-                        player.sendError("NPC not found.")
-                        return@PlayerCommandExecutor
-                    }
-                    plugin.npcManager.walkToNPC(npc, target, message)
-                },
-            ).register()
-
-        // npcply
-        CommandAPICommand("npcply")
-            .withPermission("storymaker.npc.talk")
-            .withArguments(IntegerArgument("npc_id"))
-            .withArguments(PlayerArgument("player"))
-            .withArguments(GreedyStringArgument("message"))
+                            .map { it.name }
+                            .distinct()
+                            .toTypedArray()
+                    },
+                ),
+            ).withArguments(
+                TextArgument("npc_name_target").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .map { it.name }
+                            .distinct()
+                            .toTypedArray()
+                    },
+                ),
+            ).withArguments(GreedyStringArgument("message"))
             .executesPlayer(
                 PlayerCommandExecutor { player: Player, args: CommandArguments ->
-                    val npcId = args["npc_id"] as Int
-                    val target = args["player"] as Player
+                    val npcName = args["npc_name"] as String
+                    val npcNameTarget = args["npc_name_target"] as String
                     val message = args["message"] as String
-                    val npc: StoryNPC? = CitizensAPI.getNPCRegistry().getById(npcId)?.let { CitizensStoryNPC(it) }
-                    if (npc == null) {
-                        player.sendError("NPC not found.")
-                        return@PlayerCommandExecutor
-                    }
-                    plugin.npcManager.eventGoToPlayerAndTalk(npc, target, message, null)
+                    val npc =
+                        resolveNPC(player, npcName) { resolvedNpc ->
+                            val target =
+                                resolveNPC(player, npcNameTarget) { resolvedTarget ->
+                                    generateAndWalkToNPC(resolvedNpc, resolvedTarget, message)
+                                } ?: return@resolveNPC
+                            generateAndWalkToNPC(resolvedNpc, target, message)
+                        } ?: return@PlayerCommandExecutor
+                    val target =
+                        resolveNPC(player, npcNameTarget) { resolvedTarget ->
+                            generateAndWalkToNPC(npc, resolvedTarget, message)
+                        } ?: return@PlayerCommandExecutor
+                    generateAndWalkToNPC(npc, target, message)
                 },
             ).register()
 
         // Command to generate memories for NPCs dynamically
         CommandAPICommand("npcmemory")
             .withPermission("storymaker.npc.memory")
-            .withArguments(TextArgument("npc"))
             .withArguments(
+                TextArgument("npc").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        plugin.npcDataManager.getAllNPCNames().toTypedArray()
+                    },
+                ),
+            ).withArguments(
                 StringArgument("type").replaceSuggestions { info, builder ->
                     val suggestions = listOf("event", "conversation", "observation", "experience")
                     suggestions.forEach { builder.suggest(it) }
@@ -490,8 +497,16 @@ class CommandManager(
         // locinitnpcs command - Multi-agent NPC population system
         CommandAPICommand("locinitnpcs")
             .withPermission("storymaker.npc.init")
-            .withArguments(TextArgument("location"))
-            .withArguments(TextArgument("context"))
+            .withArguments(
+                TextArgument("location").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        plugin.locationManager
+                            .getAllLocations()
+                            .map { it.name }
+                            .toTypedArray()
+                    },
+                ),
+            ).withArguments(TextArgument("context"))
             .withOptionalArguments(IntegerArgument("npc_count"))
             .withOptionalArguments(BooleanArgument("debug").setOptional(false))
             .executes(
@@ -826,6 +841,34 @@ class CommandManager(
                 },
             ).register()
 
+        // npcply
+        CommandAPICommand("npcply")
+            .withPermission("storymaker.npc.talk")
+            .withArguments(
+                TextArgument("npc_name").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .map { it.name }
+                            .distinct()
+                            .toTypedArray()
+                    },
+                ),
+            ).withArguments(PlayerArgument("player"))
+            .withArguments(GreedyStringArgument("message"))
+            .executesPlayer(
+                PlayerCommandExecutor { player: Player, args: CommandArguments ->
+                    val npcName = args["npc_name"] as String
+                    val target = args["player"] as Player
+                    val message = args["message"] as String
+                    val npc =
+                        resolveNPC(player, npcName) { resolvedNpc ->
+                            talkAsNPC(player, resolvedNpc.uniqueId, message)
+                        } ?: return@PlayerCommandExecutor
+                    talkAsNPC(player, npc.uniqueId, message)
+                },
+            ).register()
+
         // setcurnpc
         CommandAPICommand("setcurnpc")
             .withPermission("storymaker.chat.toggle")
@@ -909,6 +952,27 @@ class CommandManager(
                 },
             ).register()
 
+        // npcselect - internal command for NPC disambiguation
+        CommandAPICommand("npcselect")
+            .withPermission("storymaker.npc.talk")
+            .withArguments(IntegerArgument("npc_id"))
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val npcId = args["npc_id"] as Int
+                    val citizenNpc = CitizensAPI.getNPCRegistry().getById(npcId)
+                    if (citizenNpc == null) {
+                        player.sendError("NPC with ID $npcId not found.")
+                        return@PlayerCommandExecutor
+                    }
+                    val callback = pendingNPCResolve.remove(player.uniqueId)
+                    if (callback == null) {
+                        player.sendError("No pending NPC selection. Please re-run your command.")
+                        return@PlayerCommandExecutor
+                    }
+                    callback(CitizensStoryNPC(citizenNpc))
+                },
+            ).register()
+
         registerSafeStopCommand()
     }
 
@@ -942,6 +1006,83 @@ class CommandManager(
                     1
                 },
             ).register()
+    }
+
+    /**
+     * Generates an AI response for an NPC using the message as a prompt, then
+     * has the NPC walk to the target and deliver the generated response.
+     */
+    private fun generateAndWalkToNPC(
+        npc: StoryNPC,
+        target: StoryNPC,
+        prompt: String,
+    ) {
+        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
+        val responseContext = listOf(talkAsNpcPrompt)
+
+        plugin.npcResponseService.generateNPCResponse(npc, responseContext, false).thenAccept { response ->
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable {
+                    plugin.npcManager.walkToNPC(npc, target, response)
+                },
+            )
+        }
+    }
+
+    /**
+     * Resolves a Citizens NPC by name. If multiple NPCs share the same name,
+     * picks the closest spawned one within 15 blocks, or prompts the player to select one
+     * via /npcselect.
+     *
+     * @param onResolved callback to execute when the player selects an NPC from the disambiguation list.
+     *                   If null, falls back to /setcurnpc.
+     * Returns null if no NPC is found or if selection is needed.
+     */
+    private fun resolveNPC(
+        player: Player,
+        npcName: String,
+        onResolved: ((StoryNPC) -> Unit)? = null,
+    ): StoryNPC? {
+        val matches = CitizensAPI.getNPCRegistry().filter { it.name == npcName }
+        if (matches.isEmpty()) {
+            player.sendError("NPC '$npcName' not found.")
+            return null
+        }
+        if (matches.size == 1) {
+            return CitizensStoryNPC(matches.first())
+        }
+        // Multiple NPCs with the same name — find the closest spawned one
+        val spawned = matches.filter { it.isSpawned }
+        if (spawned.size == 1) {
+            return CitizensStoryNPC(spawned.first())
+        }
+        val closest =
+            spawned
+                .filter { it.storedLocation != null }
+                .minByOrNull { it.storedLocation.distance(player.location) }
+        if (closest != null && closest.storedLocation.distance(player.location) <= 15) {
+            return CitizensStoryNPC(closest)
+        }
+        // Store callback and prompt player to select via /npcselect
+        if (onResolved != null) {
+            pendingNPCResolve[player.uniqueId] = onResolved
+        }
+        player.sendError("Multiple NPCs named '$npcName' found. Please select one:")
+        for (npc in matches) {
+            val command = if (onResolved != null) "/npcselect ${npc.id}" else "/setcurnpc ${npc.name} ${npc.id}"
+            val clickableNpc =
+                CommandComponentUtils.createButton(
+                    plugin.miniMessage,
+                    "Select ${npc.name} (${npc.id})",
+                    "green",
+                    "run_command",
+                    command,
+                    "Select ${npc.name} (ID: ${npc.id})",
+                )
+            player.sendMessage(clickableNpc)
+        }
+        return null
     }
 
     /**
