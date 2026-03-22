@@ -93,8 +93,9 @@ class WebSocketTransport(
 
         try {
             socket.sendText(serialized, true)
-        } catch (_: Exception) {
-            // Connection lost, will reconnect
+            plugin.logger.info("WS published: ${event.eventType}")
+        } catch (e: Exception) {
+            plugin.logger.warning("WS send failed: ${e.message}")
         }
     }
 
@@ -173,7 +174,15 @@ class WebSocketTransport(
                 "player.message" -> json.decodeFromString<PlayerMessageEvent>(data)
                 "npc.damaged" -> json.decodeFromString<NPCDamagedEvent>(data)
                 "npc.interaction" -> json.decodeFromString<NPCInteractionEvent>(data)
-                else -> null
+                "character.stats_update" -> json.decodeFromString<CharacterStatsUpdate>(data)
+                // Pass through unknown event types as generic StoryEvents
+                // so listeners registered by eventType string (e.g. intelligence.response) still receive them
+                else ->
+                    object : StoryEvent {
+                        override val eventType: String = message.type
+
+                        override fun toWireData(): kotlinx.serialization.json.JsonObject = message.data
+                    }
             }
         } catch (e: Exception) {
             logger.warning("Failed to deserialize WebSocket event ${message.type}: ${e.message}")

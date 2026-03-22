@@ -102,3 +102,14 @@ data class NPCEmoteIntent(
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.emote"
 }
+
+/**
+ * Updates a character's perception radius. Sent by the sim when character stats change.
+ */
+@Serializable
+data class CharacterStatsUpdate(
+    val characterName: String,
+    val perceptionRadius: Double? = null,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "character.stats_update"
+}

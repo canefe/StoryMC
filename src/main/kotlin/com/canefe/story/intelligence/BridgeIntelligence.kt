@@ -32,7 +32,7 @@ class BridgeIntelligence(
     private val supportedMethods = ConcurrentHashMap.newKeySet<String>()
 
     companion object {
-        private const val TIMEOUT_SECONDS = 10L
+        private const val TIMEOUT_SECONDS = 60L
     }
 
     init {

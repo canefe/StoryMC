@@ -3,6 +3,7 @@ package com.canefe.story
 import com.canefe.story.api.StoryAPI
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
+import com.canefe.story.bridge.*
 import com.canefe.story.character.skill.SkillManager
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.command.story.quest.QuestCommandUtils
@@ -15,6 +16,9 @@ import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.conversation.theme.*
 import com.canefe.story.event.EventManager
 import com.canefe.story.information.WorldInformationManager
+import com.canefe.story.intelligence.BridgeIntelligence
+import com.canefe.story.intelligence.LocalIntelligence
+import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCContextGenerator
@@ -172,12 +176,15 @@ open class Story :
         private set
 
     // Central event bus for all Story events
-    val eventBus =
-        com.canefe.story.bridge
-            .StoryEventBus()
+    val eventBus = StoryEventBus()
+
+    // Perception — observes world events and emits them for nearby characters
+    lateinit var perceptionService: PerceptionService
+        private set
+    private var perceptionListener: PerceptionListener? = null
 
     // Intelligence — abstraction for all LLM/thinking operations
-    lateinit var intelligence: com.canefe.story.intelligence.StoryIntelligence
+    lateinit var intelligence: StoryIntelligence
         private set
 
     // Configuration and state
@@ -430,62 +437,47 @@ open class Story :
     }
 
     fun initializeEventBus() {
-        // Always register Bukkit transport — bridges Bukkit events into the event bus
-        val bukkitTransport =
-            com.canefe.story.bridge
-                .BukkitTransport(this)
-        eventBus.registerTransport(bukkitTransport)
+        // Always register Bukkit transport
+        eventBus.registerTransport(BukkitTransport(this))
 
         // Register WebSocket transport if enabled
         if (configService.bridgeEnabled) {
-            val wsTransport =
-                com.canefe.story.bridge.WebSocketTransport(
-                    plugin = this,
-                    serverUri = configService.bridgeUri,
-                )
+            val wsTransport = WebSocketTransport(plugin = this, serverUri = configService.bridgeUri)
             wsTransport.connect()
             eventBus.registerTransport(wsTransport)
         }
 
-        // Register intent handlers for inbound events from orchestrator
-        eventBus.on<com.canefe.story.bridge.NPCSpeakIntent> { intent ->
-            com.canefe.story.bridge.IntentExecutor
-                .executeSpeakIntent(this, intent)
-        }
-        eventBus.on<com.canefe.story.bridge.NPCMoveIntent> { intent ->
-            com.canefe.story.bridge.IntentExecutor
-                .executeMoveIntent(this, intent)
-        }
-        eventBus.on<com.canefe.story.bridge.NPCEmoteIntent> { intent ->
-            com.canefe.story.bridge.IntentExecutor
-                .executeEmoteIntent(this, intent)
-        }
+        // Register intent handlers
+        eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
+        eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
+        eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
 
         // Initialize intelligence provider
-        val local =
-            com.canefe.story.intelligence
-                .LocalIntelligence(this)
+        val local = LocalIntelligence(this)
         intelligence =
             if (configService.bridgeEnabled) {
-                val bridge =
-                    com.canefe.story.intelligence
-                        .BridgeIntelligence(this, local, eventBus)
-                // Request capabilities after a short delay to allow WebSocket to connect
-                Bukkit.getScheduler().runTaskLater(
-                    this,
-                    Runnable {
-                        bridge.requestCapabilities()
-                    },
-                    40L,
-                ) // 2 seconds
+                val bridge = BridgeIntelligence(this, local, eventBus)
+                Bukkit.getScheduler().runTaskLater(this, Runnable { bridge.requestCapabilities() }, 40L)
                 bridge
             } else {
                 local
             }
 
+        // Initialize perception (unregister old listener on reload)
+        perceptionListener?.let {
+            org.bukkit.event.HandlerList
+                .unregisterAll(it)
+        }
+        perceptionService = PerceptionService(this)
+        perceptionListener = PerceptionListener(this, perceptionService)
+        server.pluginManager.registerEvents(perceptionListener!!, this)
+
+        // Initialize character sync from sim
+        CharacterSyncService(this).register()
+
         logger.info(
-            "Event bus initialized with transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
-                ", intelligence: ${if (configService.bridgeEnabled) "Bridge (capability-gated, local fallback)" else "Local"}",
+            "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
+                ", intelligence: ${if (configService.bridgeEnabled) "Bridge" else "Local"}",
         )
     }
 
