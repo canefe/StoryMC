@@ -2,7 +2,10 @@ package com.canefe.story.event
 
 import com.canefe.story.Story
 import com.canefe.story.util.EssentialsUtils
+import net.citizensnpcs.api.CitizensAPI
 import net.kokoricraft.reviveme.events.PlayerDownedEvent
+import org.bukkit.entity.Entity
+import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 
@@ -12,20 +15,34 @@ class ReviveMeEventListener(
     @EventHandler
     fun onPlayerDowned(event: PlayerDownedEvent) {
         val player = event.player
-        val enemy =
-            event.enemy?.let {
-                EssentialsUtils.getNickname(it.name)
-            } ?: event.cause.name
+        val enemy = event.enemy?.let { getEntityName(it) } ?: event.cause.name
 
-        // Check if in conversation
         val conversation =
             plugin.conversationManager.getConversation(player)
                 ?: return
 
+        val playerName = getEntityName(player)
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} fell on the ground, downed by $enemy. They need to be revived.",
+            "$playerName fell on the ground, downed by $enemy. They need to be revived.",
         )
+    }
+
+    private fun getEntityName(entity: Entity): String {
+        try {
+            if (CitizensAPI.getNPCRegistry().isNPC(entity)) {
+                return CitizensAPI.getNPCRegistry().getNPC(entity).name
+            }
+        } catch (_: Exception) {
+        }
+
+        if (entity is Player) {
+            return try {
+                EssentialsUtils.getNickname(entity.name)
+            } catch (_: Exception) {
+                entity.name
+            }
+        }
+
+        return entity.name
     }
 }
