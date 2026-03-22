@@ -255,6 +255,11 @@ class WorldInformationManager(
         information: String,
         importance: String,
     ) {
+        if (!plugin.sessionManager.hasActiveSession()) {
+            plugin.logger.info("Location rumor skipped for $locationName — no active session")
+            return
+        }
+
         try {
             // Get the location from the location manager
             val location = plugin.locationManager.getLocation(locationName) ?: return
