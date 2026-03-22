@@ -196,7 +196,7 @@ class CommandManager(
                     ArgumentSuggestions.strings { _ ->
                         CitizensAPI
                             .getNPCRegistry()
-                            .map { it.name }
+                            .map { "\"${it.name}\"" }
                             .distinct()
                             .toTypedArray()
                     },
@@ -206,7 +206,7 @@ class CommandManager(
                     ArgumentSuggestions.strings { _ ->
                         CitizensAPI
                             .getNPCRegistry()
-                            .map { it.name }
+                            .map { "\"${it.name}\"" }
                             .distinct()
                             .toTypedArray()
                     },
@@ -214,8 +214,8 @@ class CommandManager(
             ).withArguments(GreedyStringArgument("message"))
             .executesPlayer(
                 PlayerCommandExecutor { player: Player, args: CommandArguments ->
-                    val npcName = args["npc_name"] as String
-                    val npcNameTarget = args["npc_name_target"] as String
+                    val npcName = (args["npc_name"] as String).replace("\"", "")
+                    val npcNameTarget = (args["npc_name_target"] as String).replace("\"", "")
                     val message = args["message"] as String
                     val npc =
                         resolveNPC(player, npcName) { resolvedNpc ->
@@ -239,7 +239,10 @@ class CommandManager(
             .withArguments(
                 TextArgument("npc").replaceSuggestions(
                     ArgumentSuggestions.strings { _ ->
-                        plugin.npcDataManager.getAllNPCNames().toTypedArray()
+                        plugin.npcDataManager
+                            .getAllNPCNames()
+                            .map { "\"$it\"" }
+                            .toTypedArray()
                     },
                 ),
             ).withArguments(
@@ -251,7 +254,7 @@ class CommandManager(
             ).withArguments(GreedyStringArgument("context"))
             .executes(
                 CommandExecutor { sender, args ->
-                    val npcName = args.get("npc") as String
+                    val npcName = (args.get("npc") as String).replace("\"", "")
                     val type = args.get("type") as String
                     val context = args.get("context") as String
 
@@ -320,13 +323,30 @@ class CommandManager(
         // npcinit
         CommandAPICommand("npcinit")
             .withPermission("storymaker.npc.init")
-            .withArguments(TextArgument("location"))
-            .withArguments(TextArgument("npc"))
-            .withOptionalArguments(GreedyStringArgument("prompt"))
+            .withArguments(
+                TextArgument("location").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        plugin.locationManager
+                            .getAllLocations()
+                            .map { "\"${it.name}\"" }
+                            .toTypedArray()
+                    },
+                ),
+            ).withArguments(
+                TextArgument("npc").replaceSuggestions(
+                    ArgumentSuggestions.strings { _ ->
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .map { "\"${it.name}\"" }
+                            .distinct()
+                            .toTypedArray()
+                    },
+                ),
+            ).withOptionalArguments(GreedyStringArgument("prompt"))
             .executes(
                 CommandExecutor { sender, args: CommandArguments ->
-                    val npcName = args["npc"] as String
-                    val location = args["location"] as String
+                    val npcName = (args["npc"] as String).replace("\"", "")
+                    val location = (args["location"] as String).replace("\"", "")
                     val prompt = args.getOrDefault("prompt", "") as String
 
                     val npcContext =
@@ -504,7 +524,7 @@ class CommandManager(
                     ArgumentSuggestions.strings { _ ->
                         plugin.locationManager
                             .getAllLocations()
-                            .map { it.name }
+                            .map { "\"${it.name}\"" }
                             .toTypedArray()
                     },
                 ),
@@ -513,7 +533,7 @@ class CommandManager(
             .withOptionalArguments(BooleanArgument("debug").setOptional(false))
             .executes(
                 CommandExecutor { sender, args ->
-                    val location = args.get("location") as String
+                    val location = (args.get("location") as String).replace("\"", "")
                     val context = args.get("context") as String
                     val npcCount = args.getOptional("npc_count").orElse(5) as Int
                     val debug = args.getOptional("debug").orElse(false) as Boolean
@@ -851,7 +871,7 @@ class CommandManager(
                     ArgumentSuggestions.strings { _ ->
                         CitizensAPI
                             .getNPCRegistry()
-                            .map { it.name }
+                            .map { "\"${it.name}\"" }
                             .distinct()
                             .toTypedArray()
                     },
@@ -860,7 +880,7 @@ class CommandManager(
             .withArguments(GreedyStringArgument("message"))
             .executesPlayer(
                 PlayerCommandExecutor { player: Player, args: CommandArguments ->
-                    val npcName = args["npc_name"] as String
+                    val npcName = (args["npc_name"] as String).replace("\"", "")
                     val target = args["player"] as Player
                     val message = args["message"] as String
                     val npc =
