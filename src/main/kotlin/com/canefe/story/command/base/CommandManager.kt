@@ -768,60 +768,13 @@ class CommandManager(
                 }
             }
 
-            // Use PromptService to get the talk as NPC prompt
+            // Use PromptService to get the talk as NPC prompt, then generate via intelligence
             val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npcName, message)
-            responseContext = responseContext + talkAsNpcPrompt
+            conversation.addSystemMessage(talkAsNpcPrompt)
 
-            plugin.npcResponseService.generateNPCResponse(resolvedNpc, responseContext, false).thenApply { response ->
-
+            plugin.intelligence.generateNPCResponse(resolvedNpc, conversation).thenApply { response ->
                 conversation.addNPCMessage(resolvedNpc, response)
-
-                if (!shouldStream) {
-                    plugin.npcMessageService.broadcastNPCMessage(
-                        message = response,
-                        npc = resolvedNpc,
-                        npcContext = npcContext,
-                    )
-                    return@thenApply
-                }
-
-                val typingSpeed = 4
-
-                // First, start the typing animation
-                plugin.typingSessionManager.startTyping(
-                    npc = resolvedNpc,
-                    fullText = response,
-                    typingSpeed = typingSpeed,
-                    radius = plugin.config.chatRadius,
-                    npcContext = npcContext,
-                    messageFormat = "<npc_typing><npc_text>",
-                )
-
-                // Then use streamMessage instead of regular broadcast
-                plugin.npcMessageService.broadcastNPCStreamMessage(
-                    message = response,
-                    npc = resolvedNpc,
-                    npcContext = npcContext,
-                )
-
-                // Finally, after typing completes, send the regular message
-                val delay = (response.length / (typingSpeed * 10) + 1).toLong()
-                Bukkit.getScheduler().runTaskLater(
-                    plugin,
-                    Runnable {
-                        // Clean up holograms
-                        plugin.conversationManager.cleanupHolograms(conversation)
-                        plugin.typingSessionManager.stopTyping(resolvedNpc.uniqueId)
-
-                        // Send the final message
-                        plugin.npcMessageService.broadcastNPCMessage(
-                            message = response,
-                            npc = resolvedNpc,
-                            npcContext = npcContext,
-                        )
-                    },
-                    delay * 20, // Convert to ticks (20 ticks = 1 second)
-                )
+                plugin.conversationManager.speakAsNPC(resolvedNpc, response, addToHistory = false)
             }
         }
 
@@ -1039,16 +992,30 @@ class CommandManager(
         target: StoryNPC,
         prompt: String,
     ) {
-        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
-        val responseContext = listOf(talkAsNpcPrompt)
-
-        plugin.npcResponseService.generateNPCResponse(npc, responseContext, false).thenAccept { response ->
-            Bukkit.getScheduler().runTask(
-                plugin,
-                Runnable {
-                    plugin.npcManager.walkToNPC(npc, target, response)
-                },
-            )
+        // Get or create conversation for context
+        val conversation = plugin.conversationManager.getConversation(npc)
+        if (conversation != null) {
+            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
+            conversation.addSystemMessage(talkAsNpcPrompt)
+            plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+                Bukkit.getScheduler().runTask(
+                    plugin,
+                    Runnable {
+                        plugin.npcManager.walkToNPC(npc, target, response)
+                    },
+                )
+            }
+        } else {
+            // No conversation — fall back to direct generation
+            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
+            plugin.npcResponseService.generateNPCResponse(npc, listOf(talkAsNpcPrompt), false).thenAccept { response ->
+                Bukkit.getScheduler().runTask(
+                    plugin,
+                    Runnable {
+                        plugin.npcManager.walkToNPC(npc, target, response)
+                    },
+                )
+            }
         }
     }
 

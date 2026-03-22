@@ -317,11 +317,9 @@ class NPCManager private constructor(
                         plugin.conversationManager.startConversation(npcs).thenAccept { conversation ->
                             // Add the first message to the conversation
                             conversation.addNPCMessage(initiator, firstMessage)
-                            // Get A list of string only from conversation.history
-                            val history = conversation.history.map { it.content }
-                            plugin.npcResponseService.generateNPCResponse(target, history).thenAccept { response ->
-                                // Add the response to the conversation
+                            plugin.intelligence.generateNPCResponse(target, conversation).thenAccept { response ->
                                 conversation.addNPCMessage(target, response)
+                                plugin.conversationManager.speakAsNPC(target, response, addToHistory = false)
                             }
                         }
                     }

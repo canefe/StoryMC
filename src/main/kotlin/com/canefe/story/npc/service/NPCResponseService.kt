@@ -256,7 +256,7 @@ class NPCResponseService(
         }
 
         return plugin.getAIResponse(prompts, lowCost = !rich).thenApply { response ->
-            val finalResponse = response?.trim() ?: ""
+            val finalResponse = cleanNPCResponse(response?.trim() ?: "")
 
             // Fail the future if response is empty or null
             if (finalResponse.isEmpty()) {
@@ -1017,5 +1017,52 @@ class NPCResponseService(
             response?.trim()?.takeIf { it.isNotEmpty() }
                 ?: "Generated_NPC_${System.currentTimeMillis()}"
         }
+    }
+
+    /**
+     * Strips meta-commentary, author notes, and analysis that LLMs sometimes
+     * append after the actual in-character response.
+     */
+    private fun cleanNPCResponse(response: String): String {
+        if (response.isEmpty()) return response
+
+        var cleaned = response
+
+        // Strip meta-commentary: find where actual response ends
+        val lines = cleaned.lines()
+        val cutIndex =
+            lines.indexOfFirst { line ->
+                val trimmed = line.trim()
+                trimmed.matches(Regex("^\\d+\\.\\s.*")) ||
+                    trimmed.startsWith("Numerous elements") ||
+                    trimmed.startsWith("Key elements") ||
+                    trimmed.startsWith("This response") ||
+                    trimmed.startsWith("Note:") ||
+                    trimmed.startsWith("Author") ||
+                    trimmed.startsWith("Analysis") ||
+                    trimmed.startsWith("Explanation") ||
+                    trimmed.startsWith("Here's") ||
+                    trimmed.startsWith("I incorporated") ||
+                    trimmed.startsWith("The response") ||
+                    trimmed.startsWith("Several elements") ||
+                    trimmed.startsWith("Elements used") ||
+                    trimmed.startsWith("Character traits") ||
+                    trimmed.matches(Regex("^\\[.*].*"))
+            }
+        if (cutIndex > 0) {
+            cleaned = lines.take(cutIndex).joinToString("\n").trim()
+        }
+
+        // Strip multiple dialogue lines: keep only the first *action* dialogue block
+        // Multiple blocks look like: "*action1* dialogue1\n*action2* dialogue2"
+        val actionPattern = Regex("\\*[^*]+\\*")
+        val matches = actionPattern.findAll(cleaned).toList()
+        if (matches.size > 1) {
+            // Find where the second action block starts and cut there
+            val secondActionStart = matches[1].range.first
+            cleaned = cleaned.substring(0, secondActionStart).trim()
+        }
+
+        return cleaned
     }
 }

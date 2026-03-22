@@ -946,6 +946,7 @@ class ConversationManager private constructor(
     fun speakAsNPC(
         npc: StoryNPC,
         message: String,
+        addToHistory: Boolean = true,
     ) {
         if (!npc.isSpawned || npc.entity == null) return
 
@@ -1007,7 +1008,7 @@ class ConversationManager private constructor(
             }
 
         // Add to history and broadcast
-        conversation.addNPCMessage(npc, message)
+        if (addToHistory) conversation.addNPCMessage(npc, message)
         val npcContext = npcContextGenerator.getOrCreateContextForNPC(npcName)
         val voiceWillFollow = plugin.voiceManager.willGenerateVoice(npc)
 
@@ -1181,67 +1182,13 @@ class ConversationManager private constructor(
             }
         if (reactingNPCs.isEmpty()) return CompletableFuture.completedFuture(Unit)
 
-        // Build NPC context summaries
-        val npcDescriptions =
-            reactingNPCs.joinToString("\n") { npc ->
-                val context = npcContextGenerator.getOrCreateContextForNPC(npc)
-                val role = context?.role ?: "unknown"
-                val personality = context?.context?.take(150) ?: "no details"
-                "- ${npc.name} ($role): $personality"
-            }
-
-        // Get recent conversation history for context
-        val recentHistory =
-            conversation.history
-                .filter { it.role != "system" && it.content != "..." }
-                .takeLast(6)
-                .joinToString("\n") { it.content }
-
-        val systemPrompt = plugin.promptService.getNpcReactionsPrompt()
-        val prompts =
-            mutableListOf(
-                ConversationMessage("system", systemPrompt),
-                ConversationMessage(
-                    "user",
-                    """NPCs in conversation:
-$npcDescriptions
-
-Recent conversation:
-$recentHistory
-
-The following was just said:
-"$speakerName: $message"
-
-Generate brief physical reactions for each NPC listed above.""",
-                ),
-            )
-
         val result = CompletableFuture<Unit>()
-        plugin
-            .getAIResponse(prompts, lowCost = true)
-            .thenAccept { response ->
-                if (response.isNullOrBlank()) {
-                    result.complete(Unit)
-                    return@thenAccept
-                }
-
-                // Parse reactions - each line should be "NPCName: *action*"
-                for (line in response.lines()) {
-                    val trimmed = line.trim()
-                    if (trimmed.isEmpty()) continue
-
-                    val colonIndex = trimmed.indexOf(':')
-                    if (colonIndex == -1) continue
-
-                    val npcName = trimmed.substring(0, colonIndex).trim()
-                    val reaction = trimmed.substring(colonIndex + 1).trim()
-
+        plugin.intelligence
+            .generateNPCReactions(conversation, speakerName, message)
+            .thenAccept { reactions ->
+                for ((npcName, reaction) in reactions) {
                     val npc = reactingNPCs.find { it.name.equals(npcName, ignoreCase = true) } ?: continue
-
-                    // Add reaction to conversation history so next speaker selection sees it
                     conversation.addNPCMessage(npc, reaction)
-
-                    // Broadcast the reaction via npcMessageService
                     Bukkit.getScheduler().runTask(
                         plugin,
                         Runnable {
@@ -1263,12 +1210,12 @@ Generate brief physical reactions for each NPC listed above.""",
         conversation: Conversation,
         forceSpeaker: String? = null,
     ): CompletableFuture<Unit> {
-        // Determine the next speaker
+        val intelligence = plugin.intelligence
         val speakerFuture =
             if (forceSpeaker != null) {
                 CompletableFuture.completedFuture(forceSpeaker)
             } else {
-                npcResponseService.determineNextSpeaker(conversation)
+                intelligence.selectNextSpeaker(conversation)
             }
 
         // Generate the response for the next speaker, handle holograms, and cleanup
@@ -1285,210 +1232,44 @@ Generate brief physical reactions for each NPC listed above.""",
                     // Show holograms for the NPCs
                     handleHolograms(conversation, nextSpeaker)
 
-                    // First generate behavioral directive to guide the response (if enabled)
-                    val directiveFuture =
-                        if (plugin.config.behavioralDirectivesEnabled) {
-                            npcResponseService.generateBehavioralDirective(conversation, npcEntity)
-                        } else {
-                            CompletableFuture.completedFuture("") // Return empty directive
-                        }
+                    // Generate response via intelligence provider
+                    intelligence
+                        .generateNPCResponse(npcEntity, conversation)
+                        .thenAccept { npcResponse ->
+                            conversation.addNPCMessage(npcEntity, npcResponse)
+                            checkAndSummarizeHistory(conversation)
+                            cleanupHolograms(conversation)
 
-                    directiveFuture
-                        .thenAccept { directive ->
-                            // Add the directive as a system message to guide the response (only if not empty)
-                            if (directive.isNotEmpty()) {
-                                conversation.addSystemMessage(directive)
-                            }
+                            // Broadcast without adding to history again
+                            speakAsNPC(npcEntity, npcResponse, addToHistory = false)
 
-                            // Get only the messages from the conversation for context
-                            val recentMessages =
-                                conversation.history
-                                    .map { it.content }
-
-                            // Prepare response context with limited messages
-                            var responseContext =
-                                mutableListOf(
-                                    "\n===APPEARANCES===\n" +
-                                        conversation.npcs.joinToString("\n") { npc ->
-                                            val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc)
-                                            "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
-                                        } +
-                                        // We treat players as NPCs for this purpose
-                                        conversation.players?.joinToString("\n") { playerId ->
-                                            val player = Bukkit.getPlayer(playerId)
-                                            if (player == null) {
-                                                // skip this player
-                                                return@joinToString ""
-                                            }
-                                            val playerName = player.name
-                                            val nickname = EssentialsUtils.getNickname(playerName)
-                                            val playerContext =
-                                                npcContextGenerator.getOrCreateContextForNPC(nickname)
-                                            "$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
-                                        } +
-                                        "\n=========================",
-                                    "====CURRENT CONVERSATION====\n" +
-                                        recentMessages.joinToString("\n") +
-                                        "\n=========================\n" +
-                                        "This is an active conversation and you are talking to multiple characters: ${
-                                            conversation.players?.joinToString(
-                                                ", ",
-                                            ) {
-                                                Bukkit.getPlayer(it)?.name?.let { name ->
-                                                    EssentialsUtils.getNickname(
-                                                        name,
-                                                    )
-                                                } ?: ""
-                                            }
-                                        }. " +
-                                        // remove nextSpeaker from the list
-                                        conversation.npcNames
-                                            .filter { it != nextSpeaker }
-                                            .joinToString("\n") +
-                                        ". Respond in character as $nextSpeaker. Message starts now:",
+                            // Analyze for action intents
+                            val targetPlayer = conversation.players.firstOrNull()?.let { Bukkit.getPlayer(it) }
+                            if (targetPlayer != null) {
+                                val lastTwoMessages =
+                                    conversation.history
+                                        .filter { it.role != "system" && it.content != "..." }
+                                        .takeLast(2)
+                                        .map { it.content }
+                                plugin.npcActionIntentRecognizer.recognizeQuestGivingIntent(
+                                    npcEntity,
+                                    lastTwoMessages,
+                                    targetPlayer,
                                 )
-
-                            // Add relationship context with clear section header
-                            val relationships = plugin.relationshipManager.getAllRelationships(npcEntity.name)
-                            if (relationships.isNotEmpty()) {
-                                val relationshipContext =
-                                    plugin.relationshipManager.buildRelationshipContext(
-                                        npcEntity.name,
-                                        relationships,
-                                        conversation,
-                                    )
-                                if (relationshipContext.isNotEmpty()) {
-                                    responseContext.addFirst("===RELATIONSHIPS===\n$relationshipContext")
-                                }
+                                plugin.npcActionIntentRecognizer.recognizeActionIntents(
+                                    npcEntity,
+                                    lastTwoMessages,
+                                    targetPlayer,
+                                )
                             }
 
-                            val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(nextSpeaker)
-                            val shouldStream = plugin.config.streamMessages
-                            val response =
-                                if (shouldStream) {
-                                    npcResponseService.generateNPCResponseWithTypingEffect(
-                                        npcEntity,
-                                        npcContext,
-                                        responseContext,
-                                    )
-                                } else {
-                                    npcResponseService.generateNPCResponse(
-                                        npcEntity,
-                                        responseContext,
-                                    )
-                                }
-
-                            response
-                                .thenAccept { npcResponse ->
-                                    // Add the NPC's response to the conversation history
-                                    conversation.addNPCMessage(npcEntity, npcResponse)
-
-                                    // Check if message history needs summarization
-                                    checkAndSummarizeHistory(conversation)
-
-                                    // Hologram cleanup
-                                    cleanupHolograms(conversation)
-
-                                    // Get the current player in conversation with this NPC, if any
-                                    val targetPlayer =
-                                        conversation.players?.firstOrNull()?.let {
-                                            Bukkit.getPlayer(it)
-                                        }
-
-                                    // take last two user + assistant message
-                                    val lastTwoMessages =
-                                        conversation.history
-                                            .filter { it.role != "system" && it.content != "..." }
-                                            .takeLast(2)
-                                            .map { it.content }
-
-                                    // Analyze response for action intents asynchronously
-                                    if (targetPlayer != null) {
-                                        plugin.npcActionIntentRecognizer.recognizeQuestGivingIntent(
-                                            npcEntity,
-                                            lastTwoMessages,
-                                            targetPlayer,
-                                        )
-                                        plugin.npcActionIntentRecognizer.recognizeActionIntents(
-                                            npcEntity,
-                                            lastTwoMessages,
-                                            targetPlayer,
-                                        )
-                                    }
-
-                                    // Generate physical reactions from other NPCs, then complete
-                                    generateNPCReactions(conversation, npcEntity.name, npcResponse)
-                                        .thenRun { result.complete(Unit) }
-                                }.exceptionally { e ->
-                                    plugin.logger.warning(
-                                        "Error generating NPC response for ${npcEntity.name}: ${e.message}",
-                                    )
-
-                                    // Still cleanup holograms
-                                    cleanupHolograms(conversation)
-
-                                    // Complete successfully without adding any message
-                                    result.complete(Unit)
-                                    null
-                                }
+                            // Generate reactions, then complete
+                            generateNPCReactions(conversation, npcEntity.name, npcResponse)
+                                .thenRun { result.complete(Unit) }
                         }.exceptionally { e ->
-                            plugin.logger.warning("Error generating behavioral directive: ${e.message}")
-
-                            // Continue without directive if it fails - use the same code but without the directive
-                            // Get only the last 4 messages from the conversation for context
-                            val recentMessages =
-                                conversation.history
-                                    .filterNot { it.role == "system" }
-                                    .takeLast(4)
-                                    .map { it.content }
-                            val npcContext = npcContextGenerator.getOrCreateContextForNPC(nextSpeaker)
-                            val responseContext =
-                                listOf(
-                                    "====CURRENT CONVERSATION====\n" +
-                                        recentMessages.joinToString("\n") +
-                                        "\n=========================\n" +
-                                        "Respond in character as $nextSpeaker. This is an active conversation and" +
-                                        " you are talking to ${
-                                            conversation.players?.joinToString(
-                                                ", ",
-                                            ) {
-                                                Bukkit.getPlayer(it)?.name?.let { name ->
-                                                    EssentialsUtils.getNickname(
-                                                        name,
-                                                    )
-                                                } ?: ""
-                                            }
-                                        }. " +
-                                        conversation.npcNames.joinToString("\n") +
-                                        "\n=========================",
-                                )
-
-                            // Continue with normal response generation
-                            val shouldStream = plugin.config.streamMessages
-                            val response =
-                                if (shouldStream) {
-                                    npcResponseService.generateNPCResponseWithTypingEffect(
-                                        npcEntity,
-                                        npcContext = npcContext,
-                                        responseContext,
-                                    )
-                                } else {
-                                    npcResponseService.generateNPCResponse(npcEntity, responseContext)
-                                }
-
-                            response
-                                .thenAccept { npcResponse ->
-                                    // Rest of processing code
-                                    conversation.addNPCMessage(npcEntity, npcResponse)
-                                    checkAndSummarizeHistory(conversation)
-                                    cleanupHolograms(conversation)
-                                    // Process action intents...
-                                    result.complete(Unit)
-                                }.exceptionally { responseError ->
-                                    result.completeExceptionally(responseError)
-                                    null
-                                }
-
+                            plugin.logger.warning("Error generating NPC response for ${npcEntity.name}: ${e.message}")
+                            cleanupHolograms(conversation)
+                            result.complete(Unit)
                             null
                         }
                 } else {
@@ -1689,16 +1470,26 @@ Generate brief physical reactions for each NPC listed above.""",
                 {
                     // Add NPC to conversation
                     conversation.addNPC(npc)
-
-                    // Send greeting message if provided
-                    if (message.isNotEmpty()) {
-                        conversation.addNPCMessage(npc, message)
-                    }
+                    plugin.npcBehaviorManager.setNPCInConversation(npc, true)
 
                     // Notify players in the conversation
                     conversation.players.forEach { playerId ->
                         val player = Bukkit.getPlayer(playerId)
                         player?.sendInfo("<gold>${npc.name}</gold> has joined the conversation.")
+                    }
+
+                    // If a greeting message is provided, paraphrase it through intelligence
+                    if (message.isNotEmpty()) {
+                        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, message)
+                        conversation.addSystemMessage(talkAsNpcPrompt)
+                        plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+                            Bukkit.getScheduler().runTask(
+                                plugin,
+                                Runnable {
+                                    speakAsNPC(npc, response)
+                                },
+                            )
+                        }
                     }
                 },
                 // On failure

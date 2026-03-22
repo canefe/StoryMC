@@ -176,6 +176,10 @@ open class Story :
         com.canefe.story.bridge
             .StoryEventBus()
 
+    // Intelligence — abstraction for all LLM/thinking operations
+    lateinit var intelligence: com.canefe.story.intelligence.StoryIntelligence
+        private set
+
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
     var itemsAdderEnabled = false
@@ -457,8 +461,31 @@ open class Story :
                 .executeEmoteIntent(this, intent)
         }
 
+        // Initialize intelligence provider
+        val local =
+            com.canefe.story.intelligence
+                .LocalIntelligence(this)
+        intelligence =
+            if (configService.bridgeEnabled) {
+                val bridge =
+                    com.canefe.story.intelligence
+                        .BridgeIntelligence(this, local, eventBus)
+                // Request capabilities after a short delay to allow WebSocket to connect
+                Bukkit.getScheduler().runTaskLater(
+                    this,
+                    Runnable {
+                        bridge.requestCapabilities()
+                    },
+                    40L,
+                ) // 2 seconds
+                bridge
+            } else {
+                local
+            }
+
         logger.info(
-            "Event bus initialized with transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}",
+            "Event bus initialized with transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
+                ", intelligence: ${if (configService.bridgeEnabled) "Bridge (capability-gated, local fallback)" else "Local"}",
         )
     }
 
