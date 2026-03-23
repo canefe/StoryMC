@@ -7,8 +7,9 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Manages NPC barks (short speech lines) with cooldowns
  */
-class BarkService private constructor(
+class BarkService(
     private val plugin: Story,
+    private val dutyLibrary: DutyLibrary,
 ) {
     // Track last bark time per NPC per pool
     private val lastBarkTimes = ConcurrentHashMap<String, Long>() // "npcId:poolName" -> timestamp
@@ -25,7 +26,6 @@ class BarkService private constructor(
         val now = System.currentTimeMillis()
 
         // Get bark pool from location
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
         val barkPool = dutyLibrary.getBarkPool(location, poolName)
 
         if (barkPool == null || barkPool.messages.isEmpty()) {
@@ -69,7 +69,6 @@ class BarkService private constructor(
         val now = System.currentTimeMillis()
 
         // Get bark pool from location
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
         val barkPool = dutyLibrary.getBarkPool(location, poolName)
 
         if (barkPool == null || barkPool.messages.isEmpty()) {
@@ -113,16 +112,5 @@ class BarkService private constructor(
      */
     fun clearAllCooldowns() {
         lastBarkTimes.clear()
-    }
-
-    companion object {
-        private var instance: BarkService? = null
-
-        fun getInstance(plugin: Story): BarkService {
-            if (instance == null) {
-                instance = BarkService(plugin)
-            }
-            return instance!!
-        }
     }
 }

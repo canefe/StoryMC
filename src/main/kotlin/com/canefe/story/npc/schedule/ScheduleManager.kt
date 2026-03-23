@@ -3,6 +3,10 @@ package com.canefe.story.npc.schedule
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.duty.BarkService
+import com.canefe.story.npc.duty.DutyLibrary
+import com.canefe.story.npc.duty.DutyLoopRunner
+import com.canefe.story.npc.util.NPCUtils
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
@@ -12,7 +16,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
-class ScheduleManager private constructor(
+class ScheduleManager(
     private val plugin: Story,
 ) {
     val schedules = ConcurrentHashMap<String, NPCSchedule>()
@@ -22,7 +26,10 @@ class ScheduleManager private constructor(
 
     val occupancyTracker = OccupancyTracker(plugin)
     val movementService = MovementService(plugin)
-    val scheduleExecutor = ScheduleExecutor(plugin, movementService, occupancyTracker)
+    val dutyLibrary = DutyLibrary(plugin)
+    val barkService = BarkService(plugin, dutyLibrary)
+    val dutyLoopRunner = DutyLoopRunner(plugin, barkService, dutyLibrary)
+    val scheduleExecutor = ScheduleExecutor(plugin, movementService, occupancyTracker, dutyLoopRunner, dutyLibrary)
     val randomPathingService =
         RandomPathingService(
             plugin,
@@ -189,7 +196,7 @@ class ScheduleManager private constructor(
         val nearbyNPCs = mutableSetOf<StoryNPC>()
         val checkRadius = plugin.config.rangeBeforeTeleport * 2.0
         for (player in plugin.server.onlinePlayers) {
-            nearbyNPCs.addAll(plugin.npcUtils.getNearbyNPCs(player, checkRadius))
+            nearbyNPCs.addAll(NPCUtils.getNearbyNPCs(player, checkRadius))
         }
         return nearbyNPCs.toList()
     }
@@ -246,12 +253,5 @@ class ScheduleManager private constructor(
         scheduleTask = null
         randomPathingService.clearAllCooldowns()
         scheduleExecutor.clearAllDialogueCooldowns()
-    }
-
-    companion object {
-        private var instance: ScheduleManager? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): ScheduleManager = instance ?: ScheduleManager(plugin).also { instance = it }
     }
 }

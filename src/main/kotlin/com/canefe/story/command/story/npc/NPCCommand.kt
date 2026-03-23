@@ -5,6 +5,7 @@ import com.canefe.story.api.StoryNPC
 import com.canefe.story.command.story.npc.schedule.ScheduleCommand
 import com.canefe.story.command.story.npc.schedule.ScheduleCommandUtils
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -20,7 +21,6 @@ class NPCCommand(
     private val plugin: Story,
 ) {
     private val commandUtils = ScheduleCommandUtils()
-    private val npcUtils = plugin.npcUtils
 
     fun getCommand(): CommandAPICommand =
         CommandAPICommand("npc")
@@ -66,7 +66,7 @@ class NPCCommand(
                     var npcEntity: StoryNPC? = null
 
                     if (sender is Player) {
-                        val nearbyNPCs = npcUtils.getNearbyNPCs(sender, 10.0)
+                        val nearbyNPCs = NPCUtils.getNearbyNPCs(sender, 10.0)
                         npcEntity = nearbyNPCs.find { it.name == npcName }
                     }
                     if (npcEntity == null) {
@@ -136,7 +136,7 @@ class NPCCommand(
                     var npcEntity: StoryNPC? = null
 
                     if (sender is Player) {
-                        val nearbyNPCs = npcUtils.getNearbyNPCs(sender, 10.0)
+                        val nearbyNPCs = NPCUtils.getNearbyNPCs(sender, 10.0)
                         npcEntity = nearbyNPCs.find { it.name == npcName }
                     }
                     if (npcEntity == null) {

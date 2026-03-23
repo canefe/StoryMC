@@ -8,6 +8,7 @@ import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
 import net.kyori.adventure.text.Component
@@ -57,7 +58,7 @@ class NPCMessageService(
         val mm = MiniMessage.miniMessage()
         val maxLineWidth = plugin.config.maxLineWidth // Use configurable value from config
         val padding = "             " // Space padding to align text with the image
-        val nameColor = color ?: plugin.npcUtils.randomColor(name)
+        val nameColor = color ?: NPCUtils.randomColor(name)
         // Split response into lines to handle multi-line input
         val lines = message.split("\\n+".toRegex())
         val parsedMessages = ArrayList<Component>()
@@ -714,7 +715,7 @@ class NPCMessageService(
         val radius = plugin.config.radiantRadius
         val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
-        plugin.npcUtils
+        NPCUtils
             .getNearbyNPCs(npc, radius)
             .filter { it.uniqueId != npc.uniqueId }
             .forEach { nearby ->
@@ -734,7 +735,7 @@ class NPCMessageService(
                 )
             }
 
-        plugin.npcUtils.getNearbyPlayers(npc, radius).forEach { p ->
+        NPCUtils.getNearbyPlayers(npc, radius).forEach { p ->
             result.add(
                 PlayerCharacter(
                     player = p,
@@ -753,7 +754,7 @@ class NPCMessageService(
         val radius = plugin.config.radiantRadius
         val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
-        plugin.npcUtils.getNearbyNPCs(player, radius).forEach { nearby ->
+        NPCUtils.getNearbyNPCs(player, radius).forEach { nearby ->
             val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
             result.add(
                 AICharacter(
@@ -767,7 +768,7 @@ class NPCMessageService(
             )
         }
 
-        plugin.npcUtils
+        NPCUtils
             .getNearbyPlayers(player, radius)
             .filter { it.uniqueId != player.uniqueId }
             .forEach { p ->
@@ -780,12 +781,5 @@ class NPCMessageService(
             }
 
         return result
-    }
-
-    companion object {
-        private var instance: NPCMessageService? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): NPCMessageService = instance ?: NPCMessageService(plugin).also { instance = it }
     }
 }

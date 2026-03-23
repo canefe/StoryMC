@@ -8,6 +8,7 @@ import com.canefe.story.api.event.NPCParticipant
 import com.canefe.story.api.event.PlayerParticipant
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
@@ -286,8 +287,8 @@ class NPCInteractionListener(
         return plugin.conversationManager.getConversation(playerCharacterName)
             ?: run {
                 // Create new conversation with nearby NPCs and players
-                var nearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, chatRadius)
-                var players = plugin.npcUtils.getNearbyPlayers(player, chatRadius)
+                var nearbyNPCs = NPCUtils.getNearbyNPCs(player, chatRadius)
+                var players = NPCUtils.getNearbyPlayers(player, chatRadius)
 
                 // Remove players that have their chat disabled
                 players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
@@ -500,7 +501,7 @@ class NPCInteractionListener(
         player: Player,
         chatRadius: Double,
     ): NearbyEntities {
-        val nearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, chatRadius)
+        val nearbyNPCs = NPCUtils.getNearbyNPCs(player, chatRadius)
 
         val disguisedPlayers =
             player
@@ -541,8 +542,8 @@ class NPCInteractionListener(
 
             val radius = plugin.config.chatRadius
             val isAwayFromAll =
-                plugin.npcUtils.getNearbyNPCs(player, radius).none { it in conversation.npcs } &&
-                    plugin.npcUtils.getNearbyPlayers(player, radius).none { it.uniqueId in conversation.players }
+                NPCUtils.getNearbyNPCs(player, radius).none { it in conversation.npcs } &&
+                    NPCUtils.getNearbyPlayers(player, radius).none { it.uniqueId in conversation.players }
 
             // Then it is us that left the conversation
             if (isAwayFromAll) {

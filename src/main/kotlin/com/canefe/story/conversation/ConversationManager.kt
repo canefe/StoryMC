@@ -10,6 +10,7 @@ import com.canefe.story.lore.LoreBookManager.LoreContext
 import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendInfo
 import org.bukkit.Bukkit
@@ -19,7 +20,7 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
-class ConversationManager private constructor(
+class ConversationManager(
     private val plugin: Story,
     private val npcContextGenerator: NPCContextGenerator,
     private val npcResponseService: NPCResponseService,
@@ -951,8 +952,8 @@ class ConversationManager private constructor(
         // Find or create conversation
         val conversation =
             getConversation(npcName) ?: run {
-                val nearbyNPCs = plugin.npcUtils.getNearbyNPCs(npc, chatRadius) + listOf(npc)
-                var players = plugin.npcUtils.getNearbyPlayers(npc, chatRadius)
+                val nearbyNPCs = NPCUtils.getNearbyNPCs(npc, chatRadius) + listOf(npc)
+                var players = NPCUtils.getNearbyPlayers(npc, chatRadius)
                 players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
 
                 // Check for existing conversations among nearby entities
@@ -1543,29 +1544,5 @@ class ConversationManager private constructor(
 
     companion object {
         private const val RECENT_MESSAGES_TO_KEEP = 4
-        private var instance: ConversationManager? = null
-
-        @JvmStatic
-        fun getInstance(
-            plugin: Story,
-            npcContextGenerator: NPCContextGenerator,
-            npcResponseService: NPCResponseService,
-            worldInformationManager: WorldInformationManager,
-        ): ConversationManager {
-            if (instance == null) {
-                instance = ConversationManager(plugin, npcContextGenerator, npcResponseService, worldInformationManager)
-            }
-            return instance!!
-        }
-
-        @JvmStatic
-        fun getInstance(plugin: Story): ConversationManager =
-            instance ?: throw IllegalStateException("ConversationManager has not been initialized")
-
-        // Only for tests
-        @JvmStatic
-        fun reset() {
-            instance = null
-        }
     }
 }

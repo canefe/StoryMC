@@ -3,6 +3,7 @@ package com.canefe.story.npc.duty
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.util.NPCUtils
 import org.bukkit.Bukkit
 import org.bukkit.scheduler.BukkitTask
 import java.util.*
@@ -11,8 +12,10 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Manages and executes duty loops for NPCs
  */
-class DutyLoopRunner private constructor(
+class DutyLoopRunner(
     private val plugin: Story,
+    private val barkService: BarkService,
+    private val dutyLibrary: DutyLibrary,
 ) {
     // Active duty states for NPCs
     private val activeDuties = ConcurrentHashMap<UUID, DutyExecutionContext>()
@@ -165,7 +168,7 @@ class DutyLoopRunner private constructor(
 
         // Check if step has distance requirement
         if (step.ifNear != null) {
-            val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, step.ifNear, ignoreY = true)
+            val nearbyPlayers = NPCUtils.getNearbyPlayers(npc, step.ifNear, ignoreY = true)
             if (nearbyPlayers.isEmpty()) {
                 // Skip this step if no players nearby
                 return
@@ -198,7 +201,6 @@ class DutyLoopRunner private constructor(
                 "bark" -> {
                     val poolName = step.args["pool"]
                     if (poolName != null) {
-                        val barkService = BarkService.getInstance(plugin)
                         val cooldown = if (step.cooldown > 0) step.cooldown else 30
                         barkService.trySpeak(npc, poolName, location, cooldown)
                     }
@@ -228,7 +230,6 @@ class DutyLoopRunner private constructor(
         location: StoryLocation,
         workstationName: String,
     ) {
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
         val workstationLocation = dutyLibrary.getWorkstationLocation(location, workstationName)
 
         if (workstationLocation == null) {
@@ -286,7 +287,7 @@ class DutyLoopRunner private constructor(
         npc: StoryNPC,
         range: Double,
     ) {
-        val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, range, ignoreY = true)
+        val nearbyPlayers = NPCUtils.getNearbyPlayers(npc, range, ignoreY = true)
 
         if (nearbyPlayers.isNotEmpty()) {
             val nearestPlayer =
@@ -317,16 +318,5 @@ class DutyLoopRunner private constructor(
     fun shutdown() {
         dutyTask?.cancel()
         activeDuties.clear()
-    }
-
-    companion object {
-        private var instance: DutyLoopRunner? = null
-
-        fun getInstance(plugin: Story): DutyLoopRunner {
-            if (instance == null) {
-                instance = DutyLoopRunner(plugin)
-            }
-            return instance!!
-        }
     }
 }

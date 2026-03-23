@@ -11,24 +11,12 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Manages permission tasks that require explicit approval from players with appropriate permissions
  */
-class TaskManager private constructor(
+class TaskManager(
     private val plugin: Story,
 ) {
     private val tasks = ConcurrentHashMap<Int, Task>()
     private val dialoguePathTasks = ConcurrentHashMap<Int, DialoguePathTask>()
     private val taskIdCounter = AtomicInteger(1)
-
-    companion object {
-        private var instance: TaskManager? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): TaskManager {
-            if (instance == null) {
-                instance = TaskManager(plugin)
-            }
-            return instance!!
-        }
-    }
 
     /**
      * Creates a new permission task and sends it to players with the specified permission

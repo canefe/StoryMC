@@ -9,6 +9,7 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.data.NPCData
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
@@ -560,7 +561,6 @@ class CommandManager(
         ) {
             // Check if NPC exists
             var npc: StoryNPC? = CitizensAPI.getNPCRegistry().getByUniqueId(npcUniqueId)?.let { CitizensStoryNPC(it) }
-            val npcUtils = plugin.npcUtils
 
             // Only check MythicMobs if the plugin is available
             val isMythicMob =
@@ -625,12 +625,12 @@ class CommandManager(
                 plugin.conversationManager.getConversation(npcName) ?: run {
                     // create new conversation with nearby NPCs and players
                     var nearbyNPCs =
-                        npcUtils.getNearbyNPCs(resolvedNpc, chatRadius)
-                    var players = npcUtils.getNearbyPlayers(resolvedNpc, chatRadius)
+                        NPCUtils.getNearbyNPCs(resolvedNpc, chatRadius)
+                    var players = NPCUtils.getNearbyPlayers(resolvedNpc, chatRadius)
 
                     if (isImpersonated && impersonator != null) {
-                        nearbyNPCs = npcUtils.getNearbyNPCs(impersonator, chatRadius)
-                        players = npcUtils.getNearbyPlayers(impersonator, chatRadius)
+                        nearbyNPCs = NPCUtils.getNearbyNPCs(impersonator, chatRadius)
+                        players = NPCUtils.getNearbyPlayers(impersonator, chatRadius)
                     }
 
                     // remove players that have their chat disabled
@@ -1305,13 +1305,11 @@ class CommandManager(
                     sender.sendSuccess("🎉 Generated $successCount/${npcPlans.size} NPCs successfully!")
 
                     if (successCount > 0) {
-                        val npcUtils =
-                            com.canefe.story.npc.util.NPCUtils
-                                .getInstance(plugin)
+                        val NPCUtils = NPCUtils
                         // Let's create citizens npcs at the target location.
                         // for npc in generatedNPCs, create a citizen npc if it doesn't already exist
                         for (npcName in generatedNPCs) {
-                            if (npcUtils.getNPCByNameAsync(npcName) != null) {
+                            if (NPCUtils.getNPCByNameAsync(npcName) != null) {
                                 // spawn npc at location
                                 val npc = CitizensAPI.getNPCRegistry().createNPC(EntityType.PLAYER, npcName)
                                 val spawnLocation = storyLocation.bukkitLocation

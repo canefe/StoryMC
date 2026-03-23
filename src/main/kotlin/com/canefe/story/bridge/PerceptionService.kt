@@ -3,6 +3,7 @@ package com.canefe.story.bridge
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
@@ -59,7 +60,7 @@ class PerceptionService(
 
             val nearbyNPCs =
                 try {
-                    plugin.npcUtils
+                    NPCUtils
                         .getNearbyNPCs(player, defaultPerceptionRadius)
                         .map { it.name }
                 } catch (_: Exception) {

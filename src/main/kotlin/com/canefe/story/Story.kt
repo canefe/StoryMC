@@ -33,7 +33,6 @@ import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.service.TypingSessionManager
-import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.player.PlayerManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
@@ -107,7 +106,6 @@ open class Story :
 
     lateinit var conversationManager: ConversationManager
     lateinit var locationManager: LocationManager
-    lateinit var npcUtils: NPCUtils
     lateinit var npcManager: NPCManager
         private set
     lateinit var playerManager: PlayerManager
@@ -280,21 +278,21 @@ open class Story :
         npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
-        npcUtils = NPCUtils.getInstance(this)
-        npcManager = NPCManager.getInstance(this)
-        scheduleManager = ScheduleManager.getInstance(this)
+        npcManager = NPCManager(this)
+        Bukkit.getPluginManager().registerEvents(npcManager, this)
+        scheduleManager = ScheduleManager(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
-        npcMessageService = NPCMessageService.getInstance(this)
+        npcMessageService = NPCMessageService(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
         worldInformationManager = WorldInformationManager(this)
         npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
         lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
-        taskManager = TaskManager.getInstance(this)
+        taskManager = TaskManager(this)
         npcBehaviorManager = NPCBehaviorManager(this)
 
         conversationManager =
-            ConversationManager.getInstance(
+            ConversationManager(
                 this,
                 npcContextGenerator,
                 npcResponseService,

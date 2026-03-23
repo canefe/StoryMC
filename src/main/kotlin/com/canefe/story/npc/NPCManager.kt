@@ -3,6 +3,7 @@ package com.canefe.story.npc
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -24,7 +25,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NPCManager private constructor(
+class NPCManager(
     private val plugin: Story,
 ) : Listener {
     // NPC cooldowns mapping (NPC UUID to timestamp)
@@ -72,19 +73,6 @@ class NPCManager private constructor(
         FAILED,
         CANCELLED,
         TIMEOUT,
-    }
-
-    companion object {
-        private var instance: NPCManager? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): NPCManager {
-            if (instance == null) {
-                instance = NPCManager(plugin)
-                Bukkit.getPluginManager().registerEvents(instance!!, plugin)
-            }
-            return instance!!
-        }
     }
 
     init {
@@ -1180,9 +1168,7 @@ class NPCManager private constructor(
             val duration = (System.currentTimeMillis() - task.startTime) / 1000
 
             // Use NPCUtils to get NPC asynchronously
-            val npcUtils =
-                com.canefe.story.npc.util.NPCUtils
-                    .getInstance(plugin)
+            val npcUtils = NPCUtils
             npcUtils.getNPCByNameAsync(task.npcName).thenAccept { npc ->
                 val distance =
                     if (npc?.isSpawned == true) {
@@ -1234,9 +1220,7 @@ class NPCManager private constructor(
             Bukkit.getScheduler().cancelTask(task.taskId)
 
             // Cancel the NPC navigation using NPCUtils
-            val npcUtils =
-                com.canefe.story.npc.util.NPCUtils
-                    .getInstance(plugin)
+            val npcUtils = NPCUtils
             npcUtils.getNPCByNameAsync(npcName).thenAccept { npc ->
                 if (npc?.isSpawned == true) {
                     npc.cancelNavigation()
@@ -1260,9 +1244,7 @@ class NPCManager private constructor(
      */
     fun cancelAllNavigationTasks(): Int {
         val count = activeNavigationTasks.size
-        val npcUtils =
-            com.canefe.story.npc.util.NPCUtils
-                .getInstance(plugin)
+        val npcUtils = NPCUtils
 
         activeNavigationTasks.values.forEach { task ->
             // Cancel the Bukkit task

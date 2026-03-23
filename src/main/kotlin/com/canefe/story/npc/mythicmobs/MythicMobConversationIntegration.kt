@@ -3,6 +3,7 @@ package com.canefe.story.npc.mythicmobs
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -168,7 +169,7 @@ class MythicMobConversationIntegration(
                 }
 
                 // check if there is any CitizensNPC nearby before starting a conversation
-                val nearbyCitizensNPCs = plugin.npcUtils.getNearbyNPCs(player, plugin.config.chatRadius)
+                val nearbyCitizensNPCs = NPCUtils.getNearbyNPCs(player, plugin.config.chatRadius)
 
                 val existingConversation =
                     conversationManager.getConversation(npc) ?: run {

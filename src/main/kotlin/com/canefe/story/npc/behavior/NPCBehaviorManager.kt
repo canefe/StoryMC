@@ -3,6 +3,7 @@ package com.canefe.story.npc.behavior
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
@@ -227,7 +228,7 @@ class NPCBehaviorManager(
 
         for (player in Bukkit.getOnlinePlayers()) {
             // Get NPCs near this player and wrap them as StoryNPCs
-            val playerNearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, checkRadius)
+            val playerNearbyNPCs = NPCUtils.getNearbyNPCs(player, checkRadius)
             nearbyNPCs.addAll(playerNearbyNPCs)
         }
 

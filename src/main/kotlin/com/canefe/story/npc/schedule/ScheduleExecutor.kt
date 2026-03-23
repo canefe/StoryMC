@@ -15,6 +15,8 @@ class ScheduleExecutor(
     private val plugin: Story,
     private val movementService: MovementService,
     private val occupancyTracker: OccupancyTracker,
+    private val dutyLoopRunner: DutyLoopRunner,
+    private val dutyLibrary: DutyLibrary,
 ) {
     private val dialogueCooldowns = ConcurrentHashMap<String, Long>()
 
@@ -30,9 +32,6 @@ class ScheduleExecutor(
             plugin.logger.info("${npc.name} is following someone, skipping schedule entry.")
             return
         }
-
-        val dutyLoopRunner = DutyLoopRunner.getInstance(plugin)
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
 
         fun selectRandomDialogue(): String? = if (entry.dialogue.isNullOrEmpty()) null else entry.dialogue.random()
 

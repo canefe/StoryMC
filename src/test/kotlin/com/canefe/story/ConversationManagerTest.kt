@@ -39,7 +39,6 @@ class ConversationManagerTest {
 
         // Keep command manager relaxed to avoid CommandAPI side effects
         plugin.commandManager = mockk(relaxed = true)
-        ConversationManager.reset()
         // Replace systems we will observe with mocks
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
@@ -47,7 +46,7 @@ class ConversationManagerTest {
         plugin.sessionManager = mockk(relaxed = true)
 
         plugin.conversationManager =
-            ConversationManager.getInstance(
+            ConversationManager(
                 plugin,
                 plugin.npcContextGenerator,
                 plugin.npcResponseService,

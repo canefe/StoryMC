@@ -27,21 +27,20 @@ class NPCInteractionListenerTest {
     private lateinit var plugin: Story
     private lateinit var listener: NPCInteractionListener
 
-    // lets have a getter getNearbyNPCs that returns plugin.npcUtils.getNearbyNPCs so we dont have to
     fun getNearbyNPCs(
         player: Player,
         radius: Double,
-    ) = plugin.npcUtils.getNearbyNPCs(player, radius)
+    ) = NPCUtils.getNearbyNPCs(player, radius)
 
     fun getNearbyPlayers(
         player: Player,
         radius: Double,
-    ) = plugin.npcUtils.getNearbyPlayers(player, radius)
+    ) = NPCUtils.getNearbyPlayers(player, radius)
 
     @BeforeEach
     fun setUp() {
-        val npcUtilsMock = mockk<NPCUtils>(relaxed = true)
-        every { npcUtilsMock.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
+        mockkObject(NPCUtils)
+        every { NPCUtils.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
 
         System.setProperty("mockbukkit", "true")
         server = MockBukkit.mock()
@@ -55,7 +54,6 @@ class NPCInteractionListenerTest {
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
         plugin = MockBukkit.load(Story::class.java)
         plugin.commandManager = mockk(relaxed = true)
-        plugin.npcUtils = npcUtilsMock
 
         // Mock CitizensAPI registry globally to prevent failures in CI
         val mockRegistry = mockk<NPCRegistry>(relaxed = true)
@@ -76,6 +74,7 @@ class NPCInteractionListenerTest {
     @AfterEach
     fun tearDown() {
         MockBukkit.unmock()
+        unmockkObject(NPCUtils)
     }
 
     @Test

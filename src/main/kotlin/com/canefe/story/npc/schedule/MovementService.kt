@@ -3,6 +3,7 @@ package com.canefe.story.npc.schedule
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.util.NPCUtils
 import org.bukkit.Bukkit
 import org.bukkit.Location
 
@@ -15,7 +16,7 @@ class MovementService(
         callback: Runnable? = null,
     ) {
         val range = plugin.config.rangeBeforeTeleport
-        val nearbyPlayers = plugin.npcUtils.getNearbyPlayers(npc, range, ignoreY = true)
+        val nearbyPlayers = NPCUtils.getNearbyPlayers(npc, range, ignoreY = true)
         var shouldTeleport = nearbyPlayers.isEmpty()
         val npcLocation = npc.location ?: return
         val debugMessages = plugin.config.debugMessages
@@ -26,7 +27,7 @@ class MovementService(
         }
 
         if (shouldTeleport) {
-            val nearbyPlayersInTargetLocation = plugin.npcUtils.getNearbyPlayers(location, range, ignoreY = true)
+            val nearbyPlayersInTargetLocation = NPCUtils.getNearbyPlayers(location, range, ignoreY = true)
             if (nearbyPlayersInTargetLocation.isNotEmpty()) {
                 shouldTeleport = false
             }
@@ -132,7 +133,7 @@ class MovementService(
             if (player.location.world == targetLocation.world &&
                 player.location.distance(targetLocation) <= proximityRadius * 2
             ) {
-                allNPCs.addAll(plugin.npcUtils.getNearbyNPCs(player, proximityRadius))
+                allNPCs.addAll(NPCUtils.getNearbyNPCs(player, proximityRadius))
             }
         }
 

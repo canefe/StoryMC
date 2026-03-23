@@ -1,5 +1,6 @@
 package com.canefe.story.command.conversation
 
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -44,7 +45,7 @@ class ConvMuteCommand(
                     }
 
                     val npc =
-                        commandUtils.story.npcUtils
+                        NPCUtils
                             .getNPCByNameAsync(npcName)
                             .get() ?: run {
                             sender.sendError("NPC not found.")

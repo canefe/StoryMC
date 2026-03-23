@@ -42,7 +42,6 @@ class MessageHistorySummarizationTest {
         CitizensAPI.setNPCRegistry(mockRegistry)
 
         plugin.commandManager = mockk(relaxed = true)
-        ConversationManager.reset()
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
         plugin.npcContextGenerator = mockk(relaxed = true)
@@ -54,7 +53,7 @@ class MessageHistorySummarizationTest {
         plugin.configService.autoModeEnabledByDefault = false
 
         plugin.conversationManager =
-            ConversationManager.getInstance(
+            ConversationManager(
                 plugin,
                 plugin.npcContextGenerator,
                 plugin.npcResponseService,

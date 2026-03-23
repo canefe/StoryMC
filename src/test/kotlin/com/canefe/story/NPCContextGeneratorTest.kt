@@ -29,8 +29,8 @@ class NPCContextGeneratorTest {
 
     @BeforeEach
     fun setUp() {
-        val npcUtilsMock = mockk<NPCUtils>()
-        every { npcUtilsMock.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
+        mockkObject(NPCUtils)
+        every { NPCUtils.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
 
         val mockRegistry = mockk<NPCRegistry>()
         every { mockRegistry.isNPC(any()) } returns false
@@ -84,6 +84,7 @@ class NPCContextGeneratorTest {
     @AfterEach
     fun tearDown() {
         MockBukkit.unmock()
+        unmockkObject(NPCUtils)
     }
 
     @Test
