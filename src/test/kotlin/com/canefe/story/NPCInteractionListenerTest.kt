@@ -57,6 +57,11 @@ class NPCInteractionListenerTest {
         plugin.commandManager = mockk(relaxed = true)
         plugin.npcUtils = npcUtilsMock
 
+        // Mock CitizensAPI registry globally to prevent failures in CI
+        val mockRegistry = mockk<NPCRegistry>(relaxed = true)
+        every { mockRegistry.isNPC(any()) } returns false
+        CitizensAPI.setNPCRegistry(mockRegistry)
+
         listener = spyk(NPCInteractionListener(plugin))
         server.pluginManager.registerEvents(listener, plugin)
 
@@ -76,6 +81,14 @@ class NPCInteractionListenerTest {
     @Test
     fun `onPlayerChat cancels event and schedules processing`() {
         val player: Player = server.addPlayer("Alice")
+
+        val fakeNearbyEntities =
+            NPCInteractionListener.NearbyEntities(
+                npcs = emptyList(),
+                players = emptyList(),
+                allInteractableNPCs = emptyList(),
+            )
+        every { listener.gatherNearbyEntities(any(), any()) } returns fakeNearbyEntities
 
         // Minimal stubs for required Paper API types
         val renderer = mockk<ChatRenderer>(relaxed = true)
@@ -162,10 +175,6 @@ class NPCInteractionListenerTest {
                 players = emptyList(),
                 allInteractableNPCs = emptyList(),
             )
-
-        val mockRegistry = mockk<NPCRegistry>()
-        every { mockRegistry.isNPC(any()) } returns false
-        CitizensAPI.setNPCRegistry(mockRegistry)
 
         every { listener.gatherNearbyEntities(any(), any()) } returns fakeNearbyEntities
 
