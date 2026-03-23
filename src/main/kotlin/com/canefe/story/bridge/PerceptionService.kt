@@ -17,6 +17,60 @@ class PerceptionService(
 ) {
     private val defaultPerceptionRadius: Double = 15.0
     private val characterRadii = java.util.concurrent.ConcurrentHashMap<String, Double>()
+    private var proximityTaskId: Int = -1
+
+    /**
+     * Starts periodic proximity publishing — every 5 seconds, emits which NPCs
+     * are near each online player so the Go orchestrator can preemptively research them.
+     */
+    fun startProximityPublisher() {
+        if (proximityTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(proximityTaskId)
+        }
+        proximityTaskId =
+            Bukkit
+                .getScheduler()
+                .runTaskTimer(
+                    plugin,
+                    Runnable { publishProximity() },
+                    100L, // 5 second delay
+                    100L, // every 5 seconds
+                ).taskId
+    }
+
+    fun stopProximityPublisher() {
+        if (proximityTaskId != -1) {
+            Bukkit.getScheduler().cancelTask(proximityTaskId)
+            proximityTaskId = -1
+        }
+    }
+
+    private fun publishProximity() {
+        for (player in Bukkit.getOnlinePlayers()) {
+            if (plugin.playerManager.isPlayerDisabled(player)) continue
+
+            val playerName =
+                try {
+                    com.canefe.story.util.EssentialsUtils
+                        .getNickname(player.name)
+                } catch (_: Exception) {
+                    player.name
+                }
+
+            val nearbyNPCs =
+                try {
+                    plugin.npcUtils
+                        .getNearbyNPCs(player, defaultPerceptionRadius)
+                        .map { it.name }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+            if (nearbyNPCs.isNotEmpty()) {
+                plugin.eventBus.emit(PlayerProximityEvent(playerName, nearbyNPCs))
+            }
+        }
+    }
 
     /**
      * Sets the perception radius for a specific character.

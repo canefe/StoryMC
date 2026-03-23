@@ -464,6 +464,9 @@ open class Story :
             }
 
         // Initialize perception (unregister old listener on reload)
+        if (::perceptionService.isInitialized) {
+            perceptionService.stopProximityPublisher()
+        }
         perceptionListener?.let {
             org.bukkit.event.HandlerList
                 .unregisterAll(it)
@@ -471,6 +474,7 @@ open class Story :
         perceptionService = PerceptionService(this)
         perceptionListener = PerceptionListener(this, perceptionService)
         server.pluginManager.registerEvents(perceptionListener!!, this)
+        perceptionService.startProximityPublisher()
 
         // Initialize character sync from sim
         CharacterSyncService(this).register()

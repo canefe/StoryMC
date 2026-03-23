@@ -104,6 +104,18 @@ data class NPCEmoteIntent(
 }
 
 /**
+ * Emitted periodically with the list of NPCs near each player.
+ * Used by Go's [AgentManager] to preemptively research NPC context.
+ */
+@Serializable
+data class PlayerProximityEvent(
+    val playerName: String,
+    val nearbyNPCs: List<String>,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "player.proximity"
+}
+
+/**
  * Updates a character's perception radius. Sent by the sim when character stats change.
  */
 @Serializable

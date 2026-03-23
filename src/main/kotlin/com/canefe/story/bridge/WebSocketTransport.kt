@@ -161,6 +161,7 @@ class WebSocketTransport(
             is NPCSpeakIntent -> json.encodeToJsonElement(event)
             is NPCMoveIntent -> json.encodeToJsonElement(event)
             is NPCEmoteIntent -> json.encodeToJsonElement(event)
+            is PlayerProximityEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
