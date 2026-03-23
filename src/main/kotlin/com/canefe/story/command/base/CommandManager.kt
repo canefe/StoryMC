@@ -772,6 +772,9 @@ class CommandManager(
             val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npcName, message)
             conversation.addSystemMessage(talkAsNpcPrompt)
 
+            // Reset auto mode timer to prevent double responses
+            plugin.conversationManager.resetAutoTimer(conversation)
+
             plugin.intelligence.generateNPCResponse(resolvedNpc, conversation).thenApply { response ->
                 conversation.addNPCMessage(resolvedNpc, response)
                 plugin.conversationManager.speakAsNPC(resolvedNpc, response, addToHistory = false)
