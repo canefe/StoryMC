@@ -17,6 +17,7 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 
 class ConversationManager private constructor(
     private val plugin: Story,
@@ -1206,10 +1207,21 @@ class ConversationManager private constructor(
     }
 
     // NPC conversation coordination
+    // Tracks conversations currently generating a response to prevent overlapping calls
+    private val generatingResponses =
+        ConcurrentHashMap
+            .newKeySet<Int>()
+
     fun generateResponses(
         conversation: Conversation,
         forceSpeaker: String? = null,
     ): CompletableFuture<Unit> {
+        // Prevent overlapping response generation for the same conversation
+        if (!generatingResponses.add(conversation.id)) {
+            plugin.logger.info("Already generating response for conversation ${conversation.id}, skipping")
+            return CompletableFuture.completedFuture(Unit)
+        }
+
         val intelligence = plugin.intelligence
         val speakerFuture =
             if (forceSpeaker != null) {
@@ -1265,18 +1277,24 @@ class ConversationManager private constructor(
 
                             // Generate reactions, then complete
                             generateNPCReactions(conversation, npcEntity.name, npcResponse)
-                                .thenRun { result.complete(Unit) }
+                                .thenRun {
+                                    generatingResponses.remove(conversation.id)
+                                    result.complete(Unit)
+                                }
                         }.exceptionally { e ->
                             plugin.logger.warning("Error generating NPC response for ${npcEntity.name}: ${e.message}")
                             cleanupHolograms(conversation)
+                            generatingResponses.remove(conversation.id)
                             result.complete(Unit)
                             null
                         }
                 } else {
+                    generatingResponses.remove(conversation.id)
                     result.complete(Unit)
                 }
             }.exceptionally { e ->
                 plugin.logger.warning("Error determining next speaker: ${e.message}")
+                generatingResponses.remove(conversation.id)
                 result.completeExceptionally(e)
                 null
             }
