@@ -1,18 +1,23 @@
 package com.canefe.story.storage.mongo
 
+import com.canefe.story.player.PlayerConfig
 import com.canefe.story.storage.MongoClientManager
 import com.canefe.story.storage.PlayerStorage
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.ReplaceOptions
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.bson.Document
 import java.util.UUID
 
 class MongoPlayerStorage(
     private val mongoClient: MongoClientManager,
 ) : PlayerStorage {
+    private val json = Json { ignoreUnknownKeys = true }
     private val teamsCollection get() = mongoClient.getCollection("teams")
     private val disabledPlayersCollection get() = mongoClient.getCollection("disabled_players")
     private val playerQuestDisplayCollection get() = mongoClient.getCollection("player_quest_display")
+    private val playerConfigsCollection get() = mongoClient.getCollection("player_configs")
 
     override fun loadTeams(): Map<String, MutableSet<UUID>> {
         val teams = mutableMapOf<String, MutableSet<UUID>>()
@@ -98,5 +103,32 @@ class MongoPlayerStorage(
 
     override fun clearPlayerQuestDisplay(playerId: UUID) {
         playerQuestDisplayCollection.deleteOne(Filters.eq("playerId", playerId.toString()))
+    }
+
+    override fun loadPlayerConfig(playerId: UUID): PlayerConfig {
+        val doc =
+            playerConfigsCollection.find(Filters.eq("playerId", playerId.toString())).first()
+                ?: return PlayerConfig()
+        val configJson = doc.getString("configJson") ?: return PlayerConfig()
+        return try {
+            json.decodeFromString<PlayerConfig>(configJson)
+        } catch (_: Exception) {
+            PlayerConfig()
+        }
+    }
+
+    override fun savePlayerConfig(
+        playerId: UUID,
+        config: PlayerConfig,
+    ) {
+        val doc =
+            Document()
+                .append("playerId", playerId.toString())
+                .append("configJson", json.encodeToString(config))
+        playerConfigsCollection.replaceOne(
+            Filters.eq("playerId", playerId.toString()),
+            doc,
+            ReplaceOptions().upsert(true),
+        )
     }
 }

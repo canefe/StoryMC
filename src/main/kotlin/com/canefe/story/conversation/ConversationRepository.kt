@@ -1,6 +1,6 @@
 package com.canefe.story.conversation
 
-import net.citizensnpcs.api.npc.NPC
+import com.canefe.story.api.StoryNPC
 import org.bukkit.entity.Player
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -9,8 +9,11 @@ class ConversationRepository {
     private val nextConversationId = AtomicInteger(1)
     val lockedConversations: MutableList<Int> = mutableListOf()
 
+    @Synchronized
     fun addConversation(conversation: Conversation): Int {
-        val newId = nextConversationId.getAndIncrement()
+        val usedIds = activeConversations.map { it.id }.toSet()
+        var newId = 1
+        while (newId in usedIds) newId++
         conversation.id = newId
         activeConversations.add(conversation)
         return newId
@@ -22,7 +25,7 @@ class ConversationRepository {
 
     fun getConversationByPlayer(player: Player): Conversation? = activeConversations.find { it.hasPlayer(player) }
 
-    fun getConversationByNPC(npc: NPC): Conversation? = activeConversations.find { it.hasNPC(npc) }
+    fun getConversationByNPC(npc: StoryNPC): Conversation? = activeConversations.find { it.hasNPC(npc) }
 
     fun getConversationByNPC(npcName: String): Conversation? = activeConversations.find { it.hasNPC(npcName) }
 

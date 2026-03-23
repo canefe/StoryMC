@@ -383,16 +383,4 @@ class AIResponseService(
             Thread.currentThread().interrupt()
         }
     }
-
-    companion object {
-        private var instance: AIResponseService? = null
-
-        @JvmStatic
-        fun getInstance(plugin: Story): AIResponseService {
-            if (instance == null) {
-                instance = AIResponseService(plugin)
-            }
-            return instance!!
-        }
-    }
 }

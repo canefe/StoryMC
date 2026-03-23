@@ -412,9 +412,8 @@ class ElevenLabsAudioManager(
         npcUuid: UUID? = null,
     ) {
         try {
-            // For now, let's try a very conservative approach for testing
-            // Always use chunking for files over 50KB to avoid packet size issues
-            val maxChunkSize = 900 * 1024 // 50KB chunks
+            // Velocity proxy limits plugin messages to ~229KB
+            val maxChunkSize = 200 * 1024
 
             if (audioData.size <= maxChunkSize) {
                 plugin.logger.info(
@@ -638,7 +637,7 @@ class ElevenLabsAudioManager(
         npcUuid: UUID? = null,
     ) {
         try {
-            val maxChunkSize = 500 * 1024 // 30KB chunks to be safe
+            val maxChunkSize = 200 * 1024 // Under Velocity's ~229KB plugin message limit
             val totalChunks = (audioData.size + maxChunkSize - 1) / maxChunkSize
 
             plugin.logger.info(

@@ -1,8 +1,11 @@
 package com.canefe.story.command.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.command.story.npc.schedule.ScheduleCommand
 import com.canefe.story.command.story.npc.schedule.ScheduleCommandUtils
+import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -12,14 +15,12 @@ import dev.jorel.commandapi.arguments.GreedyStringArgument
 import dev.jorel.commandapi.executors.CommandExecutor
 import dev.jorel.commandapi.executors.PlayerCommandExecutor
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
 
 class NPCCommand(
     private val plugin: Story,
 ) {
     private val commandUtils = ScheduleCommandUtils()
-    private val npcUtils = plugin.npcUtils
 
     fun getCommand(): CommandAPICommand =
         CommandAPICommand("npc")
@@ -62,14 +63,15 @@ class NPCCommand(
             ).executesPlayer(
                 PlayerCommandExecutor { sender, args ->
                     val npcName = args.get("npc_name") as String
-                    var npcEntity: NPC? = null
+                    var npcEntity: StoryNPC? = null
 
                     if (sender is Player) {
-                        val nearbyNPCs = npcUtils.getNearbyNPCs(sender, 10.0)
+                        val nearbyNPCs = NPCUtils.getNearbyNPCs(sender, 10.0)
                         npcEntity = nearbyNPCs.find { it.name == npcName }
                     }
                     if (npcEntity == null) {
-                        npcEntity = CitizensAPI.getNPCRegistry().find { it.name == npcName }
+                        npcEntity =
+                            CitizensAPI.getNPCRegistry().find { it.name == npcName }?.let { CitizensStoryNPC(it) }
                     }
 
                     if (npcEntity == null) {
@@ -97,7 +99,7 @@ class NPCCommand(
                     val player = player as Player
                     val target = player.getTargetEntity(15) // Get entity player is looking at within 15 blocks
                     if (target != null && CitizensAPI.getNPCRegistry().isNPC(target)) {
-                        val npc = CitizensAPI.getNPCRegistry().getNPC(target)
+                        val npc: StoryNPC = CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(target))
 
                         if (plugin.npcManager.scaleNPC(npc, scale)) {
                             player.sendSuccess("Scaled NPC '${npc.name}' to $scale.")
@@ -131,14 +133,15 @@ class NPCCommand(
                     // Implement toggle functionality here
                     // sender.sendSuccess
                     val npcName = args.get("npc_name") as String
-                    var npcEntity: NPC? = null
+                    var npcEntity: StoryNPC? = null
 
                     if (sender is Player) {
-                        val nearbyNPCs = npcUtils.getNearbyNPCs(sender, 10.0)
+                        val nearbyNPCs = NPCUtils.getNearbyNPCs(sender, 10.0)
                         npcEntity = nearbyNPCs.find { it.name == npcName }
                     }
                     if (npcEntity == null) {
-                        npcEntity = CitizensAPI.getNPCRegistry().find { it.name == npcName }
+                        npcEntity =
+                            CitizensAPI.getNPCRegistry().find { it.name == npcName }?.let { CitizensStoryNPC(it) }
                     }
 
                     if (npcEntity == null) {

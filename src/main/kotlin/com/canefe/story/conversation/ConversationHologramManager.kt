@@ -1,10 +1,11 @@
 package com.canefe.story.conversation
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.util.PluginUtils.isPluginEnabled
 import eu.decentsoftware.holograms.api.DHAPI
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Entity
@@ -20,7 +21,7 @@ class ConversationHologramManager(
         get() = plugin.conversationManager.activeConversations
 
     fun showListeningHolo(
-        npc: NPC,
+        npc: StoryNPC,
         isThinking: Boolean = false,
     ) {
         val npcName = npc.name
@@ -33,7 +34,8 @@ class ConversationHologramManager(
         if (isPluginEnabled("DecentHolograms")) {
             try {
                 val npcPos: Location =
-                    npc.entity.location
+                    npc.entity!!
+                        .location
                         .clone()
                         .add(0.0, 2.10, 0.0)
                 val npcUUID = npc.uniqueId.toString()
@@ -66,9 +68,7 @@ class ConversationHologramManager(
                     .add(0.0, 2.10, 0.0)
             val entityUUID =
                 if (isNPC) {
-                    CitizensAPI
-                        .getNPCRegistry()
-                        .getNPC(entity)
+                    CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(entity))
                         .uniqueId
                         .toString()
                 } else {
@@ -84,7 +84,7 @@ class ConversationHologramManager(
         }
     }
 
-    fun showThinkingHolo(npc: NPC) {
+    fun showThinkingHolo(npc: StoryNPC) {
         showListeningHolo(npc, true)
     }
 
@@ -138,9 +138,7 @@ class ConversationHologramManager(
         cancelExistingTask(entity.name)
         val uniqueId =
             if (CitizensAPI.getNPCRegistry().isNPC(entity)) {
-                CitizensAPI
-                    .getNPCRegistry()
-                    .getNPC(entity)
+                CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(entity))
                     .uniqueId
                     .toString()
             } else {
@@ -174,7 +172,7 @@ class ConversationHologramManager(
         hologramTasks[entity.name] = taskId
     }
 
-    private fun setupHologramPositionUpdates(npc: NPC) {
+    private fun setupHologramPositionUpdates(npc: StoryNPC) {
         val npcName = npc.name
         val npcUUID = npc.uniqueId.toString()
 
@@ -186,14 +184,16 @@ class ConversationHologramManager(
                 .runTaskTimer(
                     plugin,
                     Runnable {
-                        if (!npc.isSpawned || npc.entity == null || !plugin.conversationManager.isInConversation(npc)) {
+                        val inConversation = plugin.conversationManager.isInConversation(npc)
+                        if (!npc.isSpawned || npc.entity == null || !inConversation) {
                             cleanupNPC(npc)
                             return@Runnable
                         }
 
                         // Update hologram position
                         val updatedPos =
-                            npc.entity.location
+                            npc.entity!!
+                                .location
                                 .clone()
                                 .add(0.0, 2.10, 0.0)
                         // check if hologram is null and if so, return
@@ -220,9 +220,7 @@ class ConversationHologramManager(
     fun cleanupNPC(entity: Entity) {
         val uniqueId =
             if (CitizensAPI.getNPCRegistry().isNPC(entity)) {
-                CitizensAPI
-                    .getNPCRegistry()
-                    .getNPC(entity)
+                CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(entity))
                     .uniqueId
                     .toString()
             } else {
@@ -234,7 +232,7 @@ class ConversationHologramManager(
         cancelExistingTask(entity.name)
     }
 
-    private fun cleanupNPC(npc: NPC) {
+    private fun cleanupNPC(npc: StoryNPC) {
         val npcName = npc.name
         val npcUUID = npc.uniqueId.toString()
         // Remove the hologram
@@ -247,7 +245,7 @@ class ConversationHologramManager(
         plugin.npcBehaviorManager.setNPCInConversation(npc, false)
     }
 
-    fun cleanupNPCHologram(npc: NPC?) {
+    fun cleanupNPCHologram(npc: StoryNPC?) {
         if (npc == null) return
         val npcName = npc.name
         val taskIdToRemove = hologramTasks[npcName]
@@ -262,9 +260,7 @@ class ConversationHologramManager(
         if (entity == null) return
         val uniqueId =
             if (CitizensAPI.getNPCRegistry().isNPC(entity)) {
-                CitizensAPI
-                    .getNPCRegistry()
-                    .getNPC(entity)
+                CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(entity))
                     .uniqueId
                     .toString()
             } else {

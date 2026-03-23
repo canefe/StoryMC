@@ -1,8 +1,8 @@
 package com.canefe.story.npc.util
 
-import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -13,163 +13,145 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
-class NPCUtils // Private constructor to prevent instantiation
-    private constructor(
-        private val plugin: Story,
-    ) {
-        // Cache for NPCs
-        private val npcCache: MutableMap<String, NPC> = ConcurrentHashMap()
+object NPCUtils {
+    // Cache for NPCs
+    private val npcCache: MutableMap<String, StoryNPC> = ConcurrentHashMap()
 
-        // Virtual thread executor for I/O-bound operations
-        private val virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()
+    // Virtual thread executor for I/O-bound operations
+    private val virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor()
 
-        private object InstanceHolder {
-            // Single instance of the class
-            lateinit var instance: NPCUtils
-                private set
-
-            fun initialize(plugin: Story) {
-                if (!::instance.isInitialized) {
-                    instance = NPCUtils(plugin)
+    // Asynchronous method to get an NPC by name, with caching
+    fun getNPCByNameAsync(npcName: String): CompletableFuture<StoryNPC?> {
+        return CompletableFuture.supplyAsync(
+            {
+                // Check cache first
+                if (npcCache.containsKey(npcName.lowercase(Locale.getDefault()))) {
+                    return@supplyAsync npcCache[npcName.lowercase(Locale.getDefault())]
                 }
+
+                // Search NPC registry if not in cache
+                for (npc in CitizensAPI.getNPCRegistry()) {
+                    if (npc.name.equals(npcName, ignoreCase = true)) {
+                        val storyNpc = CitizensStoryNPC(npc)
+                        npcCache[npcName.lowercase(Locale.getDefault())] = storyNpc
+                        return@supplyAsync storyNpc
+                    }
+                }
+
+                null // NPC not found
+            },
+            virtualThreadExecutor,
+        )
+    }
+
+    fun getNPCUUID(npcName: String?): UUID? {
+        for (npc in CitizensAPI.getNPCRegistry()) {
+            if (npc.name.equals(npcName, ignoreCase = true)) {
+                return npc.uniqueId
             }
         }
+        return null
+    }
 
-        // Asynchronous method to get an NPC by name, with caching
-        fun getNPCByNameAsync(npcName: String): CompletableFuture<NPC?> {
-            return CompletableFuture.supplyAsync(
-                {
-                    // Check cache first
-                    if (npcCache.containsKey(npcName.lowercase(Locale.getDefault()))) {
-                        return@supplyAsync npcCache[npcName.lowercase(Locale.getDefault())]
-                    }
+    fun randomColor(npcName: String): String {
+        val hash = abs(npcName.hashCode().toDouble()).toInt() // Ensure non-negative value
 
-                    // Search NPC registry if not in cache
-                    for (npc in CitizensAPI.getNPCRegistry()) {
-                        if (npc.name.equals(npcName, ignoreCase = true)) {
-                            npcCache[npcName.lowercase(Locale.getDefault())] = npc
-                            return@supplyAsync npc
-                        }
-                    }
+        // Convert hash into an HSL-based color for better distribution
+        val hue = (hash % 360) / 360.0f // Keep within 0-1 range
+        val saturation = 0.7f // 70% saturation (not too gray)
+        val brightness = 0.8f // 80% brightness (not too dark)
 
-                    null // NPC not found
-                },
-                virtualThreadExecutor,
-            )
-        }
+        val color: Color = Color.getHSBColor(hue, saturation, brightness)
 
-        fun getNPCUUID(npcName: String?): UUID? {
-            var foundNPC: NPC? = null
-            for (npc in CitizensAPI.getNPCRegistry()) {
-                if (npc.name.equals(npcName, ignoreCase = true)) {
-                    foundNPC = npc
-                    break
-                }
-            }
-            return foundNPC?.uniqueId
-        }
+        // Convert to hex format
+        return java.lang.String.format("#%02X%02X%02X", color.red, color.green, color.blue)
+    }
 
-        fun randomColor(npcName: String): String {
-            val hash = abs(npcName.hashCode().toDouble()).toInt() // Ensure non-negative value
+    fun getNearbyPlayers(
+        player: Player,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
+        val radiusSquared = radius * radius
+        val playerLoc = player.location
 
-            // Convert hash into an HSL-based color for better distribution
-            val hue = (hash % 360) / 360.0f // Keep within 0-1 range
-            val saturation = 0.7f // 70% saturation (not too gray)
-            val brightness = 0.8f // 80% brightness (not too dark)
+        return nearbyPlayersInLocation(playerLoc, ignoreY, radiusSquared)
+    }
 
-            val color: Color = Color.getHSBColor(hue, saturation, brightness)
+    fun getNearbyNPCs(
+        npc: StoryNPC,
+        radius: Double,
+    ): List<StoryNPC> {
+        if (!npc.isSpawned) return Collections.emptyList()
 
-            // Convert to hex format
-            return java.lang.String.format("#%02X%02X%02X", color.red, color.green, color.blue)
-        }
+        val npcLocation = npc.location ?: return Collections.emptyList()
 
-        fun getNearbyPlayers(
-            player: Player,
-            radius: Double,
-            ignoreY: Boolean = false,
-        ): List<Player> {
-            val radiusSquared = radius * radius
-            val playerLoc = player.location
-
-            return nearbyPlayersInLocation(playerLoc, ignoreY, radiusSquared)
-        }
-
-        fun getNearbyNPCs(
-            npc: NPC,
-            radius: Double,
-        ): List<NPC> {
-            if (!npc.isSpawned) return Collections.emptyList()
-
-            return CitizensAPI.getNPCRegistry().filter { otherNpc ->
+        return CitizensAPI
+            .getNPCRegistry()
+            .filter { otherNpc ->
                 otherNpc.isSpawned &&
-                    otherNpc != npc &&
-                    otherNpc.entity.location.world == npc.entity.location.world &&
-                    otherNpc.entity.location.distanceSquared(npc.entity.location) <= radius * radius
-            }
-        }
+                    otherNpc.uniqueId != npc.uniqueId &&
+                    otherNpc.entity.location.world == npcLocation.world &&
+                    otherNpc.entity.location.distanceSquared(npcLocation) <= radius * radius
+            }.map { CitizensStoryNPC(it) }
+    }
 
-        fun getNearbyPlayers(
-            npc: NPC,
-            radius: Double,
-            ignoreY: Boolean = false,
-        ): List<Player> {
-            if (!npc.isSpawned) return Collections.emptyList()
+    fun getNearbyPlayers(
+        npc: StoryNPC,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
+        if (!npc.isSpawned) return Collections.emptyList()
 
-            val radiusSquared = radius * radius
-            val npcLoc = npc.entity.location
+        val radiusSquared = radius * radius
+        val npcLoc = npc.location ?: return Collections.emptyList()
 
-            return nearbyPlayersInLocation(npcLoc, ignoreY, radiusSquared)
-        }
+        return nearbyPlayersInLocation(npcLoc, ignoreY, radiusSquared)
+    }
 
-        private fun nearbyPlayersInLocation(
-            npcLoc: Location,
-            ignoreY: Boolean,
-            radiusSquared: Double,
-        ): List<Player> {
-            return Bukkit.getOnlinePlayers().filter { player ->
-                val loc = player.location
-                if (loc.world != npcLoc.world) return@filter false
+    private fun nearbyPlayersInLocation(
+        npcLoc: Location,
+        ignoreY: Boolean,
+        radiusSquared: Double,
+    ): List<Player> {
+        return Bukkit.getOnlinePlayers().filter { player ->
+            val loc = player.location
+            if (loc.world != npcLoc.world) return@filter false
 
-                if (ignoreY) {
-                    val dx = loc.x - npcLoc.x
-                    val dz = loc.z - npcLoc.z
-                    (dx * dx + dz * dz) <= radiusSquared
-                } else {
-                    loc.distanceSquared(npcLoc) <= radiusSquared
-                }
-            }
-        }
-
-        fun getNearbyPlayers(
-            location: Location,
-            radius: Double,
-            ignoreY: Boolean = false,
-        ): List<Player> {
-            val radiusSquared = radius * radius
-
-            return nearbyPlayersInLocation(location, ignoreY, radiusSquared)
-        }
-
-        fun getNearbyNPCs(
-            player: Player,
-            radius: Double,
-        ): List<NPC> =
-            CitizensAPI.getNPCRegistry().filter { npc ->
-                npc.isSpawned &&
-                    npc.entity.location.world == player.location.world &&
-                    npc.entity.location.distanceSquared(player.location) <= radius * radius
-            }
-
-        // Optional: Clear the cache (e.g., on reload)
-        fun clearCache() {
-            npcCache.clear()
-        }
-
-        companion object {
-            // Static method to get the single instance
-            fun getInstance(plugin: Story): NPCUtils {
-                InstanceHolder.initialize(plugin)
-                return InstanceHolder.instance
+            if (ignoreY) {
+                val dx = loc.x - npcLoc.x
+                val dz = loc.z - npcLoc.z
+                (dx * dx + dz * dz) <= radiusSquared
+            } else {
+                loc.distanceSquared(npcLoc) <= radiusSquared
             }
         }
     }
+
+    fun getNearbyPlayers(
+        location: Location,
+        radius: Double,
+        ignoreY: Boolean = false,
+    ): List<Player> {
+        val radiusSquared = radius * radius
+
+        return nearbyPlayersInLocation(location, ignoreY, radiusSquared)
+    }
+
+    fun getNearbyNPCs(
+        player: Player,
+        radius: Double,
+    ): List<StoryNPC> =
+        CitizensAPI
+            .getNPCRegistry()
+            .filter { npc ->
+                npc.isSpawned &&
+                    npc.entity.location.world == player.location.world &&
+                    npc.entity.location.distanceSquared(player.location) <= radius * radius
+            }.map { CitizensStoryNPC(it) }
+
+    // Optional: Clear the cache (e.g., on reload)
+    fun clearCache() {
+        npcCache.clear()
+    }
+}

@@ -17,6 +17,10 @@ class ConfigService(
     var mongoMaxPoolSize: Int = 10
     var mongoConnectTimeoutMs: Int = 10000
 
+    // Bridge settings — WebSocket connection to external orchestrator
+    var bridgeEnabled: Boolean = false
+    var bridgeUri: String = "ws://localhost:8080/story"
+
     // OpenAI API settings
     var openAIUrl: String = ""
     var openAIKey: String = ""
@@ -51,6 +55,11 @@ class ConfigService(
         false // Whether to enable dialogue path selection for DMs
     var delayedPlayerMessageProcessing: Boolean =
         false // Whether to delay player message processing like /g command
+    var npcReactionsEnabled: Boolean = true // Whether NPCs physically react to messages
+    var autoModeEnabledByDefault: Boolean = true // Whether auto mode is enabled for new conversations
+    var autoModeInterval: Int = 15 // Seconds between auto-generated responses
+    var summarizationThreshold: Int =
+        5 // Summarize conversation history every N messages
 
     /*
     NPC Behavior settings
@@ -138,6 +147,10 @@ class ConfigService(
             plugin.sessionManager.load()
             plugin.voiceManager.load()
             plugin.npcNameManager.reloadNameBanks()
+
+            // Reconnect event bus transports (Redis)
+            plugin.eventBus.shutdown()
+            plugin.initializeEventBus()
         } catch (e: Exception) {
             plugin.logger.severe("Failed to reload configuration: ${e.message}")
         } finally {
@@ -147,6 +160,10 @@ class ConfigService(
 
     private fun loadConfigValues() {
         // Storage settings
+        // Bridge settings
+        bridgeEnabled = config.getBoolean("bridge.enabled", false)
+        bridgeUri = config.getString("bridge.uri", "ws://localhost:8080/story") ?: "ws://localhost:8080/story"
+
         storageBackend = config.getString("storage.backend", "sqlite") ?: "sqlite"
         mongoUri = config.getString("storage.mongodb.uri", "mongodb://localhost:27017") ?: "mongodb://localhost:27017"
         mongoDatabase = config.getString("storage.mongodb.database", "story") ?: "story"
@@ -174,6 +191,9 @@ class ConfigService(
         radiantCooldown = config.getInt("conversation.radiantCooldown", 30) // 30 seconds per NPC
         chatRadius = config.getDouble("conversation.chatRadius", 5.0)
         responseDelay = config.getDouble("conversation.responseDelay", 2.0)
+        npcReactionsEnabled = config.getBoolean("conversation.npcReactionsEnabled", true)
+        autoModeEnabledByDefault = config.getBoolean("conversation.autoModeEnabledByDefault", true)
+        autoModeInterval = config.getInt("conversation.autoModeInterval", 15)
         mythicMobsEnabled =
             config.getBoolean(
                 "conversation.mythicMobsEnabled",
@@ -196,6 +216,11 @@ class ConfigService(
                 "conversation.delayedPlayerMessageProcessing",
                 false,
             ) // Whether to delay player message processing like /g command
+        summarizationThreshold =
+            config.getInt(
+                "conversation.summarizationThreshold",
+                5,
+            ) // Summarize conversation history every N messages
 
         // NPC Behavior Settings
         headRotationDelay = config.getInt("npc.headRotationDelay", 2)
@@ -285,11 +310,15 @@ class ConfigService(
         config.set("conversation.radiantCooldown", radiantCooldown)
         config.set("conversation.chatRadius", chatRadius)
         config.set("conversation.responseDelay", responseDelay)
+        config.set("conversation.npcReactionsEnabled", npcReactionsEnabled)
+        config.set("conversation.autoModeEnabledByDefault", autoModeEnabledByDefault)
+        config.set("conversation.autoModeInterval", autoModeInterval)
         config.set("conversation.mythicMobsEnabled", mythicMobsEnabled)
         config.set("conversation.streamMessages", streamMessages)
         config.set("conversation.behavioralDirectivesEnabled", behavioralDirectivesEnabled)
         config.set("conversation.dialoguePathSelectionEnabled", dialoguePathSelectionEnabled)
         config.set("conversation.delayedPlayerMessageProcessing", delayedPlayerMessageProcessing)
+        config.set("conversation.summarizationThreshold", summarizationThreshold)
 
         // NPC Behavior settings
         config.set("npc.headRotationDelay", headRotationDelay)

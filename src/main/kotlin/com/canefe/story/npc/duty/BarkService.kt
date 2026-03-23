@@ -1,14 +1,15 @@
 package com.canefe.story.npc.duty
 
 import com.canefe.story.Story
-import net.citizensnpcs.api.npc.NPC
+import com.canefe.story.api.StoryNPC
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Manages NPC barks (short speech lines) with cooldowns
  */
-class BarkService private constructor(
+class BarkService(
     private val plugin: Story,
+    private val dutyLibrary: DutyLibrary,
 ) {
     // Track last bark time per NPC per pool
     private val lastBarkTimes = ConcurrentHashMap<String, Long>() // "npcId:poolName" -> timestamp
@@ -17,7 +18,7 @@ class BarkService private constructor(
      * Try to make an NPC speak from a bark pool, respecting cooldowns
      */
     fun trySpeak(
-        npc: NPC,
+        npc: StoryNPC,
         poolName: String,
         location: com.canefe.story.location.data.StoryLocation,
     ): Boolean {
@@ -25,7 +26,6 @@ class BarkService private constructor(
         val now = System.currentTimeMillis()
 
         // Get bark pool from location
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
         val barkPool = dutyLibrary.getBarkPool(location, poolName)
 
         if (barkPool == null || barkPool.messages.isEmpty()) {
@@ -60,7 +60,7 @@ class BarkService private constructor(
      * Try to make an NPC speak with custom cooldown
      */
     fun trySpeak(
-        npc: NPC,
+        npc: StoryNPC,
         poolName: String,
         location: com.canefe.story.location.data.StoryLocation,
         cooldownSeconds: Int,
@@ -69,7 +69,6 @@ class BarkService private constructor(
         val now = System.currentTimeMillis()
 
         // Get bark pool from location
-        val dutyLibrary = DutyLibrary.getInstance(plugin)
         val barkPool = dutyLibrary.getBarkPool(location, poolName)
 
         if (barkPool == null || barkPool.messages.isEmpty()) {
@@ -103,7 +102,7 @@ class BarkService private constructor(
     /**
      * Clear bark cooldowns for an NPC
      */
-    fun clearCooldowns(npc: NPC) {
+    fun clearCooldowns(npc: StoryNPC) {
         val npcPrefix = "${npc.uniqueId}:"
         lastBarkTimes.keys.removeIf { it.startsWith(npcPrefix) }
     }
@@ -113,16 +112,5 @@ class BarkService private constructor(
      */
     fun clearAllCooldowns() {
         lastBarkTimes.clear()
-    }
-
-    companion object {
-        private var instance: BarkService? = null
-
-        fun getInstance(plugin: Story): BarkService {
-            if (instance == null) {
-                instance = BarkService(plugin)
-            }
-            return instance!!
-        }
     }
 }

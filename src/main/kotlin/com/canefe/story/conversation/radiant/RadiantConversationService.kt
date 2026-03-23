@@ -1,8 +1,9 @@
 package com.canefe.story.conversation.radiant
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.*
@@ -48,7 +49,7 @@ class RadiantConversationService(
             return
         }
 
-        val nearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, plugin.config.radiantRadius)
+        val nearbyNPCs = NPCUtils.getNearbyNPCs(player, plugin.config.radiantRadius)
 
         // Try to find a non-cooldown NPC to initiate conversation
         for (npc in nearbyNPCs) {
@@ -70,7 +71,7 @@ class RadiantConversationService(
      * Triggers a radiant conversation with an NPC and a player or another NPC
      */
     private fun triggerRadiantConversation(
-        initiator: NPC,
+        initiator: StoryNPC,
         player: Player,
     ) {
         if (plugin.conversationManager.isInConversation(initiator)) {
@@ -86,14 +87,14 @@ class RadiantConversationService(
 
         // Then check if there are other valid NPC targets
         val nearbyNPCs =
-            plugin.npcUtils
+            NPCUtils
                 .getNearbyNPCs(initiator, plugin.config.radiantRadius)
         val hasValidNPCTarget =
             nearbyNPCs.any { npc ->
                 !plugin.conversationManager.isInConversation(npc) &&
                     !npcManager.isNPCOnCooldown(npc) &&
                     !plugin.npcManager.isNPCDisabled(npc) &&
-                    npc != initiator
+                    npc.uniqueId != initiator.uniqueId
             }
 
         // Make random decision only if both options are possible
@@ -178,7 +179,7 @@ class RadiantConversationService(
      * Initiates a conversation between an NPC and a player
      */
     private fun initiatePlayerConversation(
-        initiator: NPC,
+        initiator: StoryNPC,
         player: Player,
     ) {
         val initiatorName = initiator.name
@@ -227,9 +228,9 @@ class RadiantConversationService(
     /**
      * Initiates a conversation between two NPCs
      */
-    private fun initiateNPCConversation(initiator: NPC) {
+    private fun initiateNPCConversation(initiator: StoryNPC) {
         val nearbyNPCs =
-            plugin.npcUtils
+            NPCUtils
                 .getNearbyNPCs(initiator, plugin.config.radiantRadius)
 
         // Filter available NPCs
@@ -238,7 +239,7 @@ class RadiantConversationService(
                 !plugin.conversationManager.isInConversation(npc) &&
                     !npcManager.isNPCOnCooldown(npc) &&
                     !plugin.npcManager.isNPCDisabled(npc) &&
-                    npc != initiator
+                    npc.uniqueId != initiator.uniqueId
             }
 
         if (availableNPCs.isEmpty()) return
@@ -252,7 +253,7 @@ class RadiantConversationService(
         npcManager.setNPCCooldown(targetNPC)
 
         // Mark nearby players as having witnessed the conversation
-        val nearbyPlayers = getPlayersInRadius(initiator.entity.location, plugin.config.radiantRadius)
+        val nearbyPlayers = getPlayersInRadius(initiator.entity!!.location, plugin.config.radiantRadius)
         nearbyPlayers.forEach { nearbyPlayer ->
             markPlayerWitnessedConversation(nearbyPlayer)
         }

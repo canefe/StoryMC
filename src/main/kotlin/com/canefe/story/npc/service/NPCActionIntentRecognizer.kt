@@ -1,15 +1,14 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.quest.*
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import org.mcmonkey.sentinel.SentinelTrait
 import java.util.concurrent.CompletableFuture
 
 class NPCActionIntentRecognizer(
@@ -20,7 +19,7 @@ class NPCActionIntentRecognizer(
      * @return ActionIntent object with detected intents and confidence scores
      */
     fun recognizeActionIntents(
-        npc: NPC,
+        npc: StoryNPC,
         lastTwoResponses: List<String>,
         targetPlayer: Player?,
     ): CompletableFuture<ActionIntent> {
@@ -125,7 +124,7 @@ class NPCActionIntentRecognizer(
     }
 
     fun recognizeQuestGivingIntent(
-        npc: NPC,
+        npc: StoryNPC,
         lastTwoResponses: List<String>,
         targetPlayer: Player,
     ): CompletableFuture<QuestGenerationResult> {
@@ -315,7 +314,7 @@ class NPCActionIntentRecognizer(
      * Updates the NPCActionIntentRecognizer to support complex item targets for quest generation
      */
     private fun executeAction(
-        npc: NPC,
+        npc: StoryNPC,
         player: Player,
         intent: ActionIntent,
     ) {
@@ -324,8 +323,7 @@ class NPCActionIntentRecognizer(
                 plugin.askForPermission(
                     "Do you want <gold>${npc.name}</gold> to follow <red>${player.name}</red>?",
                     onAccept = {
-                        npc.getOrAddTrait(SentinelTrait::class.java).guarding = player.uniqueId
-                        npc.getOrAddTrait(SentinelTrait::class.java).guardDistanceMinimum = 3.0
+                        npc.follow(player)
                         player.sendInfo("${npc.name} is now following you.")
                     },
                     onRefuse = {},
@@ -337,7 +335,7 @@ class NPCActionIntentRecognizer(
                     plugin.askForPermission(
                         "Do you want <gold>${npc.name}</gold> to attack <red>${target.name}</red>?",
                         onAccept = {
-                            npc.getOrAddTrait(SentinelTrait::class.java).addTarget("player:${target.name}")
+                            npc.attack(target)
                             player.sendError("${npc.name} is now attacking you.")
                         },
                         onRefuse = {
@@ -349,7 +347,7 @@ class NPCActionIntentRecognizer(
                 plugin.askForPermission(
                     "Do you want <gold>${npc.name}</gold> to stop following ${player.name}?",
                     onAccept = {
-                        npc.getOrAddTrait(SentinelTrait::class.java).guarding = null
+                        npc.stopFollowing()
                         player.sendMessage("§7${npc.name} is no longer following you.")
                     },
                     onRefuse = {},
@@ -359,8 +357,7 @@ class NPCActionIntentRecognizer(
                 plugin.askForPermission(
                     "Do you want <gold>${npc.name}</gold> to stop attacking ${player.name}?",
                     onAccept = {
-                        npc.getOrAddTrait(SentinelTrait::class.java).removeTarget("player:${player.name}")
-                        npc.getOrAddTrait(SentinelTrait::class.java).tryUpdateChaseTarget(null)
+                        npc.stopAttacking(player)
                         player.sendMessage("§7${npc.name} has stopped attacking you.")
                     },
                     onRefuse = {},
@@ -379,7 +376,7 @@ class NPCActionIntentRecognizer(
      * Creates a quest from intent details and assigns it to the player
      */
     private fun createAndAssignQuest(
-        npc: NPC,
+        npc: StoryNPC,
         player: Player,
         questDetails: QuestDetails,
     ) {

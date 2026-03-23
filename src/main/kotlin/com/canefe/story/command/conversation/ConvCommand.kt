@@ -37,6 +37,7 @@ class ConvCommand(
             .withSubcommand(getShowSubcommand())
             .withSubcommand(getNendCommand())
             .withSubcommand(getHistoryRemoveSubcommand())
+            .withSubcommand(getAutoSubcommand())
             .register()
     }
 
@@ -96,7 +97,33 @@ class ConvCommand(
                             ?: return@PlayerCommandExecutor player.sendError("Invalid conversation ID.")
 
                     player.sendSuccess("Continuing conversation with ID $id...")
+                    plugin.conversationManager.resetAutoTimer(conversation)
                     plugin.conversationManager.generateResponses(conversation)
+                },
+            )
+
+    private fun getAutoSubcommand(): CommandAPICommand =
+        CommandAPICommand("auto")
+            .withArguments(IntegerArgument("conversation_id"))
+            .executes(
+                CommandExecutor { sender, args ->
+                    val id = args["conversation_id"] as Int
+
+                    val conversation =
+                        commandUtils.conversationManager.getConversationById(id)
+                            ?: run {
+                                sender.sendError("Invalid conversation ID.")
+                                return@CommandExecutor
+                            }
+
+                    plugin.conversationManager.toggleAutoMode(conversation)
+                    if (conversation.autoMode) {
+                        sender.sendSuccess(
+                            "Auto mode enabled for conversation $id (interval: ${plugin.config.autoModeInterval}s)",
+                        )
+                    } else {
+                        sender.sendSuccess("Auto mode disabled for conversation $id")
+                    }
                 },
             )
 

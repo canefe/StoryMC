@@ -1,11 +1,16 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.CharacterSkills
+import com.canefe.story.api.character.PlayerCharacter
+import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
-import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
@@ -48,11 +53,12 @@ class NPCMessageService(
         isClientPlayer: Boolean = false,
         formatColor: String? = "<white>",
         formatColorSuffix: String? = "</white>",
+        voicePending: Boolean = false,
     ): List<Component> {
         val mm = MiniMessage.miniMessage()
         val maxLineWidth = plugin.config.maxLineWidth // Use configurable value from config
         val padding = "             " // Space padding to align text with the image
-        val nameColor = color ?: plugin.npcUtils.randomColor(name)
+        val nameColor = color ?: NPCUtils.randomColor(name)
         // Split response into lines to handle multi-line input
         val lines = message.split("\\n+".toRegex())
         val parsedMessages = ArrayList<Component>()
@@ -140,10 +146,11 @@ class NPCMessageService(
         }
 
         if (characterId != null) {
+            val voiceFlag = if (voicePending) " voice:1" else ""
             return listOf(
                 MiniMessage
                     .miniMessage()
-                    .deserialize("<npc_typing>color:$nameColor id:$characterId:$stringBuilder"),
+                    .deserialize("<npc_typing>color:${nameColor}$voiceFlag id:$characterId:$stringBuilder"),
             )
         }
 
@@ -152,11 +159,12 @@ class NPCMessageService(
 
     fun broadcastNPCMessage(
         message: String,
-        npc: NPC,
+        npc: StoryNPC,
         color: String? = null,
         npcContext: NPCContext? = null,
         streaming: Boolean = false,
         shouldBroadcast: Boolean = true,
+        voicePending: Boolean = false,
     ) {
         // First check if we already have the gender cached
         val cachedGender = genderCache[npc.name]
@@ -187,18 +195,37 @@ class NPCMessageService(
                 name = npcContext?.name ?: npc.name,
                 color = color,
                 avatar = context?.avatar,
-                characterId = if (streaming && npc.entity != null) npc.entity.uniqueId else null,
+                characterId = if (streaming && npc.entity != null) npc.entity!!.uniqueId else null,
+                voicePending = voicePending,
             )
 
         Bukkit.getScheduler().runTask(
             plugin,
             Runnable {
+                // Fire CharacterSpeakEvent on the main thread
+                val npcData = plugin.npcDataManager.getNPCData(npc.name)
+                if (npcData != null) {
+                    val speaker =
+                        AICharacter(
+                            npc = npc,
+                            name = npcData.name,
+                            role = npcData.role,
+                            appearance = npcData.appearance,
+                            context = npcData.context,
+                            skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
+                        )
+                    val nearby = buildNearbyFromNPC(npc, speaker)
+                    val event = CharacterSpeakEvent(speaker, nearby, message)
+                    Bukkit.getPluginManager().callEvent(event)
+                    if (event.isCancelled) return@Runnable
+                }
+
                 val entity =
-                    plugin.disguiseManager.isNPCBeingImpersonated(npc).let {
-                        // if it is true then return the player
+                    if (plugin.disguiseManager.isNPCBeingImpersonated(npc)) {
                         plugin.disguiseManager.getDisguisedPlayer(npc)
-                    }
-                        ?: npc.entity
+                    } else {
+                        null
+                    } ?: npc.entity
 
                 // Only send message to players who are nearby OR have permission
                 val npcLocation = entity?.location ?: return@Runnable
@@ -249,9 +276,10 @@ class NPCMessageService(
                             if (otherNpc != npc) {
                                 otherNpc.entity?.let { otherEntity ->
                                     // Only turn head if the other NPC entity is valid
-                                    if (otherEntity.isValid && (npc.entity != null && npc.entity.isValid)) {
+                                    val speakingEntity = npc.entity
+                                    if (otherEntity.isValid && (speakingEntity != null && speakingEntity.isValid)) {
                                         // Turn head towards the speaking NPC
-                                        plugin.npcBehaviorManager.turnHead(otherNpc, npc.entity)
+                                        plugin.npcBehaviorManager.turnHead(otherNpc, speakingEntity)
                                     }
                                 }
                             }
@@ -271,7 +299,7 @@ class NPCMessageService(
 
                                     plugin.audioManager
                                         .playRandomVoice(
-                                            location = npc.entity.location,
+                                            location = npc.entity!!.location,
                                             gender = gender,
                                             lastPlayed = lastSound,
                                         ).thenAccept { soundId ->
@@ -298,9 +326,10 @@ class NPCMessageService(
      */
     fun broadcastNPCStreamMessage(
         message: String,
-        npc: NPC,
+        npc: StoryNPC,
         color: String? = null,
         npcContext: NPCContext? = null,
+        voicePending: Boolean = false,
     ) {
         broadcastNPCMessage(
             message = message,
@@ -308,6 +337,7 @@ class NPCMessageService(
             color = color,
             npcContext = npcContext,
             streaming = true,
+            voicePending = voicePending,
         )
     }
 
@@ -319,6 +349,16 @@ class NPCMessageService(
         player: Player,
         color: String? = null,
     ) {
+        val speaker =
+            PlayerCharacter(
+                player = player,
+                skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(player.uniqueId, true), player),
+            )
+        val nearby = buildNearbyFromPlayer(player, speaker)
+        val event = CharacterSpeakEvent(speaker, nearby, message)
+        Bukkit.getPluginManager().callEvent(event)
+        if (event.isCancelled) return
+
         val playerName = EssentialsUtils.getNickname(player.name)
 
         // Get player context for avatar support (using NPC data system for players)
@@ -667,10 +707,79 @@ class NPCMessageService(
         }
     }
 
-    companion object {
-        private var instance: NPCMessageService? = null
+    private fun buildNearbyFromNPC(
+        npc: StoryNPC,
+        exclude: AICharacter,
+    ): Set<com.canefe.story.api.character.Character> {
+        val location = npc.entity?.location ?: return emptySet()
+        val radius = plugin.config.radiantRadius
+        val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
-        @JvmStatic
-        fun getInstance(plugin: Story): NPCMessageService = instance ?: NPCMessageService(plugin).also { instance = it }
+        NPCUtils
+            .getNearbyNPCs(npc, radius)
+            .filter { it.uniqueId != npc.uniqueId }
+            .forEach { nearby ->
+                val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+                result.add(
+                    AICharacter(
+                        npc = nearby,
+                        name = data.name,
+                        role = data.role,
+                        appearance = data.appearance,
+                        context = data.context,
+                        skills =
+                            CharacterSkills(
+                                plugin.skillManager.createProviderForNPC(nearby.name),
+                            ),
+                    ),
+                )
+            }
+
+        NPCUtils.getNearbyPlayers(npc, radius).forEach { p ->
+            result.add(
+                PlayerCharacter(
+                    player = p,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
+                ),
+            )
+        }
+
+        return result
+    }
+
+    private fun buildNearbyFromPlayer(
+        player: Player,
+        exclude: PlayerCharacter,
+    ): Set<com.canefe.story.api.character.Character> {
+        val radius = plugin.config.radiantRadius
+        val result = mutableSetOf<com.canefe.story.api.character.Character>()
+
+        NPCUtils.getNearbyNPCs(player, radius).forEach { nearby ->
+            val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+            result.add(
+                AICharacter(
+                    npc = nearby,
+                    name = data.name,
+                    role = data.role,
+                    appearance = data.appearance,
+                    context = data.context,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(nearby.name)),
+                ),
+            )
+        }
+
+        NPCUtils
+            .getNearbyPlayers(player, radius)
+            .filter { it.uniqueId != player.uniqueId }
+            .forEach { p ->
+                result.add(
+                    PlayerCharacter(
+                        player = p,
+                        skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
+                    ),
+                )
+            }
+
+        return result
     }
 }

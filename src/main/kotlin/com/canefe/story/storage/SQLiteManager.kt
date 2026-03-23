@@ -13,7 +13,7 @@ class SQLiteManager(
 
     companion object {
         // Increment this when the schema changes and add a migration in migrate()
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
     }
 
     fun connect(): Boolean =
@@ -60,15 +60,16 @@ class SQLiteManager(
         val conn = getConnection()
 
         // Add migration steps here as the schema evolves.
-        // Each `when` branch handles upgrading FROM that version.
-        //
-        // Example for a future migration from version 1 to 2:
-        // if (fromVersion < 2) {
-        //     conn.createStatement().use { stmt ->
-        //         stmt.executeUpdate("ALTER TABLE npcs ADD COLUMN new_field TEXT")
-        //     }
-        //     logger.info("[SQLite] Migrated schema to version 2")
-        // }
+        if (fromVersion < 2) {
+            conn.createStatement().use { stmt ->
+                try {
+                    stmt.executeUpdate("ALTER TABLE npc_memories ADD COLUMN session_id TEXT")
+                } catch (_: Exception) {
+                    // Column might already exist
+                }
+            }
+            logger.info("[SQLite] Migrated schema to version 2 (added session_id to memories)")
+        }
 
         setSchemaVersion(SCHEMA_VERSION)
 
@@ -102,10 +103,18 @@ class SQLiteManager(
                     anchor_key TEXT,
                     canonical_name TEXT,
                     display_handle TEXT,
-                    callsign TEXT
+                    callsign TEXT,
+                    skills TEXT
                 )
                 """.trimIndent(),
             )
+
+            // Migration: add skills column if missing
+            try {
+                stmt.executeUpdate("ALTER TABLE npcs ADD COLUMN skills TEXT")
+            } catch (_: Exception) {
+                // Column already exists
+            }
 
             // NPC Memories
             stmt.executeUpdate(
@@ -119,6 +128,7 @@ class SQLiteManager(
                     power REAL DEFAULT 1.0,
                     last_accessed INTEGER DEFAULT 0,
                     significance REAL DEFAULT 1.0,
+                    session_id TEXT,
                     PRIMARY KEY (npc_filename, memory_id)
                 )
                 """.trimIndent(),
@@ -243,6 +253,16 @@ class SQLiteManager(
                     player_id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
                     objective TEXT NOT NULL
+                )
+                """.trimIndent(),
+            )
+
+            // Player Configs
+            stmt.executeUpdate(
+                """
+                CREATE TABLE IF NOT EXISTS player_configs (
+                    player_id TEXT PRIMARY KEY,
+                    config_json TEXT NOT NULL
                 )
                 """.trimIndent(),
             )

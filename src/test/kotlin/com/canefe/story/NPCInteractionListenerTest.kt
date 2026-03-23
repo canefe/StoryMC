@@ -3,7 +3,7 @@ package com.canefe.story
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.event.NPCInteractionListener
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.testutils.waitUntil
 import dev.jorel.commandapi.CommandAPI
 import io.mockk.*
@@ -27,21 +27,20 @@ class NPCInteractionListenerTest {
     private lateinit var plugin: Story
     private lateinit var listener: NPCInteractionListener
 
-    // lets have a getter getNearbyNPCs that returns plugin.npcUtils.getNearbyNPCs so we dont have to
     fun getNearbyNPCs(
         player: Player,
         radius: Double,
-    ) = plugin.npcUtils.getNearbyNPCs(player, radius)
+    ) = NPCUtils.getNearbyNPCs(player, radius)
 
     fun getNearbyPlayers(
         player: Player,
         radius: Double,
-    ) = plugin.npcUtils.getNearbyPlayers(player, radius)
+    ) = NPCUtils.getNearbyPlayers(player, radius)
 
     @BeforeEach
     fun setUp() {
-        val npcUtilsMock = mockk<NPCUtils>(relaxed = true)
-        every { npcUtilsMock.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
+        mockkObject(NPCUtils)
+        every { NPCUtils.getNearbyNPCs(any<Player>(), any()) } returns emptyList()
 
         System.setProperty("mockbukkit", "true")
         server = MockBukkit.mock()
@@ -55,23 +54,40 @@ class NPCInteractionListenerTest {
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
         plugin = MockBukkit.load(Story::class.java)
         plugin.commandManager = mockk(relaxed = true)
-        plugin.npcUtils = npcUtilsMock
+
+        // Mock CitizensAPI registry globally to prevent failures in CI
+        val mockRegistry = mockk<NPCRegistry>(relaxed = true)
+        every { mockRegistry.isNPC(any()) } returns false
+        CitizensAPI.setNPCRegistry(mockRegistry)
 
         listener = spyk(NPCInteractionListener(plugin))
         server.pluginManager.registerEvents(listener, plugin)
 
         plugin.saveDefaultConfig()
         plugin.reloadConfig()
+
+        // Disable features that cause issues in tests
+        plugin.configService.npcReactionsEnabled = false
+        plugin.configService.autoModeEnabledByDefault = false
     }
 
     @AfterEach
     fun tearDown() {
         MockBukkit.unmock()
+        unmockkObject(NPCUtils)
     }
 
     @Test
     fun `onPlayerChat cancels event and schedules processing`() {
         val player: Player = server.addPlayer("Alice")
+
+        val fakeNearbyEntities =
+            NPCInteractionListener.NearbyEntities(
+                npcs = emptyList(),
+                players = emptyList(),
+                allInteractableNPCs = emptyList(),
+            )
+        every { listener.gatherNearbyEntities(any(), any()) } returns fakeNearbyEntities
 
         // Minimal stubs for required Paper API types
         val renderer = mockk<ChatRenderer>(relaxed = true)
@@ -107,8 +123,8 @@ class NPCInteractionListenerTest {
     @Test
     fun `player joins existing NPC conversation if nearby NPC already in conversation`() {
         val alice = server.addPlayer("Alice")
-        val guard = makeNpc("Guard")
-        val shopkeeper = makeNpc("Shopkeeper")
+        val guard = makeStoryNpc("Guard")
+        val shopkeeper = makeStoryNpc("Shopkeeper")
 
         // There exists a conversation for Guard already
         val existingConversation = plugin.conversationManager.startConversation(listOf(guard, shopkeeper))
@@ -159,10 +175,6 @@ class NPCInteractionListenerTest {
                 allInteractableNPCs = emptyList(),
             )
 
-        val mockRegistry = mockk<NPCRegistry>()
-        every { mockRegistry.isNPC(any()) } returns false
-        CitizensAPI.setNPCRegistry(mockRegistry)
-
         every { listener.gatherNearbyEntities(any(), any()) } returns fakeNearbyEntities
 
         val event =
@@ -198,7 +210,7 @@ class NPCInteractionListenerTest {
 
         val alice = server.addPlayer("Alice")
         val bob = server.addPlayer("Bob")
-        val guard = makeNpc("Guard")
+        val guard = makeStoryNpc("Guard")
 
         every { getNearbyNPCs(bob, any()) } returns listOf(guard)
         every { getNearbyPlayers(bob, any()) } returns emptyList()
@@ -299,8 +311,8 @@ class NPCInteractionListenerTest {
         }
         val alice = server.addPlayer("Alice")
         val bob = server.addPlayer("Bob")
-        val guard = makeNpc("Guard")
-        val shopkeeper = makeNpc("Shopkeeper")
+        val guard = makeStoryNpc("Guard")
+        val shopkeeper = makeStoryNpc("Shopkeeper")
         val mockRegistry = mockk<NPCRegistry>(relaxed = true)
         every { mockRegistry.isNPC(bob) } returns false
         every { mockRegistry.isNPC(alice) } returns false

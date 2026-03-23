@@ -1,5 +1,10 @@
 # Story Configuration File
 
+# Bridge — WebSocket connection to external orchestrator (Go service, etc.)
+bridge:
+  enabled: false
+  uri: 'ws://localhost:8080/story'
+
 # Storage Backend Configuration
 # backend: 'sqlite' (default, recommended), 'mongodb', or 'yaml' (deprecated, buggy)
 storage:
@@ -41,6 +46,7 @@ conversation:
   behavioralDirectivesEnabled: false
   dialoguePathSelectionEnabled: false
   delayedPlayerMessageProcessing: false
+  summarizationThreshold: 5 # Summarize conversation history every N messages
 # NPC Behavior
 npc:
   headRotationDelay: 2
@@ -56,6 +62,15 @@ npc:
   teleportOnFail: false
   randomPathingCooldown: 100
   maxProcessPerTick: 3
+
+# Player Agent Settings
+player-agent:
+  # Whether to spawn a background AI agent for each online player
+  enabled: false
+  # How often (in seconds) each agent runs an LLM analysis cycle
+  intervalSeconds: 60
+  # Optional: custom LLM endpoint URL. Leave blank to use the StoryAI (openrouter) endpoint
+  customEndpoint: ""
 
 # Faction Settings
 faction:

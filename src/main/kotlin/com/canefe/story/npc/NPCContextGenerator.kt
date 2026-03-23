@@ -1,10 +1,10 @@
 package com.canefe.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 import kotlin.random.Random
@@ -73,7 +73,7 @@ class NPCContextGenerator(
     /**
      * Get or create context for an NPC using the NPC entity (preferred method)
      */
-    fun getOrCreateContextForNPC(npc: NPC): NPCContext? =
+    fun getOrCreateContextForNPC(npc: StoryNPC): NPCContext? =
         getOrCreateContextForNPCInternal(npc.name, npc.uniqueId.toString(), npc)
 
     /**
@@ -84,7 +84,7 @@ class NPCContextGenerator(
     private fun getOrCreateContextForNPCInternal(
         npcName: String,
         actualEntityId: String?,
-        npc: NPC? = null,
+        npc: StoryNPC? = null,
     ): NPCContext? {
         try {
             // FIRST: Check if this is a generic NPC that needs name aliasing
@@ -141,7 +141,7 @@ class NPCContextGenerator(
 
             // If we have an NPC entity, try to get its location from its stored data
             if (npc != null && npc.isSpawned && npc.entity != null) {
-                val npcLocation = plugin.locationManager.getLocationByPosition2D(npc.entity.location)
+                val npcLocation = plugin.locationManager.getLocationByPosition2D(npc.entity!!.location)
                 if (npcLocation != null) {
                     location = npcLocation
                 }

@@ -34,6 +34,7 @@ val elevenLabsAPIKey: String? =
 
 plugins {
     kotlin("jvm") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("xyz.jpenilla.run-paper") version "2.3.1"
     id("com.gradleup.shadow") version "8.3.3"
@@ -42,7 +43,7 @@ plugins {
 }
 
 group = "com.canefe"
-version = "0.4.1"
+version = "0.5.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -108,7 +109,6 @@ dependencies {
     // Local plugin dependencies
     compileOnly(
         fileTree("lib") {
-            include("RealisticSeasons.jar")
             include("ReviveMe-API.jar")
         },
     )
@@ -119,6 +119,7 @@ dependencies {
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Testing
     // Use a single, up-to-date MockBukkit coordinate for 1.21 compatibility
@@ -128,7 +129,6 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:2.1.20")
     testImplementation("org.mockito:mockito-inline:4.8.0")
-    testImplementation(files("lib/RealisticSeasons.jar"))
 
     // Add Gson if used by the plugin
     implementation("com.google.code.gson:gson:2.10.1") // Or the latest version
@@ -278,8 +278,9 @@ sourceSets {
     // make stubs for local jar files that we should not publish for CI
     val stubs by creating {
         java {
-            srcDir("src/stubs/kotlin")
+            srcDir("src/stubs/java")
         }
+        compileClasspath += main.get().compileClasspath
     }
 
     main {
@@ -291,6 +292,8 @@ sourceSets {
     }
 
     test {
+        compileClasspath += stubs.output
+        runtimeClasspath += stubs.output
         resources {
             srcDir("src/test/resources")
             exclude("plugin.yml")
@@ -356,7 +359,7 @@ tasks.register<Exec>("deployToSSH") {
         remotePath
             ?: throw GradleException("REMOTE_PATH not set. Set it as environment variable or in local.properties")
 
-    commandLine("scp", localFile, "$user@$host:$path")
+    commandLine("scp", "-v", localFile, "$user@$host:$path")
 
     doLast {
         println("✅ Deployed plugin JAR to $user@$host:$path")

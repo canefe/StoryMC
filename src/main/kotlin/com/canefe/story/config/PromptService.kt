@@ -43,6 +43,38 @@ class PromptService(
         return prompt
     }
 
+    /** Gets the theme analysis prompt */
+    fun getThemeAnalysisPrompt(
+        availableThemes: String,
+        activeThemes: String,
+    ): String {
+        val variables =
+            mapOf(
+                "available_themes" to availableThemes,
+                "active_themes" to activeThemes,
+            )
+        return getPrompt("theme_analysis", variables)
+    }
+
+    /** Gets the player analysis prompt */
+    fun getPlayerAnalysisPrompt(
+        playerName: String,
+        location: String,
+        questTitle: String,
+        team: String,
+        inConversation: String,
+    ): String {
+        val variables =
+            mapOf(
+                "player_name" to playerName,
+                "location" to location,
+                "quest_title" to questTitle,
+                "team" to team,
+                "in_conversation" to inConversation,
+            )
+        return getPrompt("player_analysis", variables)
+    }
+
     /** Gets the behavioral directive prompt with context */
     fun getBehavioralDirectivePrompt(
         recentMessages: String,
@@ -171,6 +203,9 @@ class PromptService(
         return getPrompt("talk_as_npc", variables)
     }
 
+    /** Gets the NPC reactions prompt */
+    fun getNpcReactionsPrompt(): String = getPrompt("npc_reactions")
+
     /** Gets the quest book generation prompt */
     fun getQuestBookPrompt(contextInformation: String): String {
         val variables = mapOf("context_information" to contextInformation)
@@ -248,6 +283,9 @@ class PromptService(
         return getPrompt("location_context_generation", variables)
     }
 
+    /** Gets the message history summary prompt for mid-conversation summarization */
+    fun getMessageHistorySummaryPrompt(): String = getPrompt("message_history_summary")
+
     /** Gets the session history summary prompt */
     fun getSessionHistorySummaryPrompt(): String = getPrompt("session_history_summary")
 
@@ -256,5 +294,58 @@ class PromptService(
         val variables = mapOf("context_information" to contextInformation)
 
         return getPrompt("recent_events_generation", variables)
+    }
+
+    /** Gets the NPC skill generation prompt */
+    fun getNpcSkillGenerationPrompt(
+        npcName: String,
+        role: String,
+        context: String,
+        availableSkills: String,
+    ): String {
+        val variables =
+            mapOf(
+                "npc_name" to npcName,
+                "role" to role,
+                "context" to context,
+                "available_skills" to availableSkills,
+            )
+        return getPrompt("npc_skill_generation", variables)
+    }
+
+    /** Gets the skill check speech generation prompt */
+    fun getSkillCheckSpeechPrompt(
+        characterName: String,
+        skill: String,
+        action: String,
+        result: String,
+        roll: Int,
+        dc: Int,
+    ): String {
+        val variables =
+            mapOf(
+                "character_name" to characterName,
+                "skill" to skill,
+                "action" to action,
+                "result" to result,
+                "roll" to roll.toString(),
+                "dc" to dc.toString(),
+            )
+        return getPrompt("skill_check_speech", variables)
+    }
+
+    /** Gets the skill check evaluation prompt */
+    fun getSkillCheckEvaluationPrompt(
+        npcNames: String,
+        playerNames: String,
+        conversation: String,
+    ): String {
+        val variables =
+            mapOf(
+                "npc_names" to npcNames,
+                "player_names" to playerNames,
+                "conversation" to conversation,
+            )
+        return getPrompt("skill_check_evaluation", variables)
     }
 }

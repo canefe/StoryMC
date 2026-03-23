@@ -3,7 +3,7 @@ package com.canefe.story
 
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.ConversationManager
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import io.mockk.*
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPCRegistry
@@ -39,7 +39,6 @@ class ConversationManagerTest {
 
         // Keep command manager relaxed to avoid CommandAPI side effects
         plugin.commandManager = mockk(relaxed = true)
-        ConversationManager.reset()
         // Replace systems we will observe with mocks
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
@@ -47,12 +46,16 @@ class ConversationManagerTest {
         plugin.sessionManager = mockk(relaxed = true)
 
         plugin.conversationManager =
-            ConversationManager.getInstance(
+            ConversationManager(
                 plugin,
                 plugin.npcContextGenerator,
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )
+
+        // Disable features that cause issues in tests
+        plugin.configService.npcReactionsEnabled = false
+        plugin.configService.autoModeEnabledByDefault = false
     }
 
     @AfterEach
@@ -69,7 +72,7 @@ class ConversationManagerTest {
             every { npcService.summarizeConversation(any()) } returns CompletableFuture.completedFuture(null)
 
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Start conversation and add two user messages (<= 2 -> not significant)
             val conversation = plugin.conversationManager.startConversation(player, listOf(npc))
@@ -87,7 +90,7 @@ class ConversationManagerTest {
         fun `endConversation short conversation does not summarize`() {
             // Arrange
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Ensure session/world handlers do nothing but are observable
             every { plugin.sessionManager.feed(any(), any()) } just Runs
@@ -122,7 +125,7 @@ class ConversationManagerTest {
         fun `endConversation significant conversation triggers summarization and world and session`() {
             // Arrange
             val player = server.addPlayer("Bob")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
                 CompletableFuture.completedFuture(null)
@@ -159,7 +162,7 @@ class ConversationManagerTest {
         @Test
         fun `duplicate endConversation only summarizes once`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
                 CompletableFuture.completedFuture(null)
 
@@ -177,7 +180,7 @@ class ConversationManagerTest {
         @Test
         fun `endConversation with dontRemember skips summarization`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
                 CompletableFuture.completedFuture(null)
 
@@ -194,7 +197,7 @@ class ConversationManagerTest {
         @Test
         fun `conversation is removed from repository after end`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             val conversation = plugin.conversationManager.startConversation(player, listOf(npc))
             assertTrue(plugin.conversationManager.getAllActiveConversations().contains(conversation))
@@ -208,7 +211,7 @@ class ConversationManagerTest {
         fun `removeNPC ends conversation when no NPCs remain`() {
             // Arrange
             val player = server.addPlayer("Charlie")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Make summarization a no-op just in case
             every { plugin.npcResponseService.summarizeConversation(any()) } returns
@@ -235,7 +238,7 @@ class ConversationManagerTest {
         @Test
         fun `startConversation creates new conversation`() {
             val player = server.addPlayer("Alice")
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
 
             // Act: start a conversation
             val conversation = plugin.conversationManager.startConversation(player, listOf(npc))
@@ -259,8 +262,8 @@ class ConversationManagerTest {
         @Test
         fun `startConversation replaces existing one`() {
             val player = server.addPlayer("Alice")
-            val npc1 = makeNpc("Guard1")
-            val npc2 = makeNpc("Guard2")
+            val npc1 = makeStoryNpc("Guard1")
+            val npc2 = makeStoryNpc("Guard2")
 
             // Start first conversation
             val oldConversation = plugin.conversationManager.startConversation(player, listOf(npc1))

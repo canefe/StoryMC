@@ -1,6 +1,6 @@
 package com.canefe.story.command.story.npc.schedule
 
-import com.canefe.story.npc.NPCScheduleManager
+import com.canefe.story.npc.schedule.ScheduleEntry
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -110,7 +110,7 @@ class ScheduleCommand(
                             it.locationName = location.name
                         } ?: run {
                         // Create a new entry if it doesn't exist
-                        val newEntry = NPCScheduleManager.ScheduleEntry(hour, location.name, "idle", null)
+                        val newEntry = ScheduleEntry(hour, location.name, "idle", null)
                         schedule.addEntry(newEntry)
                     }
 

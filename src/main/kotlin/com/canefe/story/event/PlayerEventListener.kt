@@ -32,11 +32,8 @@ class PlayerEventListener(
     @EventHandler
     fun onPlayerDropItem(event: PlayerDropItemEvent) {
         val player = event.player
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
 
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
             "${EssentialsUtils.getNickname(
                 player.name,
@@ -54,11 +51,6 @@ class PlayerEventListener(
 
         if (player !is Player) return
 
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
-
         val name =
             if (damager is LivingEntity) {
                 damager.customName() ?: damager.type.name
@@ -66,10 +58,9 @@ class PlayerEventListener(
                 damager.type.name
             }
 
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} was damaged by $name amount ${event.finalDamage}",
+            "${EssentialsUtils.getNickname(player.name)} was damaged by $name amount ${event.finalDamage}",
         )
     }
 
@@ -79,11 +70,8 @@ class PlayerEventListener(
     @EventHandler
     fun onPlayerPickupItem(event: PlayerAttemptPickupItemEvent) {
         val player = event.player
-        // Check if in conversation
-        val conversation =
-            plugin.conversationManager.getConversation(player)
-                ?: return
 
+        val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
             "${EssentialsUtils.getNickname(
                 player.name,
@@ -99,6 +87,7 @@ class PlayerEventListener(
     fun onPlayerJoin(event: PlayerJoinEvent) {
         val player = event.player
         val playerUUID = player.uniqueId
+
         // Show current quest to the player
         val currentQuest = plugin.questManager.getCurrentQuest(player) ?: return
         // wait a few seconds before showing the quest, waiting for the player to load

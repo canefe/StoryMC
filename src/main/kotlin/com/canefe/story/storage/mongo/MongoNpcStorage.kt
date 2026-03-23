@@ -99,6 +99,7 @@ class MongoNpcStorage(
                     .append("power", memory.power)
                     .append("lastAccessed", memory.lastAccessed)
                     .append("significance", memory.significance)
+                    .apply { memory.sessionId?.let { append("sessionId", it) } }
             }
 
         return Document()
@@ -119,7 +120,10 @@ class MongoNpcStorage(
             .append("canonicalName", npcData.canonicalName)
             .append("displayHandle", npcData.displayHandle)
             .append("callsign", npcData.callsign)
-            .append("memories", memoriesList)
+            .append(
+                "skills",
+                if (npcData.skills.isNotEmpty()) org.bson.Document(npcData.skills as Map<String, Any>) else null,
+            ).append("memories", memoriesList)
     }
 
     private fun documentToNpcData(doc: Document): NPCData {
@@ -144,6 +148,14 @@ class MongoNpcStorage(
         npcData.displayHandle = doc.getString("displayHandle")
         npcData.callsign = doc.getString("callsign")
         npcData.locationName = doc.getString("location")
+
+        val skillsDoc = doc.get("skills", org.bson.Document::class.java)
+        npcData.skills =
+            if (skillsDoc != null) {
+                skillsDoc.entries.associate { it.key to (it.value as Number).toInt() }.toMutableMap()
+            } else {
+                mutableMapOf()
+            }
 
         npcData.memory = parseMemories(doc)
 
@@ -174,6 +186,7 @@ class MongoNpcStorage(
                     power = memDoc.getDouble("power") ?: 1.0,
                     lastAccessed = memDoc.getLong("lastAccessed") ?: 0L,
                     _significance = memDoc.getDouble("significance") ?: 1.0,
+                    sessionId = memDoc.getString("sessionId"),
                 ),
             )
         }

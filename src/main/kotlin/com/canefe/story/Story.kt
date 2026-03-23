@@ -3,6 +3,7 @@ package com.canefe.story
 import com.canefe.story.api.StoryAPI
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
+import com.canefe.story.bridge.*
 import com.canefe.story.character.skill.SkillManager
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.command.story.quest.QuestCommandUtils
@@ -14,22 +15,24 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.event.EventManager
 import com.canefe.story.information.WorldInformationManager
+import com.canefe.story.intelligence.BridgeIntelligence
+import com.canefe.story.intelligence.LocalIntelligence
+import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.NPCManager
-import com.canefe.story.npc.NPCScheduleManager
 import com.canefe.story.npc.behavior.NPCBehaviorManager
 import com.canefe.story.npc.data.NPCDataManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.name.NPCNameManager
 import com.canefe.story.npc.name.NPCNameResolver
 import com.canefe.story.npc.relationship.RelationshipManager
+import com.canefe.story.npc.schedule.ScheduleManager
 import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.service.TypingSessionManager
-import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.player.PlayerManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
@@ -103,7 +106,6 @@ open class Story :
 
     lateinit var conversationManager: ConversationManager
     lateinit var locationManager: LocationManager
-    lateinit var npcUtils: NPCUtils
     lateinit var npcManager: NPCManager
         private set
     lateinit var playerManager: PlayerManager
@@ -119,7 +121,7 @@ open class Story :
 
     lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
 
-    lateinit var scheduleManager: NPCScheduleManager
+    lateinit var scheduleManager: ScheduleManager
     lateinit var npcContextGenerator: NPCContextGenerator
     lateinit var lorebookManager: LoreBookManager
     lateinit var sessionManager: SessionManager
@@ -143,15 +145,30 @@ open class Story :
 
     lateinit var voiceManager: VoiceManager
 
+    lateinit var skillCheckService: com.canefe.story.conversation.skillcheck.SkillCheckService
+        private set
+    lateinit var npcSkillGenerator: com.canefe.story.character.skill.NPCSkillGenerator
+        private set
+
     // NPC Name Aliasing System
     lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
         private set
     lateinit var npcNameResolver: com.canefe.story.npc.name.NPCNameResolver
         private set
 
-    // lateinit var aiDungeonMaster: AIDungeonMaster
-
     lateinit var api: StoryAPI
+        private set
+
+    // Central event bus for all Story events
+    val eventBus = StoryEventBus()
+
+    // Perception — observes world events and emits them for nearby characters
+    lateinit var perceptionService: PerceptionService
+        private set
+    private var perceptionListener: PerceptionListener? = null
+
+    // Intelligence — abstraction for all LLM/thinking operations
+    lateinit var intelligence: StoryIntelligence
         private set
 
     // Configuration and state
@@ -209,6 +226,7 @@ open class Story :
         server.pluginManager.registerEvents(QuestListener(this), this)
         // initializeWebUIServer()
         // Load configuration
+        // reload() also initializes the event bus
         configService.reload()
         StoryAPI.initialize(this)
     }
@@ -260,21 +278,21 @@ open class Story :
         npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
-        npcUtils = NPCUtils.getInstance(this)
-        npcManager = NPCManager.getInstance(this)
-        scheduleManager = NPCScheduleManager.getInstance(this)
+        npcManager = NPCManager(this)
+        Bukkit.getPluginManager().registerEvents(npcManager, this)
+        scheduleManager = ScheduleManager(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
-        npcMessageService = NPCMessageService.getInstance(this)
+        npcMessageService = NPCMessageService(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
         worldInformationManager = WorldInformationManager(this)
         npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
         lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
-        taskManager = TaskManager.getInstance(this)
+        taskManager = TaskManager(this)
         npcBehaviorManager = NPCBehaviorManager(this)
 
         conversationManager =
-            ConversationManager.getInstance(
+            ConversationManager(
                 this,
                 npcContextGenerator,
                 npcResponseService,
@@ -288,6 +306,13 @@ open class Story :
         voiceManager = VoiceManager(this)
         npcNameManager = NPCNameManager(this)
         npcNameResolver = NPCNameResolver(this)
+
+        skillCheckService =
+            com.canefe.story.conversation.skillcheck
+                .SkillCheckService(this)
+        npcSkillGenerator =
+            com.canefe.story.character.skill
+                .NPCSkillGenerator(this)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()
@@ -386,6 +411,55 @@ open class Story :
         }
     }
 
+    fun initializeEventBus() {
+        // Always register Bukkit transport
+        eventBus.registerTransport(BukkitTransport(this))
+
+        // Register WebSocket transport if enabled
+        if (configService.bridgeEnabled) {
+            val wsTransport = WebSocketTransport(plugin = this, serverUri = configService.bridgeUri)
+            wsTransport.connect()
+            eventBus.registerTransport(wsTransport)
+        }
+
+        // Register intent handlers
+        eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
+        eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
+        eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+
+        // Initialize intelligence provider
+        val local = LocalIntelligence(this)
+        intelligence =
+            if (configService.bridgeEnabled) {
+                val bridge = BridgeIntelligence(this, local, eventBus)
+                Bukkit.getScheduler().runTaskLater(this, Runnable { bridge.requestCapabilities() }, 40L)
+                bridge
+            } else {
+                local
+            }
+
+        // Initialize perception (unregister old listener on reload)
+        if (::perceptionService.isInitialized) {
+            perceptionService.stopProximityPublisher()
+        }
+        perceptionListener?.let {
+            org.bukkit.event.HandlerList
+                .unregisterAll(it)
+        }
+        perceptionService = PerceptionService(this)
+        perceptionListener = PerceptionListener(this, perceptionService)
+        server.pluginManager.registerEvents(perceptionListener!!, this)
+        perceptionService.startProximityPublisher()
+
+        // Initialize character sync from sim
+        CharacterSyncService(this).register()
+
+        logger.info(
+            "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
+                ", intelligence: ${if (configService.bridgeEnabled) "Bridge" else "Local"}",
+        )
+    }
+
     private fun initializeWebUIServer() {
         val port = 7777
         webUIServer = WebUIServer(this, port)
@@ -413,6 +487,7 @@ open class Story :
             if (::aiResponseService.isInitialized) aiResponseService.shutdown()
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
+            eventBus.shutdown()
 
             logger.info("Story plugin has been successfully disabled.")
         } catch (e: Exception) {
@@ -457,6 +532,8 @@ open class Story :
             scheduleManager.shutdown()
 
             sessionManager.shutdown()
+
+            // Shutdown player agent manager
 
             // Shutdown AI response service (virtual thread executor)
             aiResponseService.shutdown()

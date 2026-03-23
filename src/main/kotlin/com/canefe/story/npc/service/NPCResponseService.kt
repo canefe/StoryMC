@@ -1,6 +1,7 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
@@ -9,8 +10,6 @@ import com.canefe.story.util.EssentialsUtils
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
-import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.concurrent.CompletableFuture
@@ -24,7 +23,7 @@ class NPCResponseService(
     private val contextService = plugin.npcContextGenerator
 
     fun generateNPCResponse(
-        npc: NPC? = null,
+        npc: StoryNPC? = null,
         responseContext: List<String>,
         broadcast: Boolean = true,
         player: Player? = null,
@@ -46,7 +45,7 @@ class NPCResponseService(
         val npcContext = contextService.getOrCreateContextForNPC(originalCharName)
 
         // Check if NPC was replaced during context generation
-        var actualNPC = npc
+        var actualNPC: StoryNPC? = npc
         var actualCharName = originalCharName
 
         if (!isPlayerCharacter && npc != null) {
@@ -257,7 +256,7 @@ class NPCResponseService(
         }
 
         return plugin.getAIResponse(prompts, lowCost = !rich).thenApply { response ->
-            val finalResponse = response?.trim() ?: ""
+            val finalResponse = cleanNPCResponse(response?.trim() ?: "")
 
             // Fail the future if response is empty or null
             if (finalResponse.isEmpty()) {
@@ -299,7 +298,7 @@ class NPCResponseService(
      * @return CompletableFuture<String> with the final response
      */
     fun generateNPCResponseWithTypingEffect(
-        npc: NPC,
+        npc: StoryNPC,
         npcContext: NPCContext?,
         responseContext: List<String>,
         typingSpeed: Int = 8,
@@ -359,7 +358,7 @@ class NPCResponseService(
      */
     fun generateBehavioralDirective(
         conversation: Conversation,
-        npc: NPC,
+        npc: StoryNPC,
     ): CompletableFuture<String> {
         // Get only the behavioral directive prompt - no need to duplicate context that
         // generateNPCResponse already adds
@@ -409,8 +408,17 @@ class NPCResponseService(
         // Create a list of Messages for the AI to analyze
         val speakerSelectionPrompt: MutableList<ConversationMessage> = ArrayList()
 
-        // Get recent conversation history (last 10 messages)
-        val recentHistory: List<ConversationMessage> = conversation.history
+        // Get recent conversation history (last 10 messages), excluding reaction-only messages
+        // Reactions are action-only messages like "NpcName: *nods thoughtfully*"
+        val recentHistory: List<ConversationMessage> =
+            conversation.history.filter { msg ->
+                if (msg.role == "system" || msg.content == "...") return@filter true
+                // Extract the content after "Name: " prefix
+                val content = msg.content.substringAfter(": ", msg.content).trim()
+                // Keep messages that have non-action text (not purely *action*)
+                val withoutActions = content.replace(Regex("\\*[^*]+\\*"), "").trim()
+                withoutActions.isNotEmpty()
+            }
         val historySize = min(recentHistory.size.toDouble(), 10.0).toInt()
         val contextMessages =
             recentHistory.subList(
@@ -464,7 +472,7 @@ class NPCResponseService(
     }
 
     fun generateNPCGreeting(
-        npc: NPC,
+        npc: StoryNPC,
         target: String,
         greetingContext: List<String>? = null,
     ): String? {
@@ -483,7 +491,7 @@ class NPCResponseService(
     }
 
     fun generateNPCGoodbye(
-        npc: NPC,
+        npc: StoryNPC,
         goodbyeContext: List<String>? = null,
     ): CompletableFuture<String?> {
         // Use PromptService to get the NPC goodbye prompt
@@ -666,34 +674,8 @@ class NPCResponseService(
             return future
         }
 
-        // Find the NPC by name
-        var npc =
-            CitizensAPI.getNPCRegistry().firstOrNull {
-                it.name.equals(npcName, ignoreCase = true) ||
-                    it.name.trim().equals(npcName.trim(), ignoreCase = true)
-            }
-
-        // If still null, try searching across all registries
-        if (npc == null) {
-            if (plugin.config.debugMessages) {
-                plugin.logger.info("Searching for NPC '$npcName' across all registries...")
-            }
-            for (registry in CitizensAPI.getNPCRegistries()) {
-                registry.forEach {
-                    if (it.name.equals(npcName, ignoreCase = true) ||
-                        it.name.trim().equals(npcName.trim(), ignoreCase = true)
-                    ) {
-                        npc = it
-                        if (plugin.config.debugMessages) {
-                            plugin.logger.info(
-                                "Found NPC '${it.name}' in registry ${registry.name}",
-                            )
-                        }
-                        return@forEach
-                    }
-                }
-            }
-        }
+        // Find the NPC by name — use Story's NPC manager first, no Citizens registry required
+        var npc: StoryNPC? = plugin.npcDataManager.getNPC(npcName)
 
         val player =
             Bukkit.getOnlinePlayers().firstOrNull {
@@ -864,20 +846,13 @@ class NPCResponseService(
                 )
             }
 
-            val memory =
-                Memory(
-                    id =
-                        "conversation_exit_summary_${System.currentTimeMillis()}_$npcName",
-                    content = memoryContent,
-                    gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-                    lastAccessed = plugin.timeService.getCurrentGameTime(),
-                    power = 0.85,
-                    _significance = significance,
-                )
+            plugin.npcDataManager.createMemoryForNPC(npcName, memoryContent, significance)
 
-            npcDataForMemory.memory.add(memory)
-            plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
-            plugin.npcDataManager.saveNPCData(npcName, npcDataForMemory)
+            // Update relationships from the memory content
+            val savedMemories = plugin.npcDataManager.loadNPCMemory(npcName)
+            savedMemories.lastOrNull()?.let { memory ->
+                plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
+            }
 
             val endTime = System.currentTimeMillis()
             if (plugin.config.debugMessages) {
@@ -1042,5 +1017,52 @@ class NPCResponseService(
             response?.trim()?.takeIf { it.isNotEmpty() }
                 ?: "Generated_NPC_${System.currentTimeMillis()}"
         }
+    }
+
+    /**
+     * Strips meta-commentary, author notes, and analysis that LLMs sometimes
+     * append after the actual in-character response.
+     */
+    private fun cleanNPCResponse(response: String): String {
+        if (response.isEmpty()) return response
+
+        var cleaned = response
+
+        // Strip meta-commentary: find where actual response ends
+        val lines = cleaned.lines()
+        val cutIndex =
+            lines.indexOfFirst { line ->
+                val trimmed = line.trim()
+                trimmed.matches(Regex("^\\d+\\.\\s.*")) ||
+                    trimmed.startsWith("Numerous elements") ||
+                    trimmed.startsWith("Key elements") ||
+                    trimmed.startsWith("This response") ||
+                    trimmed.startsWith("Note:") ||
+                    trimmed.startsWith("Author") ||
+                    trimmed.startsWith("Analysis") ||
+                    trimmed.startsWith("Explanation") ||
+                    trimmed.startsWith("Here's") ||
+                    trimmed.startsWith("I incorporated") ||
+                    trimmed.startsWith("The response") ||
+                    trimmed.startsWith("Several elements") ||
+                    trimmed.startsWith("Elements used") ||
+                    trimmed.startsWith("Character traits") ||
+                    trimmed.matches(Regex("^\\[.*].*"))
+            }
+        if (cutIndex > 0) {
+            cleaned = lines.take(cutIndex).joinToString("\n").trim()
+        }
+
+        // Strip multiple dialogue lines: keep only the first *action* dialogue block
+        // Multiple blocks look like: "*action1* dialogue1\n*action2* dialogue2"
+        val actionPattern = Regex("\\*[^*]+\\*")
+        val matches = actionPattern.findAll(cleaned).toList()
+        if (matches.size > 1) {
+            // Find where the second action block starts and cut there
+            val secondActionStart = matches[1].range.first
+            cleaned = cleaned.substring(0, secondActionStart).trim()
+        }
+
+        return cleaned
     }
 }

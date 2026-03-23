@@ -109,7 +109,7 @@ jobs:
               lines = [l.strip() for l in entry.splitlines() if l.strip()]
               title = re.sub(r'^[*\-\s]+', '', lines[0])
               body = [re.sub(r'^[*\-\s]+', '', b) for b in lines[1:]]
-              match = re.match(r'(\w+):\s*(.*)', title)
+              match = re.match(r'(\w+)(?:\([^)]*\))?:\s*(.*)', title)
               if match:
                   key, clean_title = match.group(1), match.group(2)
                   key = key if key in groups else "other"
@@ -207,7 +207,7 @@ jobs:
               lines = [l.strip() for l in entry.splitlines() if l.strip()]
               title = re.sub(r'^[*\-\s]+', '', lines[0])
               body = [re.sub(r'^[*\-\s]+', '', b) for b in lines[1:]]
-              match = re.match(r'(\w+):\s*(.*)', title)
+              match = re.match(r'(\w+)(?:\([^)]*\))?:\s*(.*)', title)
               if match:
                   key, clean_title = match.group(1), match.group(2)
                   key = key if key in groups else "other"

@@ -77,9 +77,9 @@ class ConvListCommand(
         npcNames: List<String>,
         playerNames: List<String>,
     ): List<Component> {
-        // Build the prefix with conversation ID
         val miniMessage = commandUtils.mm
         val componentList = mutableListOf<Component>()
+
         val prefix = miniMessage.deserialize("<gray>=====<green>[$id]</green>=====</gray>")
 
         // Append clickable NPC names
@@ -252,6 +252,24 @@ class ConvListCommand(
                 "Toggle conversation",
             )
 
+        val autoColor =
+            if (Story.instance.conversationManager
+                    .getConversationById(id)
+                    ?.autoMode == true
+            ) {
+                "#00FF00"
+            } else {
+                "red"
+            }
+        val autoButton =
+            commandUtils.createButton(
+                "Auto",
+                autoColor,
+                "run_command",
+                "/conv auto $id",
+                "Toggle auto mode (${Story.instance.config.autoModeInterval}s interval)",
+            )
+
         val forceEndButton =
             commandUtils.createButton(
                 "F-End",
@@ -287,6 +305,7 @@ class ConvListCommand(
                 addButton,
                 showContextButton,
                 toggleButton,
+                autoButton,
                 forceEndButton,
                 endButton,
                 endNoRememberButton,

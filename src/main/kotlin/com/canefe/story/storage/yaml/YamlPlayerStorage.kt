@@ -2,6 +2,7 @@
 
 package com.canefe.story.storage.yaml
 
+import com.canefe.story.player.PlayerConfig
 import com.canefe.story.storage.PlayerStorage
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
@@ -112,5 +113,14 @@ class YamlPlayerStorage(
         val config = YamlConfiguration.loadConfiguration(questsFile)
         config.set("players.$playerId", null)
         config.save(questsFile)
+    }
+
+    override fun loadPlayerConfig(playerId: UUID): PlayerConfig = PlayerConfig()
+
+    override fun savePlayerConfig(
+        playerId: UUID,
+        config: PlayerConfig,
+    ) {
+        // Not implemented — YAML storage is deprecated
     }
 }

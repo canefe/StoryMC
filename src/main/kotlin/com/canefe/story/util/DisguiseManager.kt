@@ -1,10 +1,11 @@
 package com.canefe.story.util
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.CitizensStoryNPC
 import me.libraryaddict.disguise.DisguiseAPI
 import me.libraryaddict.disguise.disguisetypes.PlayerDisguise
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -16,10 +17,14 @@ class DisguiseManager(
     // Map to track which player is disguised as which NPC
     private val disguisedPlayers = ConcurrentHashMap<UUID, UUID>() // Player UUID -> NPC UUID
 
+    private val isLibsDisguisesEnabled: Boolean
+        get() = plugin.server.pluginManager.isPluginEnabled("LibsDisguises")
+
     /**
      * Check if an entity is a player disguised as an NPC
      */
     fun isDisguisedAsNPC(entity: Entity): Boolean {
+        if (!isLibsDisguisesEnabled) return false
         if (entity !is Player) return false
         return DisguiseAPI.isDisguised(entity) &&
             DisguiseAPI.getDisguise(entity) is PlayerDisguise
@@ -30,7 +35,7 @@ class DisguiseManager(
      */
     fun registerDisguise(
         player: Player,
-        npc: NPC,
+        npc: StoryNPC,
     ) {
         disguisedPlayers[player.uniqueId] = npc.uniqueId
     }
@@ -38,15 +43,16 @@ class DisguiseManager(
     /**
      * Get the NPC that the player is disguised as
      */
-    fun getImitatedNPC(player: Player): NPC? {
+    fun getImitatedNPC(player: Player): StoryNPC? {
         val npcId = disguisedPlayers[player.uniqueId] ?: return null
-        return CitizensAPI.getNPCRegistry().getByUniqueId(npcId)
+        val npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcId) ?: return null
+        return CitizensStoryNPC(npc)
     }
 
     /**
      * Get the player disguised as the specified NPC, if any
      */
-    fun getDisguisedPlayer(npc: NPC): Player? {
+    fun getDisguisedPlayer(npc: StoryNPC): Player? {
         for ((playerUUID, npcUUID) in disguisedPlayers) {
             if (npcUUID == npc.uniqueId) {
                 return plugin.server.getPlayer(playerUUID)
@@ -58,7 +64,7 @@ class DisguiseManager(
     /**
      * Check if an NPC is being impersonated by a player
      */
-    fun isNPCBeingImpersonated(npc: NPC): Boolean = disguisedPlayers.containsValue(npc.uniqueId)
+    fun isNPCBeingImpersonated(npc: StoryNPC): Boolean = disguisedPlayers.containsValue(npc.uniqueId)
 
     /**
      * Unregister a player's disguise

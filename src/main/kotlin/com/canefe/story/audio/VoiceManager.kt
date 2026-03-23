@@ -1,8 +1,8 @@
 package com.canefe.story.audio
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.util.EssentialsUtils
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -14,13 +14,21 @@ import java.util.concurrent.CompletableFuture
 class VoiceManager(
     private val plugin: Story,
 ) {
-    private val audioManager: ElevenLabsAudioManager = ElevenLabsAudioManager(plugin)
+    val audioManager: ElevenLabsAudioManager = ElevenLabsAudioManager(plugin)
 
     // Track which NPC is currently speaking to which players
     private val activeSpeakers = mutableMapOf<UUID, String>() // NPC UUID -> Current message
 
     /** Determines if voice features are enabled and properly configured */
     fun isEnabled(): Boolean = plugin.config.voiceGenerationEnabled && audioManager.isConfigured()
+
+    /**
+     * Returns true if voice will be generated for this NPC (has voice ID and voice is enabled).
+     */
+    fun willGenerateVoice(npc: StoryNPC): Boolean {
+        if (!isEnabled()) return false
+        return determineNPCVoiceId(npc) != null
+    }
 
     fun load() = audioManager.loadConfig()
 
@@ -33,7 +41,7 @@ class VoiceManager(
      * @return CompletableFuture indicating success/failure
      */
     fun generateSpeechForNPC(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
         players: HashSet<Player>,
     ): CompletableFuture<Boolean> {
@@ -179,7 +187,7 @@ class VoiceManager(
 
     /** Generate speech for a single player (useful for private conversations) */
     fun generateSpeechForSinglePlayer(
-        npc: NPC,
+        npc: StoryNPC,
         message: String,
         player: Player,
     ): CompletableFuture<Boolean> {
@@ -218,7 +226,7 @@ class VoiceManager(
     }
 
     /** Determine the appropriate voice ID for an NPC based on their traits */
-    private fun determineNPCVoiceId(npc: NPC): String? {
+    private fun determineNPCVoiceId(npc: StoryNPC): String? {
         // Try to get NPC-specific voice mapping first
         val npcVoice = audioManager.getVoiceId(npc.name)
         if (npcVoice != audioManager.getVoiceId("default")) {

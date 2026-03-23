@@ -1,13 +1,14 @@
 package com.canefe.story.npc.relationship
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.RelationshipStorage
 import com.canefe.story.util.EssentialsUtils
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.npc.NPC
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -141,9 +142,10 @@ class RelationshipManager(
      */
     fun processAmbientRelationships() {
         val npcNames = plugin.npcDataManager.getAllNPCNames()
-        val npcs = mutableListOf<NPC>()
+        val npcs = mutableListOf<StoryNPC>()
         // Loop Citizens registry
-        for (npc in CitizensAPI.getNPCRegistry()) {
+        for (citizensNpc in CitizensAPI.getNPCRegistry()) {
+            val npc = CitizensStoryNPC(citizensNpc)
             val npcName = npc.name
             if (npcName == null || !npcs.contains(npc)) continue
 
@@ -165,7 +167,7 @@ class RelationshipManager(
                 if (!npc2.isSpawned || npc1 == npc2) continue
 
                 // Check if NPCs are near each other
-                if (npc1.entity.location.distanceSquared(npc2.entity.location) < 25) { // 5 blocks
+                if (npc1.entity!!.location.distanceSquared(npc2.entity!!.location) < 25) { // 5 blocks
                     val relationship = getRelationship(npc1.name, npc2.name)
                     val lastInteractionKey = "${npc1.name}-${npc2.name}"
 
@@ -178,25 +180,15 @@ class RelationshipManager(
                     if (currentTime - lastInteraction > hourInGameTime) {
                         npcLastAmbientInteraction[lastInteractionKey] = currentTime
 
-                        // Create memory about ambient interaction
+                        // Create memory about ambient interaction (session-gated)
                         val memoryContent = "I spent some time near ${npc2.name} today."
-                        val memory =
-                            Memory(
-                                id = "ambient_${System.currentTimeMillis()}_${npc1.name}",
-                                content = memoryContent,
-                                gameCreatedAt = currentTime,
-                                lastAccessed = currentTime,
-                                power = 0.6,
-                                _significance = 1.5, // Low significance for ambient interaction
-                            )
+                        plugin.npcDataManager.createMemoryForNPC(npc1.name, memoryContent, 1.5)
 
-                        // Add memory to NPC data
-                        val npcData = plugin.npcDataManager.getNPCData(npc1.name) ?: return
-                        npcData.memory.add(memory)
-                        plugin.npcDataManager.saveNPCData(npc1.name, npcData)
-
-                        // Update relationship based on memory
-                        updateRelationshipFromMemory(memory, npc1.name)
+                        // Update relationship based on the memory
+                        val savedMemories = plugin.npcDataManager.loadNPCMemory(npc1.name)
+                        savedMemories.lastOrNull()?.let { memory ->
+                            updateRelationshipFromMemory(memory, npc1.name)
+                        }
                     }
                 }
             }

@@ -1,18 +1,20 @@
 package com.canefe.story.event
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.event.ConversationJoinEvent
 import com.canefe.story.api.event.ConversationStartEvent
 import com.canefe.story.api.event.NPCParticipant
 import com.canefe.story.api.event.PlayerParticipant
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.EssentialsUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import io.papermc.paper.event.player.AsyncChatEvent
 import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.event.NPCSpawnEvent
-import net.citizensnpcs.api.npc.NPC
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
@@ -55,8 +57,9 @@ class NPCInteractionListener(
         // Check if player is disabled
         if (plugin.playerManager.isPlayerDisabled(player)) return
 
-        // Check if delayed message processing is enabled
-        if (plugin.config.delayedPlayerMessageProcessing) {
+        // Check if delayed message processing is enabled (global config OR per-player config)
+        val playerConfig = plugin.playerManager.getPlayerConfig(player.uniqueId)
+        if (plugin.config.delayedPlayerMessageProcessing || playerConfig.delayedPlayerMessageProcessing) {
             processDelayedPlayerMessage(player, message)
             return
         }
@@ -284,8 +287,8 @@ class NPCInteractionListener(
         return plugin.conversationManager.getConversation(playerCharacterName)
             ?: run {
                 // Create new conversation with nearby NPCs and players
-                var nearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, chatRadius)
-                var players = plugin.npcUtils.getNearbyPlayers(player, chatRadius)
+                var nearbyNPCs = NPCUtils.getNearbyNPCs(player, chatRadius)
+                var players = NPCUtils.getNearbyPlayers(player, chatRadius)
 
                 // Remove players that have their chat disabled
                 players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
@@ -488,9 +491,9 @@ class NPCInteractionListener(
 
     /** Data class to hold nearby entities */
     data class NearbyEntities(
-        val npcs: List<NPC>,
+        val npcs: List<StoryNPC>,
         val players: List<Player>,
-        val allInteractableNPCs: List<NPC>,
+        val allInteractableNPCs: List<StoryNPC>,
     )
 
     /** Gathers all nearby entities for conversation processing */
@@ -498,14 +501,16 @@ class NPCInteractionListener(
         player: Player,
         chatRadius: Double,
     ): NearbyEntities {
-        val nearbyNPCs = plugin.npcUtils.getNearbyNPCs(player, chatRadius)
+        val nearbyNPCs = NPCUtils.getNearbyNPCs(player, chatRadius)
 
         val disguisedPlayers =
             player
                 .getNearbyEntities(chatRadius, chatRadius, chatRadius)
                 .filter { plugin.disguiseManager.isDisguisedAsNPC(it) }
                 .mapNotNull {
-                    (it as? Player)?.let { p -> plugin.disguiseManager.getImitatedNPC(p) }
+                    (it as? Player)?.let { p ->
+                        plugin.disguiseManager.getImitatedNPC(p)
+                    }
                 }
 
         val nearbyPlayers =
@@ -537,8 +542,8 @@ class NPCInteractionListener(
 
             val radius = plugin.config.chatRadius
             val isAwayFromAll =
-                plugin.npcUtils.getNearbyNPCs(player, radius).none { it in conversation.npcs } &&
-                    plugin.npcUtils.getNearbyPlayers(player, radius).none { it.uniqueId in conversation.players }
+                NPCUtils.getNearbyNPCs(player, radius).none { it in conversation.npcs } &&
+                    NPCUtils.getNearbyPlayers(player, radius).none { it.uniqueId in conversation.players }
 
             // Then it is us that left the conversation
             if (isAwayFromAll) {
@@ -570,7 +575,7 @@ class NPCInteractionListener(
         val npcsToRemove =
             conversation.npcs.filter { npc ->
                 when {
-                    plugin.mythicMobConversation.isMythicMobNPC(npc.entity) -> false
+                    npc.entity?.let { plugin.mythicMobConversation.isMythicMobNPC(it) } == true -> false
                     !nearbyEntities.allInteractableNPCs.contains(npc) ||
                         plugin.npcManager.isNPCDisabled(npc) -> true
 
@@ -582,7 +587,7 @@ class NPCInteractionListener(
         val npcsToAdd =
             if (!isWhispering) {
                 nearbyEntities.allInteractableNPCs.filter { npc ->
-                    !plugin.mythicMobConversation.isMythicMobNPC(npc.entity) &&
+                    npc.entity?.let { plugin.mythicMobConversation.isMythicMobNPC(it) } != true &&
                         !plugin.npcManager.isNPCDisabled(npc) &&
                         !conversation.npcs.contains(npc)
                 }
@@ -646,7 +651,7 @@ class NPCInteractionListener(
     private fun tryJoinExistingConversation(
         player: Player,
         message: String,
-        nearbyNPCs: List<NPC>,
+        nearbyNPCs: List<StoryNPC>,
         nearbyPlayers: List<Player>,
     ): Boolean {
         // NPC conversations
@@ -685,7 +690,7 @@ class NPCInteractionListener(
             val conversation =
                 if (availableNPCs.isNotEmpty()) {
                     // Start conversation with NPCs
-                    val npcsToAdd = ArrayList<NPC>(availableNPCs)
+                    val npcsToAdd = ArrayList<StoryNPC>(availableNPCs)
                     plugin.conversationManager.startConversation(player, npcsToAdd)
                 } else {
                     // Start conversation with just players
@@ -712,7 +717,7 @@ class NPCInteractionListener(
         val scale = scaledNPCs[npc.uniqueId]
 
         if (scale != null) {
-            plugin.npcManager.scaleNPC(npc, scale)
+            plugin.npcManager.scaleNPC(CitizensStoryNPC(npc), scale)
         }
     }
 
@@ -727,10 +732,10 @@ class NPCInteractionListener(
         val target = event.rightClicked
 
         // Check if it's a regular NPC
-        val npc = CitizensAPI.getNPCRegistry().getNPC(target)
+        val citizensNpc = CitizensAPI.getNPCRegistry().getNPC(target)
 
         // If not a regular NPC, check if it's a disguised player
-        if (npc == null && plugin.disguiseManager.isDisguisedAsNPC(target)) {
+        if (citizensNpc == null && plugin.disguiseManager.isDisguisedAsNPC(target)) {
             val disguisedPlayer = target as Player
             val imitatedNPC = plugin.disguiseManager.getImitatedNPC(disguisedPlayer)
 
@@ -743,7 +748,9 @@ class NPCInteractionListener(
         }
 
         // Continue with regular NPC handling if not a disguised player
-        if (npc != null) {
+        if (citizensNpc != null) {
+            val npc = CitizensStoryNPC(citizensNpc)
+
             // Skip if player has disabled interactions
             if (plugin.playerManager.isPlayerDisabled(player)) {
                 plugin.playerManager.playerCurrentNPC[player.uniqueId] = npc.uniqueId
@@ -763,7 +770,7 @@ class NPCInteractionListener(
     /** Handles a direct interaction with an NPC (either real or imitated by a disguised player) */
     fun handleDirectInteraction(
         player: Player,
-        npc: NPC,
+        npc: StoryNPC,
     ) {
         // Save the last interacted NPC
         plugin.playerManager.playerCurrentNPC[player.uniqueId] = npc.uniqueId
@@ -800,7 +807,7 @@ class NPCInteractionListener(
             plugin.conversationManager.joinConversation(npc, playersExistingConversation)
         } else {
             // Start a new conversation with this NPC
-            val npcs = ArrayList<NPC>()
+            val npcs = ArrayList<StoryNPC>()
             npcs.add(npc)
 
             // Create the conversation
@@ -813,11 +820,9 @@ class NPCInteractionListener(
     fun onConversationStart(event: ConversationStartEvent) {
         // For each NPC in the conversation, stop the navigation
         for (npc in event.npcs) {
-            if (npc.entity == null) {
-                continue // Skip if the NPC entity is null
-            }
-            if (!plugin.mythicMobConversation.isMythicMobNPC(npc.entity)) {
-                npc.navigator.cancelNavigation()
+            val entity = npc.entity ?: continue // Skip if the NPC entity is null
+            if (!plugin.mythicMobConversation.isMythicMobNPC(entity)) {
+                npc.cancelNavigation()
             }
         }
 
@@ -842,21 +847,24 @@ class NPCInteractionListener(
 
                 val npc = participant.npc
                 // Stop NPC navigation
-                npc.navigator.cancelNavigation()
+                npc.cancelNavigation()
 
                 // Make NPCs face the closest player
-                val closestPlayer =
-                    event.conversation.players
-                        .mapNotNull { Bukkit.getPlayer(it) }
-                        .minByOrNull { player ->
-                            player.location.distanceSquared(npc.entity.location)
-                        }
+                val npcEntity = npc.entity
+                if (npcEntity != null) {
+                    val closestPlayer =
+                        event.conversation.players
+                            .mapNotNull { Bukkit.getPlayer(it) }
+                            .minByOrNull { player ->
+                                player.location.distanceSquared(npcEntity.location)
+                            }
 
-                closestPlayer?.let { player ->
-                    // Make NPC look at player
-                    val direction =
-                        player.location.toVector().subtract(npc.entity.location.toVector())
-                    npc.entity.location.direction = direction
+                    closestPlayer?.let { player ->
+                        // Make NPC look at player
+                        val direction =
+                            player.location.toVector().subtract(npcEntity.location.toVector())
+                        npcEntity.location.direction = direction
+                    }
                 }
             }
 

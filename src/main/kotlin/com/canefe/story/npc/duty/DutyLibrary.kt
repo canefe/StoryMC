@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Manages duty scripts and workstations for locations
  */
-class DutyLibrary private constructor(
+class DutyLibrary(
     private val plugin: Story,
 ) {
     // Cache for loaded duty data per location
@@ -188,16 +188,5 @@ class DutyLibrary private constructor(
      */
     fun clearAllCache() {
         locationDutyData.clear()
-    }
-
-    companion object {
-        private var instance: DutyLibrary? = null
-
-        fun getInstance(plugin: Story): DutyLibrary {
-            if (instance == null) {
-                instance = DutyLibrary(plugin)
-            }
-            return instance!!
-        }
     }
 }

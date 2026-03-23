@@ -1,31 +1,19 @@
 package com.canefe.story.npc.mythicmobs
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
-import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.ai.Navigator
-import net.citizensnpcs.api.event.DespawnReason
-import net.citizensnpcs.api.event.SpawnReason
-import net.citizensnpcs.api.npc.BlockBreaker
-import net.citizensnpcs.api.npc.MetadataStore
-import net.citizensnpcs.api.npc.NPC
-import net.citizensnpcs.api.trait.Trait
-import net.citizensnpcs.api.util.DataKey
 import org.bukkit.Bukkit
 import org.bukkit.Location
-import org.bukkit.block.Block
-import org.bukkit.command.CommandSender
 import org.bukkit.entity.Entity
-import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerInteractEntityEvent
-import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import java.util.*
-import java.util.function.Consumer
 import java.util.regex.Pattern
 
 /**
@@ -46,7 +34,7 @@ class MythicMobConversationIntegration(
      */
     fun isMythicMobNPC(entity: Entity): Boolean = mythicMobsHandler.isMythicMob(entity)
 
-    fun endConversation(npc: NPC) {
+    fun endConversation(npc: StoryNPC) {
         if (npc is MythicMobNPCAdapter) {
             val entity = npc.entity
             if (entity != null) {
@@ -59,7 +47,7 @@ class MythicMobConversationIntegration(
      * Get or create an NPC adapter for a MythicMob entity
      * This converts a MythicMob into a form that works with your conversation system
      */
-    fun getOrCreateNPCAdapter(entity: Entity): NPC? {
+    fun getOrCreateNPCAdapter(entity: Entity): StoryNPC? {
         // Check cache first
         if (adapterRegistry.containsKey(entity.uniqueId)) {
             return adapterRegistry[entity.uniqueId]
@@ -124,7 +112,7 @@ class MythicMobConversationIntegration(
      */
     private fun handleConversation(
         player: Player,
-        npc: NPC,
+        npc: StoryNPC,
         isDirectInteraction: Boolean,
     ): Boolean {
         // Check if player has disabled interactions
@@ -181,7 +169,7 @@ class MythicMobConversationIntegration(
                 }
 
                 // check if there is any CitizensNPC nearby before starting a conversation
-                val nearbyCitizensNPCs = plugin.npcUtils.getNearbyNPCs(player, plugin.config.chatRadius)
+                val nearbyCitizensNPCs = NPCUtils.getNearbyNPCs(player, plugin.config.chatRadius)
 
                 val existingConversation =
                     conversationManager.getConversation(npc) ?: run {
@@ -190,7 +178,7 @@ class MythicMobConversationIntegration(
                         }
 
                         // No existing conversation, create a new one
-                        val npcs = ArrayList<NPC>()
+                        val npcs = ArrayList<StoryNPC>()
                         npcs.add(npc)
 
                         // Set MythicMob in conversation mode
@@ -277,246 +265,153 @@ class MythicMobConversationIntegration(
     }
 
     /**
-     * Adapter class that wraps a MythicMob entity to behave like a Citizens NPC
-     * Implements Citizens NPC interface to work with your conversation system
+     * Adapter class that wraps a MythicMob entity to behave like a StoryNPC
+     * Implements StoryNPC interface to work with the conversation system
      */
     inner class MythicMobNPCAdapter(
-        private val entity: Entity,
+        private val backingEntity: Entity,
         private val displayName: String,
         private val internalName: String,
-    ) : NPC {
-        private val uniqueId = entity.uniqueId
-        private val id = entity.entityId
-        private val traits = mutableMapOf<Class<out Trait>, Trait>()
+    ) : StoryNPC {
+        private val _uniqueId = backingEntity.uniqueId
+        private val _id = backingEntity.entityId
 
         // Track conversations this MythicMob is part of
         private var currentConversation: Conversation? = null
 
-        // Required implementation of NPC interface
-        override fun getId(): Int = id
+        override val name: String get() = displayName
+        override val id: Int get() = _id
+        override val uniqueId: UUID get() = _uniqueId
+        override val entity: Entity? get() = backingEntity
+        override val isSpawned: Boolean get() = !backingEntity.isDead
+        override val location: Location? get() = backingEntity.location
 
-        override fun getName(): String = displayName
+        // -- Navigation --
 
-        override fun getEntity(): Entity? = entity
-
-        override fun isSpawned(): Boolean = !entity.isDead
-
-        override fun getUniqueId(): UUID = uniqueId
-
-        override fun getFullName(): String = displayName
-
-        override fun getRawName(): String = displayName
-
-        override fun getStoredLocation(): Location = entity.location
-
-        // Special rotation trait implementation for MythicMobs
-        inner class RotationTrait : Trait("rotation") {
-            val physicalSession =
-                object {
-                    fun rotateToFace(target: Entity) {
-                        mythicMobsHandler.lookAtTarget(entity, target)
-                    }
-
-                    fun rotateToHave(
-                        yaw: Float,
-                        pitch: Float,
-                    ) {
-                        if (entity is org.bukkit.entity.LivingEntity) {
-                            val loc = entity.location.clone()
-                            loc.yaw = yaw
-                            loc.pitch = pitch
-                            entity.teleport(loc)
-                        }
-                    }
-                }
-
-            override fun onSpawn() {}
-
-            override fun onDespawn() {}
-
-            override fun onAttach() {}
-
-            override fun onRemove() {}
-
-            override fun onCopy() {}
-
-            override fun load(key: DataKey) {}
-
-            override fun save(key: DataKey) {}
+        override fun navigateTo(location: Location) {
+            // MythicMobs don't use Citizens navigation
         }
 
-        // Trait management for Citizens API compatibility
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : Trait> getTrait(trait: Class<T>): T? {
-            if (trait.name == "net.citizensnpcs.trait.RotationTrait") {
-                if (!traits.containsKey(trait)) {
-                    traits[trait as Class<out Trait>] = RotationTrait()
-                }
-                return traits[trait] as? T
+        override fun navigateTo(
+            location: Location,
+            speedModifier: Float,
+            range: Float,
+            distanceMargin: Double,
+        ) {
+            // MythicMobs don't use Citizens navigation
+        }
+
+        override fun navigateTo(entity: Entity) {
+            // MythicMobs don't use Citizens navigation
+        }
+
+        override fun navigateTo(
+            entity: Entity,
+            speedModifier: Float,
+            range: Float,
+            distanceMargin: Double,
+        ) {
+            // MythicMobs don't use Citizens navigation
+        }
+
+        override fun cancelNavigation() {
+            // MythicMobs don't use Citizens navigation
+        }
+
+        override val isNavigating: Boolean get() = false
+
+        // -- Lifecycle --
+
+        override fun spawn(location: Location): Boolean = true // Already spawned
+
+        override fun despawn(): Boolean = true // We don't control MythicMob despawn
+
+        override fun teleport(location: Location) {
+            backingEntity.teleport(location)
+        }
+
+        override fun clone(): StoryNPC = this
+
+        // -- Combat --
+
+        override fun attack(target: Player) {
+            // MythicMobs handle combat through their own skill system
+        }
+
+        override fun stopAttacking(target: Player) {
+            // MythicMobs handle combat through their own skill system
+        }
+
+        // -- Following --
+
+        override fun follow(target: Player) {
+            // MythicMobs handle following through their own AI system
+        }
+
+        override fun stopFollowing() {
+            // MythicMobs handle following through their own AI system
+        }
+
+        override val isFollowing: Boolean get() = false
+
+        // -- Rotation --
+
+        override fun lookAt(target: Entity) {
+            mythicMobsHandler.lookAtTarget(backingEntity, target)
+        }
+
+        override fun rotateTo(
+            yaw: Float,
+            pitch: Float,
+        ) {
+            if (backingEntity is org.bukkit.entity.LivingEntity) {
+                val loc = backingEntity.location.clone()
+                loc.yaw = yaw
+                loc.pitch = pitch
+                backingEntity.teleport(loc)
             }
-            return null
         }
 
-        override fun <T : Trait> getTraitNullable(trait: Class<T>): T? = getTrait(trait)
+        // -- Pose --
 
-        override fun getTraits(): MutableIterable<Trait> {
-            TODO("Not yet implemented")
+        override fun sit(location: Location?) {
+            // MythicMobs don't support Citizens pose traits
         }
+
+        override fun stand() {
+            // MythicMobs don't support Citizens pose traits
+        }
+
+        override val isSitting: Boolean get() = false
+
+        // -- Skin --
+
+        override val skinTexture: String? get() = null
+        override val skinSignature: String? get() = null
+
+        override fun setSkin(
+            name: String,
+            signature: String,
+            texture: String,
+        ) {
+            // MythicMobs don't support Citizens skin traits
+        }
+
+        // -- Source access --
 
         @Suppress("UNCHECKED_CAST")
-        override fun <T : Trait> getOrAddTrait(trait: Class<T>): T =
-            getTrait(trait) ?: when {
-                trait.name == "net.citizensnpcs.trait.RotationTrait" -> {
-                    val rotTrait = RotationTrait() as T
-                    traits[trait as Class<out Trait>] = rotTrait
-                    rotTrait
-                }
-
-                else -> throw UnsupportedOperationException("Cannot add trait $trait to MythicMob")
-            }
-
-        override fun hasTrait(trait: Class<out Trait>): Boolean =
-            trait.name == "net.citizensnpcs.trait.RotationTrait" || traits.containsKey(trait)
+        override fun <T> unwrap(type: Class<T>): T? = if (type.isInstance(backingEntity)) backingEntity as T else null
 
         // Set conversation for tracking
         fun setConversation(conversation: Conversation?) {
             currentConversation = conversation
         }
 
-        override fun getOwningRegistry() = CitizensAPI.getNPCRegistry()
+        override fun equals(other: Any?): Boolean = other is MythicMobNPCAdapter && _uniqueId == other._uniqueId
 
-        override fun getNavigator(): Navigator =
-            throw UnsupportedOperationException("Navigator not implemented for MythicMobs")
+        override fun hashCode(): Int = _uniqueId.hashCode()
 
-        override fun removeTrait(trait: Class<out Trait>) {
-            traits.remove(trait)
-        }
-
-        override fun addTrait(trait: Trait) {
-            traits[trait.javaClass] = trait
-        }
-
-        override fun addTrait(trait: Class<out Trait>) {
-            try {
-                val instance = trait.getDeclaredConstructor().newInstance()
-                traits[trait] = instance
-            } catch (e: Exception) {
-                // Ignore if can't create trait
-            }
-        }
-
-        override fun destroy() {
-            // Nothing to destroy for our adapter
-        }
-
-        override fun destroy(p0: CommandSender?) {
-            TODO("Not yet implemented")
-        }
-
-        override fun save(key: DataKey) {
-            // Nothing to save for our adapter
-        }
-
-        override fun load(key: DataKey) {
-            // Nothing to load for our adapter
-        }
-
-        // Other Citizens NPC interface methods
-        override fun spawn(location: Location): Boolean = true // Already spawned
-
-        override fun spawn(
-            p0: Location?,
-            p1: SpawnReason?,
-        ): Boolean {
-            TODO("Not yet implemented")
-        }
-
-        override fun spawn(
-            p0: Location?,
-            p1: SpawnReason?,
-            p2: Consumer<Entity?>?,
-        ): Boolean {
-            TODO("Not yet implemented")
-        }
-
-        override fun despawn(): Boolean = true // We don't control MythicMob despawn
-
-        override fun despawn(p0: DespawnReason?): Boolean {
-            TODO("Not yet implemented")
-        }
-
-        override fun isProtected() = false
-
-        override fun setProtected(protect: Boolean) {}
-
-        override fun faceLocation(location: Location) {
-            mythicMobsHandler.lookAtTarget(entity, location.world?.getEntities()?.firstOrNull() ?: return)
-        }
-
-        override fun getBlockBreaker(
-            p0: Block?,
-            p1: BlockBreaker.BlockBreakerConfiguration?,
-        ): BlockBreaker {
-            TODO("Not yet implemented")
-        }
-
-        override fun getMinecraftUniqueId(): UUID = entity.uniqueId
-
-        override fun shouldRemoveFromPlayerList(): Boolean = true
-
-        override fun shouldRemoveFromTabList(): Boolean = true
-
-        override fun getDefaultGoalController() = null
-
-        override fun getDefaultSpeechController() = null
-
-        override fun getItemProvider() = null
-
-        override fun setItemProvider(provider: java.util.function.Supplier<org.bukkit.inventory.ItemStack>) {}
-
-        override fun isFlyable() = false
-
-        override fun setFlyable(flyable: Boolean) {}
-
-        override fun isPushableByFluids() = false
-
-        override fun isHiddenFrom(player: Player) = false
-
-        override fun setName(name: String) {}
-
-        override fun teleport(
-            location: Location,
-            cause: PlayerTeleportEvent.TeleportCause,
-        ) {
-        }
-
-        override fun useMinecraftAI() = false
-
-        override fun setUseMinecraftAI(use: Boolean) {}
-
-        override fun setBukkitEntityType(type: EntityType) {}
-
-        override fun requiresNameHologram() = false
-
-        override fun setAlwaysUseNameHologram(use: Boolean) {}
-
-        override fun setSneaking(sneaking: Boolean) {}
-
-        override fun setMoveDestination(location: Location) {}
-
-        override fun scheduleUpdate(update: NPC.NPCUpdate) {}
-
-        override fun isUpdating(update: NPC.NPCUpdate) = false
-
-        override fun addRunnable(runnable: Runnable) {}
-
-        override fun copy() = this
-
-        override fun data(): MetadataStore {
-            TODO("Not yet implemented")
-        }
-
-        override fun clone() = this
+        override fun toString(): String = "MythicMobNPCAdapter(name=$displayName, id=$_id)"
     }
 
     /**

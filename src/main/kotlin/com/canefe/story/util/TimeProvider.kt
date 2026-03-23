@@ -32,7 +32,7 @@ class RealisticSeasonsTimeProvider : TimeProvider {
         seasonsAPI =
             try {
                 SeasonsAPI.getInstance()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 null
             }
 
@@ -74,29 +74,21 @@ class RealisticSeasonsTimeProvider : TimeProvider {
 }
 
 class FallbackTimeProvider : TimeProvider {
-    // Use a base epoch for game time
     private val startEpoch = Instant.now().toEpochMilli()
 
     override fun getCurrentGameTime(): Long {
-        // Simple implementation based on server ticks
-        // 1 minecraft day = 24000 ticks
-        // We'll use a 20:1 ratio, so 1 game minute = 20 real minutes
         val currentTime = Instant.now().toEpochMilli()
         val elapsed = currentTime - startEpoch
-        return elapsed / 1000 // Convert to seconds as the game time unit
+        return elapsed / 1000
     }
 
-    override fun getFormattedDate(): String {
-        return "Day 1" // Simple fallback
-    }
+    override fun getFormattedDate(): String = "Day 1"
 
     override fun getHours(): Int = (System.currentTimeMillis() / 1000 % 24).toInt()
 
     override fun getMinutes(): Int = (System.currentTimeMillis() / 1000 % 60).toInt()
 
-    override fun getSeason(): String {
-        return "Spring" // Default season
-    }
+    override fun getSeason(): String = "Spring"
 }
 
 /**
@@ -106,14 +98,26 @@ class TimeService(
     private val plugin: Story,
     private var provider: TimeProvider? = null,
 ) {
-    private var timeProvider: TimeProvider = provider ?: determineTimeProvider()
+    private var timeProvider: TimeProvider = provider ?: FallbackTimeProvider()
+
+    init {
+        if (provider == null) {
+            // Defer by 1 tick so all plugins (including RealisticSeasons) have finished enabling
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable {
+                    timeProvider = determineTimeProvider()
+                },
+            )
+        }
+    }
 
     fun determineTimeProvider(): TimeProvider {
         // Check if RealisticSeasons is available
         if (Bukkit.getPluginManager().isPluginEnabled("RealisticSeasons")) {
             try {
                 return RealisticSeasonsTimeProvider()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 plugin.logger.warning("Failed to initialize RealisticSeasonsTimeProvider: ${e.message}")
                 return FallbackTimeProvider()
             }

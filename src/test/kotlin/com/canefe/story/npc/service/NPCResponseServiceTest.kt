@@ -8,7 +8,7 @@ import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.service.AIResponseService
-import com.canefe.story.testutils.makeNpc
+import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.util.TimeService
 import dev.jorel.commandapi.CommandAPI
 import io.mockk.*
@@ -93,7 +93,7 @@ class NPCResponseServiceTest {
         @Test
         fun `determineNextSpeaker should return first NPC when only one available`() {
             // Arrange
-            val npc = makeNpc("Guard")
+            val npc = makeStoryNpc("Guard")
             val conversation =
                 Conversation(
                     id = 1,
@@ -128,8 +128,8 @@ class NPCResponseServiceTest {
         @Test
         fun `determineNextSpeaker should handle AI response and return valid NPC name`() {
             // Arrange
-            val npc1 = makeNpc("Guard")
-            val npc2 = makeNpc("Merchant")
+            val npc1 = makeStoryNpc("Guard")
+            val npc2 = makeStoryNpc("Merchant")
             val conversation =
                 Conversation(
                     id = 1,
@@ -151,8 +151,8 @@ class NPCResponseServiceTest {
         @Test
         fun `determineNextSpeaker should fallback to first NPC when AI returns invalid name`() {
             // Arrange
-            val npc1 = makeNpc("Guard")
-            val npc2 = makeNpc("Merchant")
+            val npc1 = makeStoryNpc("Guard")
+            val npc2 = makeStoryNpc("Merchant")
             val conversation =
                 Conversation(
                     id = 1,
@@ -174,8 +174,8 @@ class NPCResponseServiceTest {
         @Test
         fun `determineNextSpeaker should handle AI response errors gracefully`() {
             // Arrange
-            val npc1 = makeNpc("Guard")
-            val npc2 = makeNpc("Merchant")
+            val npc1 = makeStoryNpc("Guard")
+            val npc2 = makeStoryNpc("Merchant")
             val conversation =
                 Conversation(
                     id = 1,
@@ -197,8 +197,8 @@ class NPCResponseServiceTest {
         @Test
         fun `determineNextSpeaker should exclude muted NPCs from selection`() {
             // Arrange
-            val npc1 = makeNpc("Guard")
-            val npc2 = makeNpc("Merchant")
+            val npc1 = makeStoryNpc("Guard")
+            val npc2 = makeStoryNpc("Merchant")
             val conversation =
                 Conversation(
                     id = 1,
