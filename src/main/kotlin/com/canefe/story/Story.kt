@@ -13,7 +13,6 @@ import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
-import com.canefe.story.conversation.theme.*
 import com.canefe.story.event.EventManager
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.intelligence.BridgeIntelligence
@@ -36,7 +35,6 @@ import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.service.TypingSessionManager
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.player.PlayerManager
-import com.canefe.story.player.agent.PlayerAgentManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
@@ -149,13 +147,6 @@ open class Story :
 
     lateinit var voiceManager: VoiceManager
 
-    // Theme system
-    lateinit var themeRegistry: ConversationThemeRegistry
-        private set
-    lateinit var themeManager: ConversationThemeManager
-        private set
-    lateinit var themeAgent: com.canefe.story.conversation.theme.ConversationThemeAgent
-        private set
     lateinit var skillCheckService: com.canefe.story.conversation.skillcheck.SkillCheckService
         private set
     lateinit var npcSkillGenerator: com.canefe.story.character.skill.NPCSkillGenerator
@@ -165,11 +156,6 @@ open class Story :
     lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
         private set
     lateinit var npcNameResolver: com.canefe.story.npc.name.NPCNameResolver
-        private set
-
-    // lateinit var aiDungeonMaster: AIDungeonMaster
-
-    lateinit var playerAgentManager: PlayerAgentManager
         private set
 
     lateinit var api: StoryAPI
@@ -298,7 +284,6 @@ open class Story :
         npcManager = NPCManager.getInstance(this)
         scheduleManager = ScheduleManager.getInstance(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
-        playerAgentManager = PlayerAgentManager(this)
         npcMessageService = NPCMessageService.getInstance(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
@@ -324,14 +309,6 @@ open class Story :
         npcNameManager = NPCNameManager(this)
         npcNameResolver = NPCNameResolver(this)
 
-        // Initialize theme system
-        themeRegistry = ConversationThemeRegistry()
-        themeRegistry.register(ChatTheme.NAME) { ChatTheme() }
-        themeRegistry.register(ViolenceTheme.NAME) { ViolenceTheme() }
-        themeManager = ConversationThemeManager(themeRegistry)
-        themeAgent =
-            com.canefe.story.conversation.theme
-                .ConversationThemeAgent(this, themeManager, themeRegistry)
         skillCheckService =
             com.canefe.story.conversation.skillcheck
                 .SkillCheckService(this)
@@ -509,7 +486,6 @@ open class Story :
             commandManager.onDisable()
             if (::eventManager.isInitialized) eventManager.unregisterAll()
             if (::sessionManager.isInitialized) sessionManager.shutdown()
-            if (::playerAgentManager.isInitialized) playerAgentManager.shutdown()
             if (::aiResponseService.isInitialized) aiResponseService.shutdown()
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
@@ -560,7 +536,6 @@ open class Story :
             sessionManager.shutdown()
 
             // Shutdown player agent manager
-            if (::playerAgentManager.isInitialized) playerAgentManager.shutdown()
 
             // Shutdown AI response service (virtual thread executor)
             aiResponseService.shutdown()

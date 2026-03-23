@@ -109,11 +109,6 @@ class ConfigService(
     // Skills
     var skillProvider: String = "MMOCore" // Default skill provider
 
-    // Player Agent settings
-    var playerAgentEnabled: Boolean = false
-    var playerAgentIntervalSeconds: Int = 60
-    var playerAgentCustomEndpoint: String = ""
-
     // Faction settings
     var dailyEventsEnabled: Boolean = true
     var dailyEventsChance: Double = 0.15
@@ -292,11 +287,6 @@ class ConfigService(
         motivationList = config.getStringList("context.motivations")
         flawList = config.getStringList("context.flaws")
         toneList = config.getStringList("context.tones")
-
-        // Player Agent settings
-        playerAgentEnabled = config.getBoolean("player-agent.enabled", false)
-        playerAgentIntervalSeconds = config.getInt("player-agent.intervalSeconds", 60)
-        playerAgentCustomEndpoint = config.getString("player-agent.customEndpoint", "") ?: ""
 
         // Faction settings
         dailyEventsEnabled = config.getBoolean("faction.dailyEventsEnabled", true)

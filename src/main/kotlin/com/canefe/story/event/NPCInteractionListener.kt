@@ -50,8 +50,6 @@ class NPCInteractionListener(
         player: Player,
         message: String,
     ) {
-        // Feed the chat message as an observation for the player agent
-        plugin.playerAgentManager.observe(player, "Said: \"$message\"")
         // Handle disguised players
         if (handleDisguisedPlayer(player, message)) return
 

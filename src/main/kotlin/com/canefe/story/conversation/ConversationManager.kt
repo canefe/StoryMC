@@ -363,9 +363,6 @@ class ConversationManager private constructor(
 
         cleanupHolograms(conversation)
 
-        // Cleanup theme state to prevent memory leak
-        plugin.themeManager.onConversationEnd(conversation)
-
         // Remove from repository
         repository.removeConversation(conversation)
         endingConversations.remove(conversation.id)
@@ -692,9 +689,6 @@ class ConversationManager private constructor(
 
         // Generate physical reactions from NPCs
         generateNPCReactions(conversation, playerName, message)
-
-        // Analyze and update conversation themes
-        plugin.themeAgent.analyzeAndUpdateThemes(conversation)
 
         // Check if message history needs summarization
         checkAndSummarizeHistory(conversation)
