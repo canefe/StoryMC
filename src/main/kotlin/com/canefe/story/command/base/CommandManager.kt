@@ -217,19 +217,9 @@ class CommandManager(
                     val npcName = (args["npc_name"] as String).replace("\"", "")
                     val npcNameTarget = (args["npc_name_target"] as String).replace("\"", "")
                     val message = args["message"] as String
-                    val npc =
-                        resolveNPC(player, npcName) { resolvedNpc ->
-                            val target =
-                                resolveNPC(player, npcNameTarget) { resolvedTarget ->
-                                    generateAndWalkToNPC(resolvedNpc, resolvedTarget, message)
-                                } ?: return@resolveNPC
-                            generateAndWalkToNPC(resolvedNpc, target, message)
-                        } ?: return@PlayerCommandExecutor
-                    val target =
-                        resolveNPC(player, npcNameTarget) { resolvedTarget ->
-                            generateAndWalkToNPC(npc, resolvedTarget, message)
-                        } ?: return@PlayerCommandExecutor
-                    generateAndWalkToNPC(npc, target, message)
+                    resolveNPCPair(player, npcName, npcNameTarget) { npc, target ->
+                        generateAndWalkToNPC(npc, target, message)
+                    }
                 },
             ).register()
 
@@ -1075,6 +1065,27 @@ class CommandManager(
             player.sendMessage(clickableNpc)
         }
         return null
+    }
+
+    private fun resolveNPCPair(
+        player: Player,
+        npcName: String,
+        targetName: String,
+        action: (StoryNPC, StoryNPC) -> Unit,
+    ) {
+        val npc =
+            resolveNPC(player, npcName) { resolvedNpc ->
+                val target =
+                    resolveNPC(player, targetName) { resolvedTarget ->
+                        action(resolvedNpc, resolvedTarget)
+                    } ?: return@resolveNPC
+                action(resolvedNpc, target)
+            } ?: return
+        val target =
+            resolveNPC(player, targetName) { resolvedTarget ->
+                action(npc, resolvedTarget)
+            } ?: return
+        action(npc, target)
     }
 
     /**
