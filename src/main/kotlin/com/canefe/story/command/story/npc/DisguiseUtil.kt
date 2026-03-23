@@ -37,7 +37,8 @@ class DisguiseUtil(
         if (!npc.isSpawned) {
             npc.spawn(player.location)
         }
-        player.teleport(npc.location!!, PlayerTeleportEvent.TeleportCause.PLUGIN)
+        val npcLocation = npc.location ?: player.location
+        player.teleport(npcLocation, PlayerTeleportEvent.TeleportCause.PLUGIN)
         npc.despawn()
         // unvanish the player
         VanishAPI
