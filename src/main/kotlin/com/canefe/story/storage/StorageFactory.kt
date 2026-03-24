@@ -48,6 +48,10 @@ class StorageFactory private constructor(
     val isMongoConnected: Boolean
         get() = mongoClientManager != null
 
+    /** Exposes the MongoDB client for character registry and other cross-cutting concerns. */
+    val mongoClient: MongoClientManager?
+        get() = mongoClientManager
+
     val isSQLite: Boolean
         get() = sqliteManager != null
 

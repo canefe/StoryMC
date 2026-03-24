@@ -1,6 +1,8 @@
 package com.canefe.story
 
 import com.canefe.story.api.StoryAPI
+import com.canefe.story.api.character.CharacterMigration
+import com.canefe.story.api.character.CharacterRegistry
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.bridge.*
@@ -44,6 +46,8 @@ import com.canefe.story.storage.LocalStorage
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
 import com.canefe.story.storage.StoryStorage
+import com.canefe.story.storage.mongo.MongoCharacterStorage
+import com.canefe.story.storage.mongo.MongoFrontendConfigStorage
 import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
@@ -172,6 +176,10 @@ open class Story :
     lateinit var storage: StoryStorage
         private set
 
+    // Character registry — central lookup for character identity
+    lateinit var characterRegistry: CharacterRegistry
+        private set
+
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
     var itemsAdderEnabled = false
@@ -268,6 +276,14 @@ open class Story :
                 mongoConnectTimeoutMs = configService.mongoConnectTimeoutMs,
             )
 
+        // Initialize character registry (requires MongoDB)
+        val mongoClient = storageFactory.mongoClient
+        if (mongoClient != null) {
+            val charStorage = MongoCharacterStorage(mongoClient, logger)
+            val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)
+            characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger)
+        }
+
         timeService = TimeService(this)
         sessionManager = SessionManager(this, storageFactory.sessionStorage)
         disguiseManager = DisguiseManager(this)
@@ -276,6 +292,15 @@ open class Story :
         audioManager = AudioManager(this)
         npcContextGenerator = NPCContextGenerator(this)
         npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
+
+        // Run character migration and load registry (after npcDataManager is available)
+        if (::characterRegistry.isInitialized) {
+            val charStorage = MongoCharacterStorage(storageFactory.mongoClient!!, logger)
+            val frontendStorage = MongoFrontendConfigStorage(storageFactory.mongoClient!!, logger)
+            CharacterMigration.migrateIfNeeded(this, charStorage, frontendStorage, logger)
+            characterRegistry.loadAll()
+        }
+
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
         npcManager = NPCManager(this)
