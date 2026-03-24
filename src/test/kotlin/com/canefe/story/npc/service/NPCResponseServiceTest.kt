@@ -1,10 +1,16 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.Character
+import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.npc.NPCContextGenerator
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.service.AIResponseService
@@ -40,6 +46,7 @@ class NPCResponseServiceTest {
         System.setProperty("mockbukkit", "true")
         server = MockBukkit.mock()
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         mockkStatic(CommandAPI::class)
         every { CommandAPI.onLoad(any()) } just Runs
@@ -221,15 +228,26 @@ class NPCResponseServiceTest {
 
     @Nested
     inner class GenerateNPCMemoryTests {
+        private fun makeTestCharacter(name: String): Character {
+            val stubNpc = StubStoryNPC(name)
+            return AICharacter(
+                npc = stubNpc,
+                name = name,
+                role = "test",
+                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(name)),
+            )
+        }
+
         @Test
         fun `generateNPCMemory should return null when NPC does not exist`() {
             // Arrange
             every { plugin.npcDataManager.getNPCData("NonExistentNPC") } returns null
+            every { plugin.npcDataManager.getNPCData(any<StoryNPC>()) } returns null
 
             // Act
             val result =
                 npcResponseService
-                    .generateNPCMemory("NonExistentNPC", "event", "Some context")
+                    .generateNPCMemory(makeTestCharacter("NonExistentNPC"), "event", "Some context")
                     .get()
 
             // Assert
@@ -239,8 +257,9 @@ class NPCResponseServiceTest {
         @Test
         fun `generateNPCMemory should create memory for existing NPC`() {
             // Arrange
-            val npcData = mockk<com.canefe.story.npc.data.NPCData>(relaxed = true)
+            val npcData = mockk<NPCData>(relaxed = true)
             every { plugin.npcDataManager.getNPCData("TestNPC") } returns npcData
+            every { plugin.npcDataManager.getNPCData(any<StoryNPC>()) } returns npcData
             every { npcData.memory } returns mutableListOf()
 
             val npcContext = mockk<NPCContext>(relaxed = true)
@@ -249,7 +268,7 @@ class NPCResponseServiceTest {
 
             // Mock the conversation summarization to complete successfully
             every {
-                npcResponseService.summarizeConversationForSingleNPC(emptyList(), "TestNPC", false)
+                npcResponseService.summarizeConversationForSingleNPC(any(), any<Character>())
             } returns CompletableFuture.completedFuture(null)
 
             // Mock the latest memory
@@ -259,7 +278,7 @@ class NPCResponseServiceTest {
 
             // Act
             val result =
-                npcResponseService.generateNPCMemory("TestNPC", "event", "Some context").get()
+                npcResponseService.generateNPCMemory(makeTestCharacter("TestNPC"), "event", "Some context").get()
 
             // Assert
             assertNotNull(result)
@@ -269,8 +288,9 @@ class NPCResponseServiceTest {
         @Test
         fun `generateNPCMemory should handle different memory types`() {
             // Arrange
-            val npcData = mockk<com.canefe.story.npc.data.NPCData>(relaxed = true)
+            val npcData = mockk<NPCData>(relaxed = true)
             every { plugin.npcDataManager.getNPCData("TestNPC") } returns npcData
+            every { plugin.npcDataManager.getNPCData(any<StoryNPC>()) } returns npcData
             every { npcData.memory } returns mutableListOf()
 
             val npcContext = mockk<NPCContext>(relaxed = true)
@@ -279,7 +299,7 @@ class NPCResponseServiceTest {
 
             // Mock the conversation summarization
             every {
-                npcResponseService.summarizeConversationForSingleNPC(any(), "TestNPC", false)
+                npcResponseService.summarizeConversationForSingleNPC(any(), any<Character>())
             } returns CompletableFuture.completedFuture(null)
 
             val testMemory =
@@ -292,7 +312,7 @@ class NPCResponseServiceTest {
             memoryTypes.forEach { type ->
                 // Act
                 val result =
-                    npcResponseService.generateNPCMemory("TestNPC", type, "Some context").get()
+                    npcResponseService.generateNPCMemory(makeTestCharacter("TestNPC"), type, "Some context").get()
 
                 // Assert
                 assertNotNull(result)

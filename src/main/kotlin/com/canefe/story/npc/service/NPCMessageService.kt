@@ -203,7 +203,7 @@ class NPCMessageService(
             plugin,
             Runnable {
                 // Fire CharacterSpeakEvent on the main thread
-                val npcData = plugin.npcDataManager.getNPCData(npc.name)
+                val npcData = plugin.npcDataManager.getNPCData(npc)
                 if (npcData != null) {
                     val speaker =
                         AICharacter(
@@ -719,7 +719,7 @@ class NPCMessageService(
             .getNearbyNPCs(npc, radius)
             .filter { it.uniqueId != npc.uniqueId }
             .forEach { nearby ->
-                val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+                val data = plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
                 result.add(
                     AICharacter(
                         npc = nearby,
@@ -755,7 +755,7 @@ class NPCMessageService(
         val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
         NPCUtils.getNearbyNPCs(player, radius).forEach { nearby ->
-            val data = plugin.npcDataManager.getNPCData(nearby.name) ?: return@forEach
+            val data = plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
             result.add(
                 AICharacter(
                     npc = nearby,

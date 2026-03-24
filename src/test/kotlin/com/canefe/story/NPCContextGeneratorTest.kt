@@ -43,6 +43,7 @@ class NPCContextGeneratorTest {
         System.setProperty("mockbukkit", "true")
         server = MockBukkit.mock()
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
         plugin.commandManager = mockk(relaxed = true)
 
         // Stub dependencies so we can control behavior

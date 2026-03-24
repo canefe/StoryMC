@@ -6,6 +6,7 @@ import com.canefe.story.conversation.ConversationMessage
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
+import io.mockk.mockk
 import io.mockk.mockkConstructor
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions
@@ -29,6 +30,7 @@ class PromptIntegrationTest {
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
 
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         // If an API key is provided in the environment, inject it into the plugin config so
         // production code that reads plugin.config.openAIKey will see it. This avoids changing

@@ -1,7 +1,9 @@
 package com.canefe.story
 
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.event.*
 import com.canefe.story.command.base.CommandManager
+import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.event.NPCInteractionListener
 import com.canefe.story.location.data.StoryLocation
@@ -55,6 +57,7 @@ class ApiEventEndToEndTest {
         mockkConstructor(CommandManager::class)
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
         plugin.commandManager = mockk(relaxed = true)
 
         val mockRegistry = mockk<NPCRegistry>(relaxed = true)
@@ -93,7 +96,7 @@ class ApiEventEndToEndTest {
             )
         plugin.npcContextGenerator = mockk(relaxed = true)
         every { plugin.npcContextGenerator.getOrCreateContextForNPC(npcName) } returns npcContext
-        every { plugin.npcContextGenerator.getOrCreateContextForNPC(any<com.canefe.story.api.StoryNPC>()) } returns
+        every { plugin.npcContextGenerator.getOrCreateContextForNPC(any<StoryNPC>()) } returns
             npcContext
     }
 
@@ -123,7 +126,7 @@ class ApiEventEndToEndTest {
     }
 
     private fun fillConversationHistory(
-        conversation: com.canefe.story.conversation.Conversation,
+        conversation: Conversation,
         exchanges: Int = 2,
     ) {
         repeat(exchanges) { i ->
@@ -136,7 +139,7 @@ class ApiEventEndToEndTest {
         npcName: String,
         locationName: String,
         playerName: String,
-    ): Pair<com.canefe.story.api.StoryNPC, Player> {
+    ): Pair<StoryNPC, Player> {
         plugin.locationManager.createLocation(locationName, null)
         mockNPCAtLocation(npcName, locationName)
         val npc = makeStoryNpc(npcName)
@@ -378,8 +381,8 @@ class ApiEventEndToEndTest {
         // Player's broadcastPlayerMessage should fire CharacterSpeakEvent
         // Wait for any speak events to fire
         waitUntil(server, 200) { firedEvents.isNotEmpty() }
-
         val playerSpeakEvents = firedEvents.filter { it.speaker.name == "Alice" }
+        plugin.logger.info(playerSpeakEvents.toString())
         assertTrue(playerSpeakEvents.isNotEmpty(), "CharacterSpeakEvent should fire for player speech")
         assertTrue(
             playerSpeakEvents.any { it.message.contains("Hello guard") },

@@ -31,7 +31,7 @@ class RandomPathingService(
                 if (npc.location == null) return@filter false
                 if (plugin.npcManager.isNPCDisabled(npc)) return@filter false
                 if (npc.isFollowing) return@filter false
-                if (plugin.npcDataManager.getNPCData(npc.name)?.randomPathing == false) return@filter false
+                if (plugin.npcDataManager.getNPCData(npc)?.randomPathing == false) return@filter false
 
                 val lastMoved = cooldowns[npc.name.lowercase()]
                 if (lastMoved != null && now - lastMoved < cooldownMs) return@filter false

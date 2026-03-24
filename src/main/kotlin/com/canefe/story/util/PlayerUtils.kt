@@ -10,20 +10,20 @@ import org.bukkit.entity.Player
  */
 
 val Player.characterName: String
-    get() =
+    get() {
         try {
-            Story.instance.characterRegistry
-                .getByPlayer(this)
-                ?.name ?: this.name
-        } catch (_: UninitializedPropertyAccessException) {
-            this.name
+            val record = Story.instance.characterRegistry.getByPlayer(this)
+            if (record != null && record.name.isNotEmpty()) return record.name
+        } catch (_: Exception) {
         }
+        return this.getName()
+    }
 
 val Player.characterId: String?
     get() =
         try {
             Story.instance.characterRegistry.getCharacterIdForPlayer(this)
-        } catch (_: UninitializedPropertyAccessException) {
+        } catch (_: Exception) {
             null
         }
 
@@ -31,7 +31,7 @@ val Player.character: CharacterRecord?
     get() =
         try {
             Story.instance.characterRegistry.getByPlayer(this)
-        } catch (_: UninitializedPropertyAccessException) {
+        } catch (_: Exception) {
             null
         }
 
@@ -39,6 +39,6 @@ val Player.isRegisteredCharacter: Boolean
     get() =
         try {
             Story.instance.characterRegistry.isRegistered(this)
-        } catch (_: UninitializedPropertyAccessException) {
+        } catch (_: Exception) {
             false
         }

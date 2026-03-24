@@ -49,6 +49,7 @@ class RumorEndToEndTest {
         mockkConstructor(CommandManager::class)
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
         plugin.commandManager = mockk(relaxed = true)
 
         val mockRegistry = mockk<NPCRegistry>(relaxed = true)

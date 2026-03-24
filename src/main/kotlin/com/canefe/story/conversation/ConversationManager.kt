@@ -2,6 +2,8 @@ package com.canefe.story.conversation
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.event.*
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.information.ConversationInformationSource
@@ -765,9 +767,23 @@ class ConversationManager(
 
             // Summarise the conversation for left NPC. (Only if there is still npcs)
             if (conversation.npcs.isNotEmpty()) {
+                val npcData = plugin.npcDataManager.getNPCData(npc)
+                val aiChar =
+                    AICharacter(
+                        npc = npc,
+                        id =
+                            try {
+                                plugin.characterRegistry.getCharacterIdForNPC(npc)
+                            } catch (_: Exception) {
+                                null
+                            },
+                        name = npc.name,
+                        role = npcData?.role ?: "",
+                        skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
+                    )
                 npcResponseService.summarizeConversationForSingleNPC(
                     conversation.history,
-                    npc.name,
+                    aiChar,
                 )
             } else {
                 // If no NPCs left, end the conversation

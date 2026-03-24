@@ -3,6 +3,7 @@ package com.canefe.story.api.event
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.bridge.StoryEvent
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.util.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -27,8 +28,15 @@ class ConversationEndEvent(
         buildJsonObject {
             put("conversationId", conversation.id)
             putJsonArray("npcNames") { conversation.npcNames.forEach { add(JsonPrimitive(it)) } }
+            putJsonArray("npcCharacterIds") { conversation.npcCharacterIds.forEach { add(JsonPrimitive(it)) } }
             putJsonArray("playerNames") {
                 conversation.players.mapNotNull { Bukkit.getPlayer(it)?.name }.forEach { add(JsonPrimitive(it)) }
+            }
+            putJsonArray("playerCharacterIds") {
+                conversation.players
+                    .mapNotNull {
+                        Bukkit.getPlayer(it)?.characterId
+                    }.forEach { add(JsonPrimitive(it)) }
             }
             put("messageCount", conversation.history.size)
         }

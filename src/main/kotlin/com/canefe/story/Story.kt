@@ -178,7 +178,6 @@ open class Story :
 
     // Character registry — central lookup for character identity
     lateinit var characterRegistry: CharacterRegistry
-        private set
 
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
@@ -264,12 +263,20 @@ open class Story :
         // Initialize the prompt service early since other services depend on it
         promptService = PromptService(this)
 
-        // Initialize storage
+        // Initialize storage (force SQLite in test mode)
+        val forceSqlite = System.getProperty("mockbukkit") == "true"
         storageFactory =
             StorageFactory.create(
                 dataFolder = dataFolder,
                 logger = logger,
-                backend = StorageBackend.fromString(configService.storageBackend),
+                backend =
+                    if (forceSqlite) {
+                        StorageBackend.SQLITE
+                    } else {
+                        StorageBackend.fromString(
+                            configService.storageBackend,
+                        )
+                    },
                 mongoUri = configService.mongoUri,
                 mongoDatabase = configService.mongoDatabase,
                 mongoMaxPoolSize = configService.mongoMaxPoolSize,

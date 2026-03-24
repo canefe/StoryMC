@@ -2,8 +2,11 @@ package com.canefe.story.quest
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.storage.QuestStorage
 import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendInfo
@@ -60,7 +63,7 @@ class QuestManager(
 
     fun getValidTalkTargets(npc: StoryNPC): List<String> {
         // First get the location of npc (Get his npcData)
-        val npcData = plugin.npcDataManager.getNPCData(npc.name)
+        val npcData = plugin.npcDataManager.getNPCData(npc)
         val location = npcData?.storyLocation
 
         // get all npc names from that StoryLocation
@@ -397,19 +400,33 @@ class QuestManager(
 
         // Get Questgiver NPC (npc id stored in quest id) ex: npc_[npcId]_[questUniqueId]
         val parts = quest.id.split("_")
-        val npcId = if (parts.size >= 2) parts[1] else return
-        val npcName =
-            if (npcId.matches(Regex("\\d+"))) {
-                CitizensAPI.getNPCRegistry().getById(npcId.toInt())?.name
+        val npcIdStr = if (parts.size >= 2) parts[1] else return
+        val citizensNpc =
+            if (npcIdStr.matches(Regex("\\d+"))) {
+                CitizensAPI.getNPCRegistry().getById(npcIdStr.toInt())
             } else {
-                // If not numeric, we don't care and will simply return
                 null
             } ?: return
+        val storyNpc = CitizensStoryNPC(citizensNpc)
+        val npcData = plugin.npcDataManager.getNPCData(storyNpc)
+        val character =
+            AICharacter(
+                npc = storyNpc,
+                id =
+                    try {
+                        plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+                    } catch (_: Exception) {
+                        null
+                    },
+                name = storyNpc.name,
+                role = npcData?.role ?: "",
+                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(storyNpc.name)),
+            )
         val contextPrompt =
             """
             You have heard that ${player.characterName} has completed the quest you gave: ${quest.title}.
             """.trimIndent()
-        plugin.npcResponseService.generateNPCMemory(npcName, "event", contextPrompt)
+        plugin.npcResponseService.generateNPCMemory(character, "event", contextPrompt)
     }
 
     // OfflinePlayer completeQuest

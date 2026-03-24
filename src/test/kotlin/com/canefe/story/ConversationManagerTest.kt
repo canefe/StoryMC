@@ -32,6 +32,7 @@ class ConversationManagerTest {
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
 
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         val mockRegistry = mockk<NPCRegistry>()
         every { mockRegistry.isNPC(any()) } returns false

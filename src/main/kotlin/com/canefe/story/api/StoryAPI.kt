@@ -270,7 +270,7 @@ interface StoryAPI {
         @JvmStatic
         fun getCharacterByNPC(npc: net.citizensnpcs.api.npc.NPC): AICharacter? {
             val storyNpc = CitizensStoryNPC(npc)
-            val npcData = instance.npcDataManager.getNPCData(npc.name) ?: return null
+            val npcData = instance.npcDataManager.getNPCData(storyNpc) ?: return null
             val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(npc.name))
             return AICharacter(
                 npc = storyNpc,
@@ -304,7 +304,7 @@ interface StoryAPI {
             try {
                 val storyNpc = instance.mythicMobConversation.getOrCreateNPCAdapter(entity)
                 if (storyNpc != null) {
-                    val npcData = instance.npcDataManager.getNPCData(storyNpc.name)
+                    val npcData = instance.npcDataManager.getNPCData(storyNpc)
                     val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(storyNpc.name))
                     return AICharacter(
                         npc = storyNpc,

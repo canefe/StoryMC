@@ -146,7 +146,7 @@ class SkillCheckService(
         // Check NPCs
         val npc = conversation.npcs.find { it.name.equals(name, ignoreCase = true) }
         if (npc != null) {
-            val npcData = plugin.npcDataManager.getNPCData(npc.name)
+            val npcData = plugin.npcDataManager.getNPCData(npc)
             val skills =
                 CharacterSkills(
                     provider = plugin.skillManager.createProviderForNPC(npc.name),

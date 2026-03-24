@@ -2,13 +2,17 @@ package com.canefe.story.command.base
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterDTO
+import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.*
@@ -278,8 +282,41 @@ class CommandManager(
 
                     sender.sendInfo("Creating memory for <yellow>$npcName</yellow> based on: <italic>$context</italic>")
 
+                    val storyNpc = plugin.npcDataManager.getNPC(npcName)
+                    val character: Character =
+                        if (storyNpc != null) {
+                            AICharacter(
+                                npc = storyNpc,
+                                id =
+                                    try {
+                                        plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+                                    } catch (
+                                        _: Exception,
+                                    ) {
+                                        null
+                                    },
+                                name = storyNpc.name,
+                                role = npcData.role,
+                                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
+                            )
+                        } else {
+                            // Fallback for NPCs not currently spawned in Citizens
+                            AICharacter(
+                                npc = StubStoryNPC(npcName),
+                                id =
+                                    try {
+                                        plugin.characterRegistry.getByName(npcName)?.id
+                                    } catch (_: Exception) {
+                                        null
+                                    },
+                                name = npcName,
+                                role = npcData.role,
+                                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
+                            )
+                        }
+
                     plugin.npcResponseService
-                        .generateNPCMemory(npcName, type, context)
+                        .generateNPCMemory(character, type, context)
                         .thenAccept { memory ->
                             Bukkit.getScheduler().runTask(
                                 plugin,
@@ -1371,12 +1408,27 @@ class CommandManager(
 
         for (npcName in generatedNPCs) {
             val npcPlan = npcPlans.find { it.name == npcName } ?: continue
+            val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
+            val storyNpc = plugin.npcDataManager.getNPC(npcName)
+            val character: Character =
+                AICharacter(
+                    npc = storyNpc ?: StubStoryNPC(npcName),
+                    id =
+                        try {
+                            plugin.characterRegistry.getByName(npcName)?.id
+                        } catch (_: Exception) {
+                            null
+                        },
+                    name = npcName,
+                    role = npcData.role,
+                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
+                )
 
             // Generate core background memories
             val coreMemoryFuture =
                 plugin.npcResponseService
                     .generateNPCMemory(
-                        npcName,
+                        character,
                         "experience",
                         "Core background: ${npcPlan.background}. Key relationships: ${npcPlan.relationships}. Current situation: ${npcPlan.situation}",
                     ).thenAccept { memory ->
@@ -1397,7 +1449,7 @@ class CommandManager(
                 val recentMemoryFuture =
                     plugin.npcResponseService
                         .generateNPCMemory(
-                            npcName,
+                            character,
                             "event",
                             "Recent interactions and developments: ${npcPlan.relationships}. Current goals: ${npcPlan.situation}",
                         ).thenAccept { memory ->
