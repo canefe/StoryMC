@@ -17,11 +17,11 @@ data class MessageDTO(
 data class GenerateNPCResponseRequest(
     val requestId: String,
     val method: String = Method.GENERATE_NPC_RESPONSE,
-    val npcName: String,
+    val characterId: String,
     val conversationId: Int,
     val history: List<MessageDTO>,
-    val npcNames: List<String>,
-    val playerNames: List<String>,
+    val characterIds: List<String>,
+    val playerCharacterIds: List<String>,
 )
 
 @Serializable
@@ -29,7 +29,7 @@ data class SelectNextSpeakerRequest(
     val requestId: String,
     val method: String = Method.SELECT_NEXT_SPEAKER,
     val conversationId: Int,
-    val npcNames: List<String>,
+    val characterIds: List<String>,
     val history: List<MessageDTO>,
 )
 
@@ -38,9 +38,9 @@ data class GenerateNPCReactionsRequest(
     val requestId: String,
     val method: String = Method.GENERATE_NPC_REACTIONS,
     val conversationId: Int,
-    val speakerName: String,
+    val speakerCharacterId: String,
     val message: String,
-    val npcNames: List<String>,
+    val characterIds: List<String>,
 )
 
 @Serializable
@@ -48,7 +48,7 @@ data class ProcessConversationInformationRequest(
     val requestId: String,
     val method: String = Method.PROCESS_CONVERSATION_INFORMATION,
     val locationName: String,
-    val npcNames: List<String>,
+    val characterIds: List<String>,
     val messages: List<MessageDTO>,
     val relevantLocations: Map<String, String>,
 )
@@ -58,10 +58,6 @@ data class CapabilitiesRequest(
     val requestId: String,
     val method: String = Method.GET_CAPABILITIES,
 )
-
-/**
- * Constants for intelligence method names used in capability checks and wire protocol.
- */
 
 /**
  * Constants for intelligence wire protocol.

@@ -4,7 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
 
@@ -34,7 +34,7 @@ class LocalIntelligence(
                     } +
                     conversation.players.joinToString("\n") { playerId ->
                         val player = Bukkit.getPlayer(playerId) ?: return@joinToString ""
-                        val nickname = EssentialsUtils.getNickname(player.name)
+                        val nickname = player.characterName
                         val ctx = npcContextGenerator.getOrCreateContextForNPC(nickname)
                         "$nickname: ${ctx?.appearance ?: "No appearance information available."}"
                     } +
@@ -44,7 +44,7 @@ class LocalIntelligence(
                     "\n=========================\n" +
                     "This is an active conversation and you are talking to multiple characters: ${
                         conversation.players.joinToString(", ") {
-                            Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: ""
+                            Bukkit.getPlayer(it)?.characterName ?: ""
                         }
                     }. " +
                     conversation.npcNames.filter { it != npc.name }.joinToString("\n") +

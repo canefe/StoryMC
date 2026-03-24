@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 data class CreateMemoryRequest(
     val requestId: String,
     val method: String = StorageMethod.CREATE_MEMORY,
-    val npcName: String,
+    val characterId: String,
     val content: String,
     val significance: Double,
 )
@@ -29,7 +29,7 @@ data class AddRumorRequest(
 data class UpdateRelationshipRequest(
     val requestId: String,
     val method: String = StorageMethod.UPDATE_RELATIONSHIP,
-    val npcName: String,
+    val characterId: String,
     val memoryId: String,
     val memoryContent: String,
     val memorySignificance: Double,

@@ -11,7 +11,7 @@ import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendInfo
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
@@ -321,7 +321,7 @@ class ConversationManager(
             sessionContext.append(
                 "A new conversation has ended between ${
                     conversation.players.joinToString(", ") {
-                        EssentialsUtils.getNickname(Bukkit.getPlayer(it)?.name ?: "")
+                        Bukkit.getPlayer(it)?.characterName ?: ""
                     }
                 }, ${conversation.npcNames.joinToString(", ")}.\n",
             )
@@ -420,7 +420,7 @@ class ConversationManager(
         }
 
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(player.name)} has joined the conversation.",
+            "${player.characterName} has joined the conversation.",
         )
 
         result.complete(true)
@@ -678,12 +678,13 @@ class ConversationManager(
         handleHolograms(conversation, player.name)
 
         // Publish player message through event bus
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         plugin.eventBus.emit(
             com.canefe.story.bridge.PlayerMessageEvent(
+                characterId = player.characterId,
                 playerName = playerName,
                 message = message,
-                npcName = conversation.npcNames.firstOrNull(),
+                npcCharacterId = conversation.npcNames.firstOrNull(),
                 conversationId = conversation.id,
             ),
         )
@@ -784,7 +785,7 @@ class ConversationManager(
     ) {
         // Remove the player from the conversation
         if (conversation.removePlayer(player)) {
-            val playerName = EssentialsUtils.getNickname(player.name)
+            val playerName = player.characterName
 
             // Notify other players in the conversation
             for (otherPlayerId in conversation.players) {

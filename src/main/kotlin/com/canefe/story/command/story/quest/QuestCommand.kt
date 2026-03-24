@@ -6,7 +6,7 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.quest.Quest
 import com.canefe.story.quest.QuestObjective
 import com.canefe.story.quest.QuestStatus
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
@@ -119,7 +119,7 @@ class QuestCommand(
                         val book = ItemStack(Material.WRITTEN_BOOK)
                         val meta = book.itemMeta as BookMeta
                         val targetName =
-                            EssentialsUtils.getNickname(target?.name ?: player.name)
+                            ((target as? Player) ?: player).characterName
                         meta.title(
                             plugin.miniMessage.deserialize("$targetName's Journal"),
                         )
@@ -821,7 +821,7 @@ class QuestCommand(
                         sender.sendSuccess(message)
                     }
 
-                    val playerName = EssentialsUtils.getNickname(targetPlayer.name)
+                    val playerName = targetPlayer.characterName
 
                     // Create messages for AI prompt using PromptService
                     val contextInformation = extractedContext.generatePromptContext()

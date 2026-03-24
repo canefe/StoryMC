@@ -9,7 +9,7 @@ import com.canefe.story.api.event.PlayerParticipant
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import io.papermc.paper.event.player.AsyncChatEvent
@@ -148,7 +148,7 @@ class NPCInteractionListener(
         player: Player,
         message: String,
     ) {
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         player.sendInfo("$playerName: [$message]")
     }
 
@@ -160,7 +160,7 @@ class NPCInteractionListener(
         player: Player,
         message: String,
     ) {
-        val playerCharacterName = EssentialsUtils.getNickname(player.name)
+        val playerCharacterName = player.characterName
 
         // Get player context
         val playerContext =
@@ -186,7 +186,7 @@ class NPCInteractionListener(
                         conversation.players.joinToString(
                             ", ",
                         ) {
-                            Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: ""
+                            Bukkit.getPlayer(it)?.characterName ?: ""
                         }
                     }. " +
                     conversation.npcNames.joinToString("\n") +
@@ -203,7 +203,7 @@ class NPCInteractionListener(
                         val p = Bukkit.getPlayer(playerId)
                         if (p == null) return@joinToString ""
                         val pName = p.name
-                        val nickname = EssentialsUtils.getNickname(pName)
+                        val nickname = Bukkit.getPlayer(playerId)?.characterName ?: pName
                         val pContext =
                             plugin.npcContextGenerator.getOrCreateContextForNPC(
                                 nickname,

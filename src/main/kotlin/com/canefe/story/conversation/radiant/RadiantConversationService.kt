@@ -3,7 +3,7 @@ package com.canefe.story.conversation.radiant
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.*
@@ -107,7 +107,7 @@ class RadiantConversationService(
             }
 
         if (choosePlayer) {
-            val playerName = EssentialsUtils.getNickname(player.name)
+            val playerName = player.characterName
 
             // Check if the relationship is strong enough
             val relationship = plugin.relationshipManager.getRelationship(initiator.name, playerName)
@@ -195,7 +195,7 @@ class RadiantConversationService(
 
         CompletableFuture.runAsync {
             try {
-                val playerName = EssentialsUtils.getNickname(player.name)
+                val playerName = player.characterName
 
                 // Get AI response
                 val greeting = plugin.npcResponseService.generateNPCGreeting(initiator, playerName) ?: return@runAsync

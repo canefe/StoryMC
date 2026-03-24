@@ -7,7 +7,7 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.RelationshipStorage
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
@@ -90,7 +90,7 @@ class RelationshipManager(
                     conversation.players?.any { playerId ->
                         val player = Bukkit.getPlayer(playerId)
                         player != null &&
-                            EssentialsUtils.getNickname(player.name).lowercase() == rel.targetName.lowercase()
+                            player.characterName.lowercase() == rel.targetName.lowercase()
                     } == true
             }.joinToString("\n") { rel ->
                 "$character and ${rel.targetName}'s relationship is ${rel.type} with a score of ${rel.score}." +
@@ -377,7 +377,7 @@ class RelationshipManager(
 
     private fun extractTargetsWithAI(content: String): List<String> {
         val allNpcs = plugin.npcDataManager.getAllNPCNames()
-        val allPlayers = Bukkit.getOnlinePlayers().map { EssentialsUtils.getNickname(it.name) }
+        val allPlayers = Bukkit.getOnlinePlayers().map { it.characterName }
         val allEntities = (allNpcs + allPlayers).joinToString("\n")
 
         val prompt =

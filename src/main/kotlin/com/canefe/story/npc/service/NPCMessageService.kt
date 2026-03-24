@@ -9,7 +9,7 @@ import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
@@ -359,7 +359,7 @@ class NPCMessageService(
         Bukkit.getPluginManager().callEvent(event)
         if (event.isCancelled) return
 
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
 
         // Get player context for avatar support (using NPC data system for players)
         val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)

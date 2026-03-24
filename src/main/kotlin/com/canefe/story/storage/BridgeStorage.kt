@@ -78,7 +78,7 @@ class BridgeStorage(
         val dto =
             CreateMemoryRequest(
                 requestId = UUID.randomUUID().toString(),
-                npcName = npcName,
+                characterId = npcName,
                 content = content,
                 significance = significance,
             )
@@ -94,7 +94,7 @@ class BridgeStorage(
         val dto =
             UpdateRelationshipRequest(
                 requestId = UUID.randomUUID().toString(),
-                npcName = npcName,
+                characterId = npcName,
                 memoryId = memory.id,
                 memoryContent = memory.content,
                 memorySignificance = memory.significance,

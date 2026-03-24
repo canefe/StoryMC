@@ -1,7 +1,7 @@
 package com.canefe.story.conversation
 
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.entity.Player
 import java.util.*
 
@@ -119,7 +119,7 @@ class Conversation(
         message: String,
     ) {
         // Get nickname
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         addUserMessage("$playerName: $message")
     }
 

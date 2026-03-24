@@ -11,7 +11,7 @@ import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -728,7 +728,7 @@ class CommandManager(
                         "This is an active conversation and you are talking to multiple characters: ${
                             conversation.players?.joinToString(
                                 ", ",
-                            ) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }
+                            ) { Bukkit.getPlayer(it)?.characterName ?: "" }
                         }. " +
                         conversation.npcNames.joinToString("\n") +
                         "\n===APPEARANCES===\n" +
@@ -744,7 +744,7 @@ class CommandManager(
                                 return@joinToString ""
                             }
                             val playerName = player.name
-                            val nickname = EssentialsUtils.getNickname(playerName)
+                            val nickname = Bukkit.getPlayer(playerName)?.characterName ?: playerName
                             val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(nickname)
                             "$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
                         } +

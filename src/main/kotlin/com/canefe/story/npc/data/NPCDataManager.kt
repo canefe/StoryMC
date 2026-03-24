@@ -55,8 +55,12 @@ class NPCDataManager(
         return allNPCData
     }
 
+    /**
+     * Get NPC data by name. This is the primary lookup — will be migrated to character ID
+     * once all callers are updated. For now, also supports character ID lookups by checking
+     * the cache and storage with the provided key.
+     */
     fun getNPCData(npcName: String): NPCData? {
-        // Check if NPC data is already cached
         if (npcDataCache.containsKey(npcName)) {
             return npcDataCache[npcName]
         }
@@ -99,6 +103,14 @@ class NPCDataManager(
             e.printStackTrace()
             return null
         }
+    }
+
+    /**
+     * Get NPC data by character ID, resolving through the character registry.
+     */
+    fun getNPCDataByCharacterId(characterId: String): NPCData? {
+        val record = plugin.characterRegistry.getById(characterId) ?: return null
+        return getNPCData(record.name)
     }
 
     /**

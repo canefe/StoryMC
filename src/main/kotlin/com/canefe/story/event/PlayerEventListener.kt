@@ -2,7 +2,7 @@ package com.canefe.story.event
 
 import com.canefe.story.Story
 import com.canefe.story.api.event.PlayerLocationChangeEvent
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
@@ -35,9 +35,7 @@ class PlayerEventListener(
 
         val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} dropped ${event.itemDrop.itemStack.type.name} amount ${event.itemDrop.itemStack.amount}",
+            "${player.characterName} dropped ${event.itemDrop.itemStack.type.name} amount ${event.itemDrop.itemStack.amount}",
         )
     }
 
@@ -60,7 +58,7 @@ class PlayerEventListener(
 
         val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(player.name)} was damaged by $name amount ${event.finalDamage}",
+            "${player.characterName} was damaged by $name amount ${event.finalDamage}",
         )
     }
 
@@ -73,9 +71,7 @@ class PlayerEventListener(
 
         val conversation = plugin.conversationManager.getConversation(player) ?: return
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(
-                player.name,
-            )} picked up ${event.item.itemStack.type.name} amount ${event.item.itemStack.amount}",
+            "${player.characterName} picked up ${event.item.itemStack.type.name} amount ${event.item.itemStack.amount}",
         )
     }
 

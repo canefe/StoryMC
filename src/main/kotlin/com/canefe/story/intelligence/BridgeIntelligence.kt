@@ -4,6 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.bridge.StoryEventBus
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.util.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -73,11 +74,11 @@ class BridgeIntelligence(
         val dto =
             GenerateNPCResponseRequest(
                 requestId = requestId,
-                npcName = npc.name,
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.name,
                 conversationId = conversation.id,
                 history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
-                npcNames = conversation.npcNames,
-                playerNames = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.name },
+                characterIds = conversation.npcNames,
+                playerCharacterIds = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.characterId },
             )
 
         return sendRequest(requestId, json.encodeToJsonElement(GenerateNPCResponseRequest.serializer(), dto).jsonObject)
@@ -97,7 +98,7 @@ class BridgeIntelligence(
             SelectNextSpeakerRequest(
                 requestId = requestId,
                 conversationId = conversation.id,
-                npcNames = conversation.npcNames,
+                characterIds = conversation.npcNames,
                 history = conversation.history.takeLast(10).map { MessageDTO(it.role, it.content) },
             )
 
@@ -130,12 +131,12 @@ class BridgeIntelligence(
             GenerateNPCReactionsRequest(
                 requestId = requestId,
                 conversationId = conversation.id,
-                speakerName = speakerName,
+                speakerCharacterId = speakerName,
                 message = message,
-                npcNames =
+                characterIds =
                     conversation.npcs
                         .filter { it.name != speakerName && !conversation.mutedNPCs.contains(it) }
-                        .map { it.name },
+                        .map { plugin.characterRegistry.getCharacterIdForNPC(it) ?: it.name },
             )
 
         return sendRequest(
@@ -171,7 +172,7 @@ class BridgeIntelligence(
             ProcessConversationInformationRequest(
                 requestId = requestId,
                 locationName = request.locationName,
-                npcNames = request.npcNames,
+                characterIds = request.npcNames,
                 messages = request.messages.map { MessageDTO(it.role, it.content) },
                 relevantLocations = request.relevantLocations,
             )

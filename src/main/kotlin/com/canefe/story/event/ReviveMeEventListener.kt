@@ -1,7 +1,7 @@
 package com.canefe.story.event
 
 import com.canefe.story.Story
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import net.kokoricraft.reviveme.events.PlayerDownedEvent
 import org.bukkit.entity.Entity
@@ -37,7 +37,7 @@ class ReviveMeEventListener(
 
         if (entity is Player) {
             return try {
-                EssentialsUtils.getNickname(entity.name)
+                if (entity is Player) entity.characterName else entity.name
             } catch (_: Exception) {
                 entity.name
             }

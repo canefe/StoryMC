@@ -4,7 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.command.base.CommandComponentUtils
 import com.canefe.story.location.LocationManager
 import com.canefe.story.quest.QuestStatus
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Material
@@ -48,7 +48,7 @@ class QuestCommandUtils {
         target: OfflinePlayer? = null,
     ) {
         val targetUuid = target?.uniqueId ?: player.uniqueId
-        val targetName = EssentialsUtils.getNickname(target?.name ?: player.name)
+        val targetName = ((target as? Player) ?: player).characterName
         val isAdmin = target != null && player.hasPermission("story.journal.admin")
 
         // Create the book item
@@ -102,7 +102,7 @@ class QuestCommandUtils {
         target: OfflinePlayer? = null,
     ) {
         val targetUuid = target?.uniqueId ?: player.uniqueId
-        val targetName = EssentialsUtils.getNickname(target?.name ?: player.name)
+        val targetName = ((target as? Player) ?: player).characterName
         val isAdmin = target != null && player.hasPermission("story.journal.admin")
 
         // Create the book item
@@ -117,7 +117,7 @@ class QuestCommandUtils {
 
         val relationships =
             story.relationshipManager.getAllRelationships(
-                EssentialsUtils.getNickname(target?.name ?: player.name),
+                ((target as? Player) ?: player).characterName,
             )
 
         if (relationships.isEmpty()) {
@@ -159,7 +159,7 @@ class QuestCommandUtils {
         target: OfflinePlayer? = null,
     ) {
         val targetUuid = target?.uniqueId ?: player.uniqueId
-        val targetName = EssentialsUtils.getNickname(target?.name ?: player.name)
+        val targetName = ((target as? Player) ?: player).characterName
         val isAdmin = target != null && player.hasPermission("story.journal.admin")
 
         // Create the book item
@@ -179,7 +179,7 @@ class QuestCommandUtils {
         // Get memories for the target player
         val contextResult =
             story.npcContextGenerator.getOrCreateContextForNPC(
-                EssentialsUtils.getNickname(target.name!!),
+                ((target as? Player) ?: player).characterName,
             )
         val memories =
             contextResult?.memories?.let { memList ->
@@ -241,7 +241,7 @@ class QuestCommandUtils {
         target: OfflinePlayer? = null,
     ) {
         val targetUuid = target?.uniqueId ?: player.uniqueId
-        val targetName = EssentialsUtils.getNickname(target?.name ?: player.name)
+        val targetName = ((target as? Player) ?: player).characterName
         val isAdmin = target != null && player.hasPermission("story.quest.admin")
 
         // Create the book item

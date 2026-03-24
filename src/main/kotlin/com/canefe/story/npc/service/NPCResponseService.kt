@@ -6,7 +6,7 @@ import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
@@ -36,7 +36,7 @@ class NPCResponseService(
         val isPlayerCharacter = player != null && npc == null
         val originalCharName =
             if (isPlayerCharacter) {
-                EssentialsUtils.getNickname(player.name)
+                player.characterName
             } else {
                 npc?.name ?: "Unknown"
             }
@@ -523,7 +523,7 @@ class NPCResponseService(
             conversation.players.map {
                 Bukkit.getPlayer(it).let { player ->
                     if (player != null) {
-                        EssentialsUtils.getNickname(player.name)
+                        player.characterName
                     } else {
                         null
                     }
@@ -679,7 +679,7 @@ class NPCResponseService(
 
         val player =
             Bukkit.getOnlinePlayers().firstOrNull {
-                EssentialsUtils.getNickname(it.name) == npcName
+                it.characterName == npcName
             }
 
         // set npc to null if isPlayer is true

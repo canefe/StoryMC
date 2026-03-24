@@ -4,7 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -68,7 +68,13 @@ class PerceptionService(
                 }
 
             if (nearbyNPCs.isNotEmpty()) {
-                plugin.eventBus.emit(PlayerProximityEvent(playerName, nearbyNPCs))
+                plugin.eventBus.emit(
+                    PlayerProximityEvent(
+                        playerCharacterId = player.characterId,
+                        playerName = playerName,
+                        nearbyCharacterIds = nearbyNPCs,
+                    ),
+                )
             }
         }
     }
@@ -148,7 +154,7 @@ class PerceptionService(
 
             val name =
                 try {
-                    EssentialsUtils.getNickname(player.name)
+                    player.characterName
                 } catch (_: Exception) {
                     player.name
                 }

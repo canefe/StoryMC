@@ -5,7 +5,7 @@ import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
 import com.canefe.story.storage.QuestStorage
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
@@ -407,9 +407,7 @@ class QuestManager(
             } ?: return
         val contextPrompt =
             """
-            You have heard that ${EssentialsUtils.getNickname(
-                player.name,
-            )} has completed the quest you gave: ${quest.title}.
+            You have heard that ${player.characterName} has completed the quest you gave: ${quest.title}.
             """.trimIndent()
         plugin.npcResponseService.generateNPCMemory(npcName, "event", contextPrompt)
     }

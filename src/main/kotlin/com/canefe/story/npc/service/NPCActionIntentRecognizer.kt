@@ -4,7 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.quest.*
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import org.bukkit.Bukkit
@@ -139,7 +139,7 @@ class NPCActionIntentRecognizer(
                     questId.startsWith("npc_${npcId}_quest_")
             }
 
-        val playerName = EssentialsUtils.getNickname(targetPlayer.name)
+        val playerName = targetPlayer.characterName
 
         // If player already has a quest from this NPC, don't generate a new one
         if (hasExistingQuestFromNPC) {
@@ -205,9 +205,7 @@ class NPCActionIntentRecognizer(
                                 Runnable {
                                     // first ask for permission to give quest
                                     plugin.taskManager.createTask(
-                                        description = "Following quest will be assigned to <gold>${EssentialsUtils.getNickname(
-                                            targetPlayer.name,
-                                        )}</gold>: <yellow>${jsonResponse.questDetails.title}</yellow> by <red>${npc.name}</red>. Do you want to accept it?",
+                                        description = "Following quest will be assigned to <gold>${targetPlayer.characterName}</gold>: <yellow>${jsonResponse.questDetails.title}</yellow> by <red>${npc.name}</red>. Do you want to accept it?",
                                         permission = "story.task.respond",
                                         onAccept =
                                             Runnable {

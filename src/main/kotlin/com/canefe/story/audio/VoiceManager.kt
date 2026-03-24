@@ -2,7 +2,7 @@ package com.canefe.story.audio
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -253,7 +253,7 @@ class VoiceManager(
     /** Determine the appropriate voice ID for a player based on their traits */
     private fun determinePlayerVoiceId(player: Player): String? {
         // Try to get player-specific voice mapping first
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         val playerVoice = audioManager.getVoiceId(playerName)
         if (playerVoice != audioManager.getVoiceId("default")) {
             return playerVoice

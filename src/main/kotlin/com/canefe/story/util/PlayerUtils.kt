@@ -5,18 +5,40 @@ import com.canefe.story.api.character.CharacterRecord
 import org.bukkit.entity.Player
 
 /**
- * Character-aware player utilities. Replaces EssentialsUtils.getNickname for identity.
+ * Character-aware player extensions. Replaces EssentialsUtils.getNickname for identity.
  * Falls back to Minecraft username for unregistered (guest) players.
  */
-object PlayerUtils {
-    fun getCharacterName(player: Player): String =
-        Story.instance.characterRegistry
-            .getByPlayer(player)
-            ?.name ?: player.name
 
-    fun getCharacterId(player: Player): String? = Story.instance.characterRegistry.getCharacterIdForPlayer(player)
+val Player.characterName: String
+    get() =
+        try {
+            Story.instance.characterRegistry
+                .getByPlayer(this)
+                ?.name ?: this.name
+        } catch (_: UninitializedPropertyAccessException) {
+            this.name
+        }
 
-    fun getCharacter(player: Player): CharacterRecord? = Story.instance.characterRegistry.getByPlayer(player)
+val Player.characterId: String?
+    get() =
+        try {
+            Story.instance.characterRegistry.getCharacterIdForPlayer(this)
+        } catch (_: UninitializedPropertyAccessException) {
+            null
+        }
 
-    fun isRegistered(player: Player): Boolean = Story.instance.characterRegistry.isRegistered(player)
-}
+val Player.character: CharacterRecord?
+    get() =
+        try {
+            Story.instance.characterRegistry.getByPlayer(this)
+        } catch (_: UninitializedPropertyAccessException) {
+            null
+        }
+
+val Player.isRegisteredCharacter: Boolean
+    get() =
+        try {
+            Story.instance.characterRegistry.isRegistered(this)
+        } catch (_: UninitializedPropertyAccessException) {
+            false
+        }

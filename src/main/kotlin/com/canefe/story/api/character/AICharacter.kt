@@ -7,6 +7,7 @@ import java.util.UUID
 
 class AICharacter(
     val npc: StoryNPC,
+    override val id: String? = null,
     override val name: String,
     override val role: String,
     override val appearance: String = "",
@@ -15,5 +16,5 @@ class AICharacter(
     override val memory: MutableList<Memory> = mutableListOf(),
     override val skills: CharacterSkills,
 ) : Character {
-    override val id: UUID get() = npc.uniqueId
+    override val entityId: UUID get() = npc.uniqueId
 }
