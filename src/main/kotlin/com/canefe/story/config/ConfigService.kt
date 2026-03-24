@@ -139,6 +139,8 @@ class ConfigService(
             plugin.scheduleManager.reloadSchedules()
             plugin.npcDataManager.loadConfig()
             plugin.locationManager.loadAllLocations()
+            plugin.worldEventManager.loadAll()
+            plugin.rumorManager.loadAll()
             plugin.questManager.loadConfig()
             plugin.npcMessageService.load()
             plugin.playerManager.load()

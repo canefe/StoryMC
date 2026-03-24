@@ -261,10 +261,6 @@ class WorldInformationManager(
         }
 
         try {
-            // Get the location from the location manager
-            val location = plugin.locationManager.getLocation(locationName) ?: return
-
-            // Determine prefix based on importance
             val prefix =
                 when {
                     importance.equals("HIGH", ignoreCase = true) -> "Major news: "
@@ -272,12 +268,21 @@ class WorldInformationManager(
                     else -> "Minor gossip: "
                 }
 
-            // Add the rumor to the location's context list
-            val currentContext = location.context
-            currentContext.add("$prefix$information")
+            val significance =
+                when {
+                    importance.equals("HIGH", ignoreCase = true) -> 0.9
+                    importance.equals("MEDIUM", ignoreCase = true) -> 0.6
+                    else -> 0.3
+                }
 
-            // Save the updated location
-            plugin.locationManager.saveLocation(location)
+            val rumor =
+                Rumor(
+                    content = "$prefix$information",
+                    gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+                    location = locationName,
+                    significance = significance,
+                )
+            plugin.rumorManager.addRumor(rumor)
 
             plugin.logger.info("Added rumor to $locationName: $information")
         } catch (e: Exception) {

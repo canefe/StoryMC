@@ -13,6 +13,8 @@ import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.event.EventManager
+import com.canefe.story.information.RumorManager
+import com.canefe.story.information.WorldEventManager
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.intelligence.BridgeIntelligence
 import com.canefe.story.intelligence.LocalIntelligence
@@ -109,6 +111,8 @@ open class Story :
 
     lateinit var npcResponseService: NPCResponseService
     lateinit var worldInformationManager: WorldInformationManager
+    lateinit var worldEventManager: WorldEventManager
+    lateinit var rumorManager: RumorManager
 
     lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
 
@@ -274,6 +278,8 @@ open class Story :
         npcMessageService = NPCMessageService(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
+        worldEventManager = WorldEventManager(this, storageFactory.worldEventStorage)
+        rumorManager = RumorManager(this, storageFactory.rumorStorage)
         worldInformationManager = WorldInformationManager(this)
         npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
         lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
@@ -338,6 +344,8 @@ open class Story :
             relationshipManager.updateStorage(storageFactory.relationshipStorage)
             lorebookManager.updateStorage(storageFactory.loreStorage)
             playerManager.updateStorage(storageFactory.playerStorage)
+            worldEventManager.updateStorage(storageFactory.worldEventStorage)
+            rumorManager.updateStorage(storageFactory.rumorStorage)
             sender?.sendMessage(
                 miniMessage.deserialize(
                     "<green>Storage backend switched to ${storageFactory.activeBackend}. All managers updated.</green>",

@@ -33,6 +33,8 @@ class StorageFactory private constructor(
     var relationshipStorage: RelationshipStorage,
     var loreStorage: LoreStorage,
     var playerStorage: PlayerStorage,
+    var worldEventStorage: WorldEventStorage,
+    var rumorStorage: RumorStorage,
     var activeBackend: StorageBackend,
     private var mongoClientManager: MongoClientManager?,
     private var sqliteManager: SQLiteManager?,
@@ -101,6 +103,8 @@ class StorageFactory private constructor(
                 relationshipStorage = MongoRelationshipStorage(mongo)
                 loreStorage = MongoLoreStorage(mongo)
                 playerStorage = MongoPlayerStorage(mongo)
+                worldEventStorage = MongoWorldEventStorage(mongo)
+                rumorStorage = MongoRumorStorage(mongo)
                 activeBackend = StorageBackend.MONGODB
 
                 logger.info("[Storage] Switched to MongoDB.")
@@ -125,6 +129,8 @@ class StorageFactory private constructor(
                 relationshipStorage = SQLiteRelationshipStorage(sqlite)
                 loreStorage = SQLiteLoreStorage(sqlite)
                 playerStorage = SQLitePlayerStorage(sqlite)
+                worldEventStorage = SQLiteWorldEventStorage()
+                rumorStorage = SQLiteRumorStorage()
                 activeBackend = StorageBackend.SQLITE
 
                 logger.info("[Storage] Switched to SQLite.")
@@ -141,6 +147,8 @@ class StorageFactory private constructor(
                 relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
                 loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
                 playerStorage = YamlPlayerStorage(dataFolder, logger)
+                worldEventStorage = YamlWorldEventStorage()
+                rumorStorage = YamlRumorStorage()
                 activeBackend = StorageBackend.YAML
 
                 logger.info("[Storage] Switched to YAML (deprecated).")
@@ -213,6 +221,8 @@ class StorageFactory private constructor(
             val relationshipStorage: RelationshipStorage
             val loreStorage: LoreStorage
             val playerStorage: PlayerStorage
+            val worldEventStorage: WorldEventStorage
+            val rumorStorage: RumorStorage
 
             @Suppress("DEPRECATION")
             when (actualBackend) {
@@ -225,6 +235,8 @@ class StorageFactory private constructor(
                     relationshipStorage = MongoRelationshipStorage(mc)
                     loreStorage = MongoLoreStorage(mc)
                     playerStorage = MongoPlayerStorage(mc)
+                    worldEventStorage = MongoWorldEventStorage(mc)
+                    rumorStorage = MongoRumorStorage(mc)
                 }
 
                 StorageBackend.SQLITE -> {
@@ -236,6 +248,8 @@ class StorageFactory private constructor(
                     relationshipStorage = SQLiteRelationshipStorage(sc)
                     loreStorage = SQLiteLoreStorage(sc)
                     playerStorage = SQLitePlayerStorage(sc)
+                    worldEventStorage = SQLiteWorldEventStorage()
+                    rumorStorage = SQLiteRumorStorage()
                 }
 
                 StorageBackend.YAML -> {
@@ -247,6 +261,8 @@ class StorageFactory private constructor(
                     relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
                     loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
                     playerStorage = YamlPlayerStorage(dataFolder, logger)
+                    worldEventStorage = YamlWorldEventStorage()
+                    rumorStorage = YamlRumorStorage()
                 }
             }
 
@@ -260,6 +276,8 @@ class StorageFactory private constructor(
                 relationshipStorage = relationshipStorage,
                 loreStorage = loreStorage,
                 playerStorage = playerStorage,
+                worldEventStorage = worldEventStorage,
+                rumorStorage = rumorStorage,
                 activeBackend = actualBackend,
                 mongoClientManager = mongoClient,
                 sqliteManager = sqliteClient,

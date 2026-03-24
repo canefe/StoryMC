@@ -1,5 +1,7 @@
 package com.canefe.story.storage
 
+import com.canefe.story.information.Rumor
+import com.canefe.story.information.WorldEvent
 import com.mongodb.ConnectionString
 import com.mongodb.MongoClientSettings
 import com.mongodb.client.MongoClient
@@ -24,16 +26,18 @@ class MongoClientManager(
     private lateinit var database: MongoDatabase
 
     fun connect(): Boolean {
-        val kotlinCodecs = CodecRegistries.fromCodecs(
-            KotlinSerializerCodec.create<WorldEvent>(),
-            KotlinSerializerCodec.create<Rumor>(),
-            KotlinSerializerCodec.create<LocationDocument>(),
-        )
+        val kotlinCodecs =
+            CodecRegistries.fromCodecs(
+                KotlinSerializerCodec.create<WorldEvent>(),
+                KotlinSerializerCodec.create<Rumor>(),
+                KotlinSerializerCodec.create<LocationDocument>(),
+            )
 
-        val codecRegistry = CodecRegistries.fromRegistries(
-            kotlinCodecs,
-            MongoClientSettings.getDefaultCodecRegistry(),
-        )
+        val codecRegistry =
+            CodecRegistries.fromRegistries(
+                kotlinCodecs,
+                MongoClientSettings.getDefaultCodecRegistry(),
+            )
 
         val settings =
             MongoClientSettings
@@ -64,8 +68,10 @@ class MongoClientManager(
 
     fun getCollection(name: String): MongoCollection<Document> = database.getCollection(name)
 
-    fun <T : Any> getTypedCollection(name: String, clazz: Class<T>): MongoCollection<T> =
-        database.getCollection(name, clazz)
+    fun <T : Any> getTypedCollection(
+        name: String,
+        clazz: Class<T>,
+    ): MongoCollection<T> = database.getCollection(name, clazz)
 
     fun close() {
         if (::client.isInitialized) {
@@ -117,6 +123,16 @@ class MongoClientManager(
         // Teams
         val teams = getCollection("teams")
         teams.createIndex(Document("teamName", 1), IndexOptions().unique(true))
+
+        // World events
+        val worldEvents = getCollection("world_events")
+        worldEvents.createIndex(Document("id", 1), IndexOptions().unique(true))
+        worldEvents.createIndex(Document("location", 1).append("gameCreatedAt", -1))
+
+        // Rumors
+        val rumors = getCollection("rumors")
+        rumors.createIndex(Document("id", 1), IndexOptions().unique(true))
+        rumors.createIndex(Document("location", 1).append("gameCreatedAt", -1))
 
         logger.info("[MongoDB] Indexes created successfully")
     }
