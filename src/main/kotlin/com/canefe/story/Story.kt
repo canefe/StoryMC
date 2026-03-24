@@ -6,7 +6,6 @@ import com.canefe.story.audio.VoiceManager
 import com.canefe.story.bridge.*
 import com.canefe.story.character.skill.SkillManager
 import com.canefe.story.command.base.CommandManager
-import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.config.ConfigService
 import com.canefe.story.config.PromptService
 import com.canefe.story.context.ContextExtractor
@@ -44,7 +43,6 @@ import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
 import com.canefe.story.util.TimeService
-import com.canefe.story.webui.WebUIServer
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.event.PacketListenerPriority
 import dev.jorel.commandapi.CommandAPI
@@ -52,15 +50,8 @@ import dev.jorel.commandapi.CommandAPIBukkitConfig
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
-import org.bukkit.Material
-import org.bukkit.NamespacedKey
 import org.bukkit.command.CommandSender
-import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.event.block.Action
-import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.inventory.meta.BookMeta
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -141,7 +132,6 @@ open class Story :
 
     lateinit var storageFactory: StorageFactory
         private set
-    private var webUIServer: WebUIServer? = null
 
     lateinit var voiceManager: VoiceManager
 
@@ -224,7 +214,6 @@ open class Story :
         radiantConversationService.startProximityTask()
 
         server.pluginManager.registerEvents(QuestListener(this), this)
-        // initializeWebUIServer()
         // Load configuration
         // reload() also initializes the event bus
         configService.reload()
@@ -316,54 +305,6 @@ open class Story :
 
         eventManager = EventManager(this)
         eventManager.registerEvents()
-
-        registerQuestBookListener()
-    }
-
-    private fun registerQuestBookListener() {
-        server.pluginManager.registerEvents(
-            object : Listener {
-                @EventHandler
-                fun onBookInteract(event: PlayerInteractEvent) {
-                    if (event.action != Action.RIGHT_CLICK_AIR &&
-                        event.action != Action.RIGHT_CLICK_BLOCK
-                    ) {
-                        return
-                    }
-                    if (event.item?.type != Material.WRITTEN_BOOK) return
-
-                    val meta = event.item?.itemMeta as? BookMeta ?: return
-                    val targetKey = NamespacedKey(this@Story, "quest_book_target")
-                    val targetUuidString =
-                        meta.persistentDataContainer.get(
-                            targetKey,
-                            PersistentDataType.STRING,
-                        )
-                            ?: return
-
-                    try {
-                        val targetUuid = UUID.fromString(targetUuidString)
-                        val targetPlayer = Bukkit.getOfflinePlayer(targetUuid)
-
-                        // Cancel the default book opening
-                        event.isCancelled = true
-
-                        // Open custom quest book interface
-                        val commandUtils = QuestCommandUtils()
-                        if (targetPlayer.isOnline) {
-                            commandUtils.openJournalBook(event.player, targetPlayer.player)
-                        } else {
-                            // If target is offline but we have their UUID, we can still try to
-                            // open their quest data
-                            commandUtils.openJournalBook(event.player, targetPlayer)
-                        }
-                    } catch (e: IllegalArgumentException) {
-                        logger.warning("Invalid UUID in quest book: $targetUuidString")
-                    }
-                }
-            },
-            this,
-        )
     }
 
     fun tryReconnectStorage(sender: CommandSender? = null) {
@@ -460,12 +401,6 @@ open class Story :
         )
     }
 
-    private fun initializeWebUIServer() {
-        val port = 7777
-        webUIServer = WebUIServer(this, port)
-        logger.info("WebUI server started on port $port")
-    }
-
     override fun onDisable() {
         logger.info("Story has been disabled.")
         if (System.getProperty("mockbukkit") != "true") {
@@ -473,7 +408,6 @@ open class Story :
         }
         // Cancel all tasks first to prevent new ones from being registered
         Bukkit.getScheduler().cancelTasks(this)
-        webUIServer?.shutdown()
         // Then shut down each manager in reverse order of initialization
         try {
             if (::conversationManager.isInitialized) conversationManager.cancelScheduledTasks()
@@ -552,6 +486,10 @@ open class Story :
         }
     }
 
+    @Deprecated(
+        message = "Use aiResponseService.getAIResponseAsync() directly",
+        replaceWith = ReplaceWith("aiResponseService.getAIResponseAsync(prompts, lowCost = lowCost)"),
+    )
     fun getAIResponse(
         prompts: List<ConversationMessage>,
         useStreaming: Boolean = false,
@@ -560,7 +498,6 @@ open class Story :
     ): CompletableFuture<String?> {
         if (useStreaming) {
             val future = CompletableFuture<String?>()
-            // null check streamingHandler
             if (streamHandler == null) {
                 future.completeExceptionally(
                     IllegalArgumentException(
@@ -576,88 +513,4 @@ open class Story :
 
         return aiResponseService.getAIResponseAsync(prompts, lowCost = lowCost)
     }
-
-    /**
-     * Ask for permission to perform an action from players with the specified permission. This will
-     * send a prompt with Accept/Refuse buttons.
-     *
-     * @param description Description of the action needing permission
-     * @param permission Permission required to respond (defaults to story.task.respond)
-     * @param onAccept Runnable to execute when the task is accepted
-     * @param onRefuse Runnable to execute when the task is refused
-     * @param timeoutSeconds Time in seconds before the request times out (-1 for no timeout)
-     * @param limitToSender If true, only sends to the provided sender
-     * @param sender Optional sender to limit the task to
-     * @return The ID of the created task
-     */
-    fun askForPermission(
-        description: String,
-        permission: String = "story.task.respond",
-        onAccept: Runnable,
-        onRefuse: Runnable,
-        timeoutSeconds: Int = 300,
-        limitToSender: Boolean = false,
-        sender: CommandSender? = null,
-    ): Int =
-        taskManager.createTask(
-            description = description,
-            permission = permission,
-            onAccept = onAccept,
-            onRefuse = onRefuse,
-            timeoutSeconds = timeoutSeconds,
-            limitToSender = limitToSender,
-            sender = sender,
-        )
-
-    /** Simplified version that only requires description and callbacks. */
-    fun askForPermission(
-        description: String,
-        onAccept: Runnable,
-        onRefuse: Runnable,
-    ): Int =
-        askForPermission(
-            description = description,
-            permission = "story.task.respond",
-            onAccept = onAccept,
-            onRefuse = onRefuse,
-        )
-
-    /**
-     * Creates a dialogue path selection task with three options for DMs to choose from. This is
-     * used when dialogue path selection is enabled to allow DMs to select the best NPC response
-     * from three AI-generated options.
-     *
-     * @param description Description of the dialogue selection context
-     * @param option1 First dialogue option
-     * @param option2 Second dialogue option
-     * @param option3 Third dialogue option
-     * @param onOption1 Runnable to execute when option 1 is selected
-     * @param onOption2 Runnable to execute when option 2 is selected
-     * @param onOption3 Runnable to execute when option 3 is selected
-     * @param permission Permission required to respond (defaults to story.dm)
-     * @param timeoutSeconds Time in seconds before auto-selecting option 1 (defaults to 120)
-     * @return The ID of the created dialogue path task
-     */
-    fun askForDialoguePathSelection(
-        description: String,
-        option1: String,
-        option2: String,
-        option3: String,
-        onOption1: Runnable,
-        onOption2: Runnable,
-        onOption3: Runnable,
-        permission: String = "story.dm",
-        timeoutSeconds: Int = 120,
-    ): Int =
-        taskManager.createDialoguePathTask(
-            description = description,
-            option1 = option1,
-            option2 = option2,
-            option3 = option3,
-            onOption1 = onOption1,
-            onOption2 = onOption2,
-            onOption3 = onOption3,
-            permission = permission,
-            timeoutSeconds = timeoutSeconds,
-        )
 }

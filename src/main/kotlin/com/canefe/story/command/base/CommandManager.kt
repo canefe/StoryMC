@@ -1136,19 +1136,23 @@ class CommandManager(
 
         val storyLocation = plugin.locationManager.getLocation(location)!!
 
-        plugin.askForPermission(
-            "📊 Location Analysis Complete\n" +
-                "Location: $location\n" +
-                "Context: ${storyLocation.context.joinToString(", ")}\n" +
-                "Parent: ${storyLocation.parentLocationName ?: "None"}\n" +
-                "User Context: $context\n\n" +
-                "Proceed with NPC planning phase?",
-            Runnable {
-                executeNPCPlanning(sender, location, context, npcCount, debug)
-            },
-            Runnable {
-                sender.sendError("❌ Location analysis cancelled by user.")
-            },
+        plugin.taskManager.createTask(
+            description =
+                "📊 Location Analysis Complete\n" +
+                    "Location: $location\n" +
+                    "Context: ${storyLocation.context.joinToString(", ")}\n" +
+                    "Parent: ${storyLocation.parentLocationName ?: "None"}\n" +
+                    "User Context: $context\n\n" +
+                    "Proceed with NPC planning phase?",
+            permission = "story.task.respond",
+            onAccept =
+                Runnable {
+                    executeNPCPlanning(sender, location, context, npcCount, debug)
+                },
+            onRefuse =
+                Runnable {
+                    sender.sendError("❌ Location analysis cancelled by user.")
+                },
         )
     }
 
@@ -1233,17 +1237,21 @@ class CommandManager(
                                     "• ${plan.name} (${plan.role}): ${plan.background.take(80)}..."
                                 }
 
-                            plugin.askForPermission(
-                                "📋 NPC Planning Complete\n" +
-                                    "Generated ${npcPlans.size} NPC plans:\n\n$preview\n" +
-                                    (if (npcPlans.size > 3) "\n...and ${npcPlans.size - 3} more\n" else "") +
-                                    "\nProceed with NPC generation?",
-                                {
-                                    executeNPCGeneration(sender, location, npcPlans, debug)
-                                },
-                                {
-                                    sender.sendError("❌ NPC planning cancelled by user.")
-                                },
+                            plugin.taskManager.createTask(
+                                description =
+                                    "📋 NPC Planning Complete\n" +
+                                        "Generated ${npcPlans.size} NPC plans:\n\n$preview\n" +
+                                        (if (npcPlans.size > 3) "\n...and ${npcPlans.size - 3} more\n" else "") +
+                                        "\nProceed with NPC generation?",
+                                permission = "story.task.respond",
+                                onAccept =
+                                    Runnable {
+                                        executeNPCGeneration(sender, location, npcPlans, debug)
+                                    },
+                                onRefuse =
+                                    Runnable {
+                                        sender.sendError("❌ NPC planning cancelled by user.")
+                                    },
                             )
                         } catch (e: Exception) {
                             sender.sendError("❌ Failed to parse NPC plans: ${e.message}")
@@ -1318,17 +1326,21 @@ class CommandManager(
                             }
                         }
 
-                        plugin.askForPermission(
-                            "🧠 NPC Generation Complete\n" +
-                                "Successfully generated $successCount NPCs:\n" +
-                                generatedNPCs.joinToString(", ") + "\n\n" +
-                                "Proceed with memory and relationship generation?",
-                            {
-                                executeMemoryGeneration(sender, generatedNPCs, npcPlans, debug)
-                            },
-                            {
-                                sender.sendInfo("✅ NPC generation completed. Skipping memory generation.")
-                            },
+                        plugin.taskManager.createTask(
+                            description =
+                                "🧠 NPC Generation Complete\n" +
+                                    "Successfully generated $successCount NPCs:\n" +
+                                    generatedNPCs.joinToString(", ") + "\n\n" +
+                                    "Proceed with memory and relationship generation?",
+                            permission = "story.task.respond",
+                            onAccept =
+                                Runnable {
+                                    executeMemoryGeneration(sender, generatedNPCs, npcPlans, debug)
+                                },
+                            onRefuse =
+                                Runnable {
+                                    sender.sendInfo("✅ NPC generation completed. Skipping memory generation.")
+                                },
                         )
                     }
                 },

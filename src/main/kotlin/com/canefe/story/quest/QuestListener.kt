@@ -3,15 +3,23 @@ package com.canefe.story.quest
 import com.canefe.story.Story
 import com.canefe.story.api.event.ConversationStartEvent
 import com.canefe.story.api.event.PlayerLocationChangeEvent
+import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.location.data.StoryLocation
+import org.bukkit.Bukkit
+import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.inventory.CraftItemEvent
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.BookMeta
+import org.bukkit.persistence.PersistentDataType
+import java.util.UUID
 import java.util.regex.Pattern
 
 class QuestListener(
@@ -235,5 +243,42 @@ class QuestListener(
         location: StoryLocation,
     ) {
         updateQuestProgress(player, ObjectiveType.EXPLORE, location.name)
+    }
+
+    @EventHandler
+    fun onQuestBookInteract(event: PlayerInteractEvent) {
+        if (event.action != Action.RIGHT_CLICK_AIR &&
+            event.action != Action.RIGHT_CLICK_BLOCK
+        ) {
+            return
+        }
+        if (event.item?.type != Material.WRITTEN_BOOK) return
+
+        val meta = event.item?.itemMeta as? BookMeta ?: return
+        val targetKey = NamespacedKey(plugin, "quest_book_target")
+        val targetUuidString =
+            meta.persistentDataContainer.get(
+                targetKey,
+                PersistentDataType.STRING,
+            )
+                ?: return
+
+        try {
+            val targetUuid = UUID.fromString(targetUuidString)
+            val targetPlayer = Bukkit.getOfflinePlayer(targetUuid)
+
+            // Cancel the default book opening
+            event.isCancelled = true
+
+            // Open custom quest book interface
+            val commandUtils = QuestCommandUtils()
+            if (targetPlayer.isOnline) {
+                commandUtils.openJournalBook(event.player, targetPlayer.player)
+            } else {
+                commandUtils.openJournalBook(event.player, targetPlayer)
+            }
+        } catch (e: IllegalArgumentException) {
+            plugin.logger.warning("Invalid UUID in quest book: $targetUuidString")
+        }
     }
 }

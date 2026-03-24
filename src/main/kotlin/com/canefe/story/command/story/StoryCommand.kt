@@ -252,26 +252,29 @@ class StoryCommand(
                             }
 
                             // Send the response to appropriate recipients
-                            plugin.askForPermission(
-                                "Should we broadcast the following response to all players? \n\n${
+                            plugin.taskManager.createTask(
+                                description = "Should we broadcast the following response to all players? \n\n${
                                     response
                                         .replace("\n", " ")
                                 }",
-                                onAccept = {
-                                    plugin.server.onlinePlayers.forEach { player ->
-                                        player.sendRaw(response)
-                                    }
-                                    plugin.server.consoleSender.sendRaw(response)
+                                permission = "story.task.respond",
+                                onAccept =
+                                    Runnable {
+                                        plugin.server.onlinePlayers.forEach { player ->
+                                            player.sendRaw(response)
+                                        }
+                                        plugin.server.consoleSender.sendRaw(response)
 
-                                    sender.sendSuccess(
-                                        "Response broadcast to all players.",
-                                    )
-                                },
-                                onRefuse = {
-                                    sender.sendSuccess(
-                                        "Response broadcast cancelled.",
-                                    )
-                                },
+                                        sender.sendSuccess(
+                                            "Response broadcast to all players.",
+                                        )
+                                    },
+                                onRefuse =
+                                    Runnable {
+                                        sender.sendSuccess(
+                                            "Response broadcast cancelled.",
+                                        )
+                                    },
                             )
                         }.exceptionally { e ->
                             sender.sendSuccess(

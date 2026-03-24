@@ -204,18 +204,21 @@ class NPCActionIntentRecognizer(
                                 plugin,
                                 Runnable {
                                     // first ask for permission to give quest
-                                    plugin.askForPermission(
-                                        "Following quest will be assigned to <gold>${EssentialsUtils.getNickname(
+                                    plugin.taskManager.createTask(
+                                        description = "Following quest will be assigned to <gold>${EssentialsUtils.getNickname(
                                             targetPlayer.name,
                                         )}</gold>: <yellow>${jsonResponse.questDetails.title}</yellow> by <red>${npc.name}</red>. Do you want to accept it?",
-                                        onAccept = {
-                                            createAndAssignQuest(npc, targetPlayer, jsonResponse.questDetails)
-                                        },
-                                        onRefuse = {
-                                            plugin.logger.info(
-                                                "Quest from NPC ${npc.name} was refused by player ${targetPlayer.name}.",
-                                            )
-                                        },
+                                        permission = "story.task.respond",
+                                        onAccept =
+                                            Runnable {
+                                                createAndAssignQuest(npc, targetPlayer, jsonResponse.questDetails)
+                                            },
+                                        onRefuse =
+                                            Runnable {
+                                                plugin.logger.info(
+                                                    "Quest from NPC ${npc.name} was refused by player ${targetPlayer.name}.",
+                                                )
+                                            },
                                     )
                                 },
                             )
@@ -320,47 +323,54 @@ class NPCActionIntentRecognizer(
     ) {
         when {
             intent.follow > 0.7 -> {
-                plugin.askForPermission(
-                    "Do you want <gold>${npc.name}</gold> to follow <red>${player.name}</red>?",
-                    onAccept = {
-                        npc.follow(player)
-                        player.sendInfo("${npc.name} is now following you.")
-                    },
-                    onRefuse = {},
+                plugin.taskManager.createTask(
+                    description = "Do you want <gold>${npc.name}</gold> to follow <red>${player.name}</red>?",
+                    permission = "story.task.respond",
+                    onAccept =
+                        Runnable {
+                            npc.follow(player)
+                            player.sendInfo("${npc.name} is now following you.")
+                        },
+                    onRefuse = Runnable {},
                 )
             }
             intent.attack > 0.7 -> {
                 val target = intent.target?.let { Bukkit.getPlayer(it) }
                 if (target != null) {
-                    plugin.askForPermission(
-                        "Do you want <gold>${npc.name}</gold> to attack <red>${target.name}</red>?",
-                        onAccept = {
-                            npc.attack(target)
-                            player.sendError("${npc.name} is now attacking you.")
-                        },
-                        onRefuse = {
-                        },
+                    plugin.taskManager.createTask(
+                        description = "Do you want <gold>${npc.name}</gold> to attack <red>${target.name}</red>?",
+                        permission = "story.task.respond",
+                        onAccept =
+                            Runnable {
+                                npc.attack(target)
+                                player.sendError("${npc.name} is now attacking you.")
+                            },
+                        onRefuse = Runnable {},
                     )
                 }
             }
             intent.stopFollowing > 0.7 -> {
-                plugin.askForPermission(
-                    "Do you want <gold>${npc.name}</gold> to stop following ${player.name}?",
-                    onAccept = {
-                        npc.stopFollowing()
-                        player.sendMessage("§7${npc.name} is no longer following you.")
-                    },
-                    onRefuse = {},
+                plugin.taskManager.createTask(
+                    description = "Do you want <gold>${npc.name}</gold> to stop following ${player.name}?",
+                    permission = "story.task.respond",
+                    onAccept =
+                        Runnable {
+                            npc.stopFollowing()
+                            player.sendMessage("§7${npc.name} is no longer following you.")
+                        },
+                    onRefuse = Runnable {},
                 )
             }
             intent.stopAttacking > 0.7 -> {
-                plugin.askForPermission(
-                    "Do you want <gold>${npc.name}</gold> to stop attacking ${player.name}?",
-                    onAccept = {
-                        npc.stopAttacking(player)
-                        player.sendMessage("§7${npc.name} has stopped attacking you.")
-                    },
-                    onRefuse = {},
+                plugin.taskManager.createTask(
+                    description = "Do you want <gold>${npc.name}</gold> to stop attacking ${player.name}?",
+                    permission = "story.task.respond",
+                    onAccept =
+                        Runnable {
+                            npc.stopAttacking(player)
+                            player.sendMessage("§7${npc.name} has stopped attacking you.")
+                        },
+                    onRefuse = Runnable {},
                 )
             }
             intent.giveQuest > 0.7 -> {

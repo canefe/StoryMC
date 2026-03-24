@@ -243,15 +243,19 @@ class SessionManager(
                     if (force) {
                         addToSession()
                     } else {
-                        plugin.askForPermission(
-                            "<yellow>Following narrative response will be added to session" +
-                                " history. Do you want to proceed?</yellow> \n\n $aiResponse",
-                            onAccept = {
-                                addToSession()
-                            },
-                            onRefuse = {
-                                plugin.logger.info("Narrative response was not added to session history. Rejected.")
-                            },
+                        plugin.taskManager.createTask(
+                            description =
+                                "<yellow>Following narrative response will be added to session" +
+                                    " history. Do you want to proceed?</yellow> \n\n $aiResponse",
+                            permission = "story.task.respond",
+                            onAccept =
+                                Runnable {
+                                    addToSession()
+                                },
+                            onRefuse =
+                                Runnable {
+                                    plugin.logger.info("Narrative response was not added to session history. Rejected.")
+                                },
                         )
                     }
                 } else {
