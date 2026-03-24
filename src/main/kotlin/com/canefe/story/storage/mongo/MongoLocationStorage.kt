@@ -10,11 +10,15 @@ import org.bson.Document
 class MongoLocationStorage(
     private val mongoClient: MongoClientManager,
 ) : LocationStorage {
-    private val collection get() = mongoClient.getCollection("locations")
+    // Typed collection for writes
+    private val typedCollection get() = mongoClient.getTypedCollection("locations", LocationDocument::class.java)
+
+    // Raw collection for reads (handles migration from old context list format)
+    private val rawCollection get() = mongoClient.getCollection("locations")
 
     override fun loadAllLocations(): Map<String, LocationDocument> {
         val locations = mutableMapOf<String, LocationDocument>()
-        for (doc in collection.find()) {
+        for (doc in rawCollection.find()) {
             val locDoc = documentToLocationDocument(doc)
             locations[locDoc.name] = locDoc
         }
@@ -22,42 +26,33 @@ class MongoLocationStorage(
     }
 
     override fun loadLocation(name: String): LocationDocument? {
-        val doc = collection.find(Filters.eq("name", name)).first() ?: return null
+        val doc = rawCollection.find(Filters.eq("name", name)).first() ?: return null
         return documentToLocationDocument(doc)
     }
 
     override fun saveLocation(location: LocationDocument) {
-        val doc = locationDocumentToDocument(location)
-        collection.replaceOne(
+        typedCollection.replaceOne(
             Filters.eq("name", location.name),
-            doc,
+            location,
             ReplaceOptions().upsert(true),
         )
     }
 
     override fun deleteLocation(name: String) {
-        collection.deleteOne(Filters.eq("name", name))
+        typedCollection.deleteOne(Filters.eq("name", name))
     }
 
-    private fun locationDocumentToDocument(loc: LocationDocument): Document =
-        Document()
-            .append("name", loc.name)
-            .append("context", loc.context)
-            .append("parentLocationName", loc.parentLocationName)
-            .append("world", loc.world)
-            .append("x", loc.x)
-            .append("y", loc.y)
-            .append("z", loc.z)
-            .append("yaw", loc.yaw)
-            .append("pitch", loc.pitch)
-            .append("allowedNPCs", loc.allowedNPCs)
-            .append("hideTitle", loc.hideTitle)
-            .append("randomPathingAction", loc.randomPathingAction)
-
-    private fun documentToLocationDocument(doc: Document): LocationDocument =
-        LocationDocument(
+    private fun documentToLocationDocument(doc: Document): LocationDocument {
+        // Migration: handle both old list format (context) and new string format (description)
+        val description =
+            when (val raw = doc.get("description") ?: doc.get("context")) {
+                is List<*> -> (raw.filterIsInstance<String>()).joinToString(". ")
+                is String -> raw
+                else -> ""
+            }
+        return LocationDocument(
             name = doc.getString("name") ?: "",
-            context = doc.getList("context", String::class.java) ?: emptyList(),
+            description = description,
             parentLocationName = doc.getString("parentLocationName"),
             world = doc.getString("world"),
             x = doc.getDouble("x") ?: 0.0,
@@ -69,4 +64,5 @@ class MongoLocationStorage(
             hideTitle = doc.getBoolean("hideTitle", false),
             randomPathingAction = doc.getString("randomPathingAction"),
         )
+    }
 }

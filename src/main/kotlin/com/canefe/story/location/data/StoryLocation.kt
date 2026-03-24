@@ -5,7 +5,7 @@ import org.bukkit.Location
 
 data class StoryLocation(
     val name: String,
-    val context: MutableList<String>,
+    var description: String = "",
     var bukkitLocation: Location? = null,
     var parentLocationName: String? = null,
     val allowedNPCs: MutableList<String> = mutableListOf(),
@@ -15,23 +15,23 @@ data class StoryLocation(
     fun hasParent(): Boolean = !parentLocationName.isNullOrEmpty()
 
     // two different constructors
-    constructor(name: String, context: MutableList<String>, bukkitLocation: Location) : this(
+    constructor(name: String, description: String, bukkitLocation: Location) : this(
         name,
-        context,
+        description,
         bukkitLocation,
         null,
     )
 
-    constructor(name: String, context: MutableList<String>, parentLocationName: String?) : this(
+    constructor(name: String, description: String, parentLocationName: String?) : this(
         name,
-        context,
+        description,
         null,
         parentLocationName,
     )
 
-    constructor(name: String, context: MutableList<String>) : this(
+    constructor(name: String) : this(
         name,
-        context,
+        "",
         null,
         null,
     )
@@ -73,19 +73,25 @@ data class StoryLocation(
         return trimmed.joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.titlecase() } }
     }
 
-    // Helper method for getting the location context (which includes the parent location context as well)
-    private fun getFullContext(locationRegistry: Map<String, StoryLocation>): List<String> {
-        val allContext = context.toMutableList()
+    // Helper method for getting the location description (which includes the parent location description as well)
+    private fun getFullDescription(locationRegistry: Map<String, StoryLocation>): String {
+        val parts = mutableListOf<String>()
+        if (description.isNotBlank()) {
+            parts.add(description)
+        }
 
-        // Recursively add parent contexts
+        // Recursively add parent descriptions
         if (hasParent() && locationRegistry.containsKey(parentLocationName)) {
             val parentLocation = locationRegistry[parentLocationName]
             parentLocation?.let {
-                allContext.addAll(it.getFullContext(locationRegistry))
+                val parentDesc = it.getFullDescription(locationRegistry)
+                if (parentDesc.isNotBlank()) {
+                    parts.add(parentDesc)
+                }
             }
         }
 
-        return allContext
+        return parts.joinToString("\n")
     }
 
     /**
@@ -94,31 +100,28 @@ data class StoryLocation(
     val isSubLocation: Boolean
         get() = this.parentLocationName != null || this.name.contains("/")
 
-    // Format the full context for use in prompts
+    // Format the full description for use in prompts
     fun getContextForPrompt(locationRegistry: Map<String, StoryLocation>): String {
-        val fullContext = getFullContext(locationRegistry)
+        val fullDescription = getFullDescription(locationRegistry)
 
-        return if (fullContext.isEmpty()) {
+        return if (fullDescription.isBlank()) {
             "No context available for location '$name'."
         } else {
-            "Location context for '$name':\n" + fullContext.joinToString("\n") { "- $it" }
+            "Location context for '$name':\n$fullDescription"
         }
     }
 
-    // Add a simple version that doesn't need location registry
-    fun getContextForPrompt(): String {
-        // Without access to parents, just format the current context
-        return if (context.isEmpty()) {
+    // Simple version that doesn't need location registry
+    fun getContextForPrompt(): String =
+        if (description.isBlank()) {
             "No context available for location '$name'."
         } else {
-            "Location context for '$name':\n" + context.joinToString("\n") { "- $it" } +
+            "Location context for '$name':\n$description" +
                 (if (hasParent()) "\n(Note: Parent location context not included)" else "")
         }
-    }
 
-    // Add version that works with LocationManager
+    // Version that works with LocationManager
     fun getContextForPrompt(locationManager: LocationManager): String {
-        // Convert the list of locations to a map with location name as key
         val locationMap = locationManager.getAllLocations().associateBy { it.name }
         return getContextForPrompt(locationMap)
     }
@@ -126,5 +129,5 @@ data class StoryLocation(
     // Override toString to match the original format exactly
     override fun toString(): String =
         "Location{name='$name', bukkitLocation=$bukkitLocation, " +
-            "context=$context, parent='$parentLocationName'}"
+            "description='$description', parent='$parentLocationName'}"
 }

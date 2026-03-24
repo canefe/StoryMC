@@ -73,7 +73,7 @@ class PromptIntegrationTest {
         // Verify the location was created with some context
         val location = plugin.locationManager.getLocation("Harbor")
         kotlin.test.assertNotNull(location)
-        println("Created location context: ${location.context}")
+        println("Created location description: ${location.description}")
 
         // Build prompt using PromptService so we're testing prompts.yml integration
         // Also let's assume there are existing lore and see if LLM is using them
@@ -135,28 +135,27 @@ class PromptIntegrationTest {
             )
         }
 
-        // Append generated context to the location and save
-        location.context.addAll(listContext)
+        // Append generated context to the location description and save
+        val newText = listContext.joinToString("\n")
+        location.description = if (location.description.isBlank()) newText else "${location.description}\n$newText"
         plugin.locationManager.saveLocation(location)
 
-        // Verify the location now has context entries
+        // Verify the location now has description
         val updatedLocation = plugin.locationManager.getLocation("Harbor")
         kotlin.test.assertNotNull(updatedLocation)
-        println("Updated location context: ${updatedLocation.context}")
+        println("Updated location description: ${updatedLocation.description}")
         kotlin.test.assertTrue(
-            updatedLocation.context.isNotEmpty(),
-            "Location should have AI-generated context entries",
+            updatedLocation.description.isNotBlank(),
+            "Location should have AI-generated description",
         )
+        val descLower = updatedLocation.description.lowercase(getDefault())
         kotlin.test.assertTrue(
-            updatedLocation.context.any {
-                val itLower = it.lowercase(getDefault())
-                itLower.contains("valoria") ||
-                    itLower.contains("eldora") ||
-                    itLower.contains("harald") ||
-                    itLower.contains("riften") ||
-                    itLower.contains("market")
-            },
-            "At least one context entry should mention Valoria or Eldora or Harald or Riften or market",
+            descLower.contains("valoria") ||
+                descLower.contains("eldora") ||
+                descLower.contains("harald") ||
+                descLower.contains("riften") ||
+                descLower.contains("market"),
+            "Description should mention Valoria or Eldora or Harald or Riften or market",
         )
     }
 }

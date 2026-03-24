@@ -174,10 +174,9 @@ class ContextExtractor(
         locationKeywords.forEach { keyword ->
             plugin.locationManager.getAllLocations().forEach { location ->
                 if (location.name.equals(keyword, ignoreCase = true) &&
-                    location.context.isNotEmpty()
+                    location.description.isNotBlank()
                 ) {
-                    val contextString = location.context.joinToString(". ")
-                    locationContexts.add(LocationContextInfo(location.name, contextString))
+                    locationContexts.add(LocationContextInfo(location.name, location.description))
                 }
             }
         }

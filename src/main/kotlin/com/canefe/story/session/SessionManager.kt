@@ -157,7 +157,7 @@ class SessionManager(
         if (mentionedLocations.isNotEmpty()) {
             contextBuilder.append("RELEVANT LOCATIONS:\n")
             mentionedLocations.take(3).forEach { location ->
-                contextBuilder.append("- ${location.name}: ${location.context.joinToString(". ")}\n")
+                contextBuilder.append("- ${location.name}: ${location.description}\n")
             }
             contextBuilder.append("\n")
         }

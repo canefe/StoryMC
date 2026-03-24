@@ -8,6 +8,8 @@ import com.mongodb.client.MongoCollection
 import com.mongodb.client.MongoDatabase
 import com.mongodb.client.model.IndexOptions
 import org.bson.Document
+import org.bson.codecs.configuration.CodecRegistries
+import org.bson.codecs.kotlinx.KotlinSerializerCodec
 import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
 
@@ -22,10 +24,22 @@ class MongoClientManager(
     private lateinit var database: MongoDatabase
 
     fun connect(): Boolean {
+        val kotlinCodecs = CodecRegistries.fromCodecs(
+            KotlinSerializerCodec.create<WorldEvent>(),
+            KotlinSerializerCodec.create<Rumor>(),
+            KotlinSerializerCodec.create<LocationDocument>(),
+        )
+
+        val codecRegistry = CodecRegistries.fromRegistries(
+            kotlinCodecs,
+            MongoClientSettings.getDefaultCodecRegistry(),
+        )
+
         val settings =
             MongoClientSettings
                 .builder()
                 .applyConnectionString(ConnectionString(uri))
+                .codecRegistry(codecRegistry)
                 .applyToConnectionPoolSettings { builder ->
                     builder.maxSize(maxPoolSize)
                 }.applyToClusterSettings { builder ->
@@ -49,6 +63,9 @@ class MongoClientManager(
     fun getDatabase(): MongoDatabase = database
 
     fun getCollection(name: String): MongoCollection<Document> = database.getCollection(name)
+
+    fun <T : Any> getTypedCollection(name: String, clazz: Class<T>): MongoCollection<T> =
+        database.getCollection(name, clazz)
 
     fun close() {
         if (::client.isInitialized) {

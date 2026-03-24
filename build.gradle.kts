@@ -140,6 +140,7 @@ dependencies {
 
     // MongoDB
     implementation("org.mongodb:mongodb-driver-sync:5.4.0")
+    implementation("org.mongodb:bson-kotlinx:5.4.0")
 
     // SQLite
     implementation("org.xerial:sqlite-jdbc:3.49.1.0")

@@ -54,7 +54,12 @@ class UpdateLocationCommand(
 
                                 // Append generated context to the location and save
                                 if (newUpdate != null) {
-                                    location.context.add(newUpdate)
+                                    location.description =
+                                        if (location.description.isBlank()) {
+                                            newUpdate
+                                        } else {
+                                            "${location.description}\n$newUpdate"
+                                        }
                                     commandUtils.locationManager.saveLocation(location)
                                     sender.sendSuccess(
                                         "AI-generated context added to location <gold>'$locationName'</gold>.",

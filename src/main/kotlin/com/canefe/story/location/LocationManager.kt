@@ -93,7 +93,7 @@ class LocationManager(
                 return null
             }
 
-            val location = StoryLocation(name, ArrayList(), bukkitLocation, null)
+            val location = StoryLocation(name, "", bukkitLocation, null)
             locations[name] = location
             saveLocation(location)
             location
@@ -107,7 +107,7 @@ class LocationManager(
     fun getOrCreateDefaultLocation(): StoryLocation {
         val name = plugin.configService.defaultLocationName
         return getLocation(name) ?: createLocation(name, null)
-            ?: StoryLocation(name, ArrayList(), null, null)
+            ?: StoryLocation(name, "", null, null)
     }
 
     fun getLocation(name: String): StoryLocation? =
@@ -117,7 +117,7 @@ class LocationManager(
 
     fun getAllLocations(): List<StoryLocation> = locations.values.toList()
 
-    fun getLocationGlobalContexts(locationName: String): List<String> = getAllContextForLocation(locationName)
+    fun getLocationGlobalContexts(locationName: String): String = getAllContextForLocation(locationName)
 
     fun loadAllLocations() {
         locations.clear()
@@ -160,27 +160,31 @@ class LocationManager(
         }
     }
 
-    fun getAllContextForLocation(locationName: String): List<String> {
-        val allContext = mutableListOf<String>()
-        val location = getLocation(locationName) ?: return allContext
+    fun getAllContextForLocation(locationName: String): String {
+        val parts = mutableListOf<String>()
+        val location = getLocation(locationName) ?: return ""
 
-        allContext.addAll(location.context)
+        if (location.description.isNotBlank()) {
+            parts.add(location.description)
+        }
 
         var parentName = location.parentLocationName
         while (!parentName.isNullOrEmpty()) {
             val parentLocation = getLocation(parentName) ?: break
-            allContext.addAll(parentLocation.context)
+            if (parentLocation.description.isNotBlank()) {
+                parts.add(parentLocation.description)
+            }
             parentName = parentLocation.parentLocationName
         }
 
-        return allContext
+        return parts.joinToString("\n")
     }
 
     private fun documentToStoryLocation(doc: LocationDocument): StoryLocation {
         val location =
             StoryLocation(
                 doc.name,
-                doc.context.toMutableList(),
+                doc.description,
                 doc.parentLocationName,
             )
 
@@ -206,7 +210,7 @@ class LocationManager(
         val bukkitLoc = location.bukkitLocation
         return LocationDocument(
             name = location.name,
-            context = location.context,
+            description = location.description,
             parentLocationName = if (location.hasParent()) location.parentLocationName else null,
             world = bukkitLoc?.world?.name,
             x = bukkitLoc?.x ?: 0.0,

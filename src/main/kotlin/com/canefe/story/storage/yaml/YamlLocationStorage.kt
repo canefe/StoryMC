@@ -42,7 +42,10 @@ class YamlLocationStorage(
                 val fullPath = parentPath?.let { "$it/$locationName" } ?: locationName
 
                 val config = YamlConfiguration.loadConfiguration(file)
-                val context = config.getStringList("context")
+                val description =
+                    config.getString("description")
+                        ?: config.getStringList("context").takeIf { it.isNotEmpty() }?.joinToString(". ")
+                        ?: ""
                 val explicitParent = config.getString("parent")
                 val effectiveParent = explicitParent ?: parentPath
 
@@ -71,7 +74,7 @@ class YamlLocationStorage(
                 locations[fullPath] =
                     LocationDocument(
                         name = fullPath,
-                        context = context,
+                        description = description,
                         parentLocationName = effectiveParent,
                         world = world,
                         x = x,
@@ -106,7 +109,10 @@ class YamlLocationStorage(
         if (!locationFile.exists()) return null
 
         val config = YamlConfiguration.loadConfiguration(locationFile)
-        val context = config.getStringList("context")
+        val description =
+            config.getString("description")
+                ?: config.getStringList("context").takeIf { it.isNotEmpty() }?.joinToString(". ")
+                ?: ""
         var parentName = config.getString("parent")
 
         if (parentName == null && name.contains("/")) {
@@ -129,7 +135,7 @@ class YamlLocationStorage(
 
         return LocationDocument(
             name = name,
-            context = context,
+            description = description,
             parentLocationName = parentName,
             world = config.getString("world"),
             x = config.getDouble("x"),
@@ -152,7 +158,7 @@ class YamlLocationStorage(
         val config = YamlConfiguration()
 
         config.set("name", location.name)
-        config.set("context", location.context)
+        config.set("description", location.description)
 
         if (location.parentLocationName != null) {
             config.set("parent", location.parentLocationName)

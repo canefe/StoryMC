@@ -155,8 +155,8 @@ class StoryCommand(
                             val pattern = "\\b${Regex.escape(simpleName)}\\b"
                             if (question.contains(Regex(pattern, RegexOption.IGNORE_CASE))) {
                                 relevantLocations.add(location.name)
-                                location.context.forEach { ctx ->
-                                    locationContexts.add("${location.name}: $ctx")
+                                if (location.description.isNotBlank()) {
+                                    locationContexts.add("${location.name}: ${location.description}")
                                 }
                             }
                         }
@@ -169,8 +169,8 @@ class StoryCommand(
                             val fullPath = pathParts.joinToString(" ")
                             if (question.contains(fullPath, ignoreCase = true)) {
                                 relevantLocations.add(location.name)
-                                location.context.forEach { ctx ->
-                                    locationContexts.add("${location.name}: $ctx")
+                                if (location.description.isNotBlank()) {
+                                    locationContexts.add("${location.name}: ${location.description}")
                                 }
                             }
                         }

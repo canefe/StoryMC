@@ -1140,7 +1140,7 @@ class CommandManager(
             description =
                 "📊 Location Analysis Complete\n" +
                     "Location: $location\n" +
-                    "Context: ${storyLocation.context.joinToString(", ")}\n" +
+                    "Description: ${storyLocation.description}\n" +
                     "Parent: ${storyLocation.parentLocationName ?: "None"}\n" +
                     "User Context: $context\n\n" +
                     "Proceed with NPC planning phase?",

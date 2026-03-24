@@ -33,7 +33,7 @@ class WorldInformationManager(
 
         // Add conversation location
         plugin.locationManager.getLocation(conversationLocation)?.let { location ->
-            relevantLocations[conversationLocation] = location.context.take(3).joinToString("; ")
+            relevantLocations[conversationLocation] = location.description.take(200)
         }
 
         // Add home locations of all NPCs involved
@@ -41,7 +41,7 @@ class WorldInformationManager(
             val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
             npcContext?.location?.name?.let { homeLocation ->
                 plugin.locationManager.getLocation(homeLocation)?.let { location ->
-                    relevantLocations[homeLocation] = location.context.take(3).joinToString("; ")
+                    relevantLocations[homeLocation] = location.description.take(200)
                 }
             }
         }

@@ -49,7 +49,7 @@ class SQLiteLocationStorage(
             )
 
         stmt.setString(1, location.name)
-        stmt.setString(2, gson.toJson(location.context))
+        stmt.setString(2, location.description)
         stmt.setString(3, location.parentLocationName)
         stmt.setString(4, location.world)
         stmt.setDouble(5, location.x)
@@ -73,12 +73,14 @@ class SQLiteLocationStorage(
     }
 
     private fun rowToLocationDocument(rs: java.sql.ResultSet): LocationDocument {
-        val contextJson = rs.getString("context")
-        val context: List<String> =
-            if (contextJson != null) {
-                gson.fromJson(contextJson, object : TypeToken<List<String>>() {}.type)
-            } else {
-                emptyList()
+        // Migration: handle both old JSON list format and new plain string format
+        val contextRaw = rs.getString("context") ?: ""
+        val description: String =
+            try {
+                val list: List<String> = gson.fromJson(contextRaw, object : TypeToken<List<String>>() {}.type)
+                list.joinToString(". ")
+            } catch (_: Exception) {
+                contextRaw
             }
 
         val allowedNpcsJson = rs.getString("allowed_npcs")
@@ -91,7 +93,7 @@ class SQLiteLocationStorage(
 
         return LocationDocument(
             name = rs.getString("name") ?: "",
-            context = context,
+            description = description,
             parentLocationName = rs.getString("parent_location_name"),
             world = rs.getString("world"),
             x = rs.getDouble("x"),

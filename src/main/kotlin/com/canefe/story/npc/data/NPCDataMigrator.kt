@@ -125,7 +125,7 @@ class NPCDataMigrator(
             )
 
             val locationContext =
-                npcData.storyLocation?.context?.joinToString("\n\n") { it } ?: "No Location Context Available"
+                npcData.storyLocation?.description?.takeIf { it.isNotBlank() } ?: "No Location Context Available"
             messages.add(ConversationMessage("user", "Here is the location context for $npcName:\n\n $locationContext"))
 
             // Request AI to generate memories

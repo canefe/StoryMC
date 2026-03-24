@@ -147,7 +147,7 @@ class NPCResponseService(
                             "===CURRENT SUBLOCATION===\n" +
                                 "You are currently at ${actualLocation.name} (within ${actualLocation.parentLocationName}).\n" +
                                 "Sublocation details:\n" +
-                                actualLocation.context.joinToString("\n") { "- $it" }
+                                actualLocation.description
                         } else {
                             // Include full context (with parent context) for completely
                             // different locations
