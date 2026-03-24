@@ -162,8 +162,9 @@ class SessionManager(
             contextBuilder.append("\n")
         }
 
+        val allNPCNames = plugin.characterRegistry.allNPCs().map { it.name }
         val mentionedNPCs =
-            plugin.npcDataManager.getAllNPCNames().filter { npcName ->
+            allNPCNames.filter { npcName ->
                 text.contains(npcName, ignoreCase = true) ||
                     keywords.any { keyword ->
                         keyword.equals(npcName, ignoreCase = true) || npcName.contains(keyword, ignoreCase = true)
@@ -174,10 +175,13 @@ class SessionManager(
             contextBuilder.append("RELEVANT NPCS:\n")
             mentionedNPCs.take(3).forEach { npcName ->
                 val npcContext =
-                    plugin.npcDataManager
-                        .getNPC(
-                            npcName,
-                        )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                    net.citizensnpcs.api.CitizensAPI
+                        .getNPCRegistry()
+                        .firstOrNull { it.name.equals(npcName, ignoreCase = true) }
+                        ?.let {
+                            com.canefe.story.npc
+                                .CitizensStoryNPC(it)
+                        }?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
                 val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 3)
                 if (npcContext != null) {
                     contextBuilder.append("- $npcName: ${npcContext.context}\n")

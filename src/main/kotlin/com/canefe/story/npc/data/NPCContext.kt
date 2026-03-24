@@ -18,8 +18,7 @@ data class NPCContext(
     val avatar: String,
     val memories: List<Memory>,
     val relationships: Map<String, Relationship> = emptyMap(),
-    val customVoice: String? = null, // Custom voice ID for this NPC
-    val generic: Boolean = false, // Whether this NPC is generic (no persistent memories)
+    val customVoice: String? = null,
 ) {
     // Helper methods for memory access that accept timeService as parameter
     private fun getStrongestMemories(

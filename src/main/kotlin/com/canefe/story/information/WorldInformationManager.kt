@@ -37,10 +37,13 @@ class WorldInformationManager(
 
         for (npcName in source.npcNames) {
             val npcContext =
-                plugin.npcDataManager
-                    .getNPC(
-                        npcName,
-                    )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                net.citizensnpcs.api.CitizensAPI
+                    .getNPCRegistry()
+                    .firstOrNull { it.name.equals(npcName, ignoreCase = true) }
+                    ?.let {
+                        com.canefe.story.npc
+                            .CitizensStoryNPC(it)
+                    }?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
             npcContext?.location?.name?.let { homeLocation ->
                 plugin.locationManager.getLocation(homeLocation)?.let { location ->
                     relevantLocations[homeLocation] = location.description.take(200)

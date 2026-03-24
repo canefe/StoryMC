@@ -1,6 +1,5 @@
 package com.canefe.story.api.character
 
-import com.canefe.story.npc.data.NPCData
 import kotlinx.serialization.Serializable
 
 /**
@@ -33,16 +32,6 @@ data class CharacterDTO(
                 context = character.context,
                 avatar = avatar,
                 locationName = locationName ?: character.location?.name,
-            )
-
-        fun from(data: NPCData): CharacterDTO =
-            CharacterDTO(
-                name = data.name,
-                role = data.role,
-                appearance = data.appearance,
-                context = data.context,
-                avatar = data.avatar,
-                locationName = data.storyLocation?.name,
             )
 
         fun from(record: CharacterRecord): CharacterDTO =

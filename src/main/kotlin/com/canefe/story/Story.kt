@@ -1,7 +1,6 @@
 package com.canefe.story
 
 import com.canefe.story.api.StoryAPI
-import com.canefe.story.api.character.CharacterMigration
 import com.canefe.story.api.character.CharacterRegistry
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
@@ -26,10 +25,7 @@ import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.behavior.NPCBehaviorManager
-import com.canefe.story.npc.data.NPCDataManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
-import com.canefe.story.npc.name.NPCNameManager
-import com.canefe.story.npc.name.NPCNameResolver
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.npc.schedule.ScheduleManager
 import com.canefe.story.npc.service.NPCActionIntentRecognizer
@@ -97,8 +93,6 @@ open class Story :
 
     lateinit var contextExtractor: ContextExtractor
 
-    lateinit var npcDataManager: NPCDataManager
-
     lateinit var npcBehaviorManager: NPCBehaviorManager
         private set
 
@@ -148,15 +142,6 @@ open class Story :
 
     lateinit var skillCheckService: com.canefe.story.conversation.skillcheck.SkillCheckService
         private set
-    lateinit var npcSkillGenerator: com.canefe.story.character.skill.NPCSkillGenerator
-        private set
-
-    // NPC Name Aliasing System
-    lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
-        private set
-    lateinit var npcNameResolver: com.canefe.story.npc.name.NPCNameResolver
-        private set
-
     lateinit var api: StoryAPI
         private set
 
@@ -298,13 +283,8 @@ open class Story :
         contextExtractor = ContextExtractor(this)
         audioManager = AudioManager(this)
         npcContextGenerator = NPCContextGenerator(this)
-        npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
-
-        // Run character migration and load registry (after npcDataManager is available)
+        // Run character migration and load registry
         if (::characterRegistry.isInitialized) {
-            val charStorage = MongoCharacterStorage(storageFactory.mongoClient!!, logger)
-            val frontendStorage = MongoFrontendConfigStorage(storageFactory.mongoClient!!, logger)
-            CharacterMigration.migrateIfNeeded(this, charStorage, frontendStorage, logger)
             characterRegistry.loadAll()
         }
 
@@ -338,15 +318,9 @@ open class Story :
         mythicMobConversation = MythicMobConversationIntegration(this)
         skillManager = SkillManager(this)
         voiceManager = VoiceManager(this)
-        npcNameManager = NPCNameManager(this)
-        npcNameResolver = NPCNameResolver(this)
-
         skillCheckService =
             com.canefe.story.conversation.skillcheck
                 .SkillCheckService(this)
-        npcSkillGenerator =
-            com.canefe.story.character.skill
-                .NPCSkillGenerator(this)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()
@@ -376,7 +350,6 @@ open class Story :
             )
         ) {
             // Push new storage implementations to all managers
-            npcDataManager.updateStorage(storageFactory.npcStorage)
             locationManager.updateStorage(storageFactory.locationStorage)
             questManager.updateStorage(storageFactory.questStorage)
             sessionManager.updateStorage(storageFactory.sessionStorage)

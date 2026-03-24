@@ -62,17 +62,13 @@ class SkillManager(
      * Returns a provider with empty skills if not yet generated.
      */
     fun createProviderForNPC(npcName: String): SkillProvider {
-        val npcData = plugin.npcDataManager.getNPCData(npcName)
-        val skills = npcData?.skills ?: emptyMap()
         val availableSkills = getAvailableSkills()
-        return NPCSkillProvider(skills, availableSkills)
+        return NPCSkillProvider(emptyMap(), availableSkills)
     }
 
     fun createProviderForNPC(npc: StoryNPC): SkillProvider {
-        val npcData = plugin.npcDataManager.getNPCData(npc)
-        val skills = npcData?.skills ?: emptyMap()
         val availableSkills = getAvailableSkills()
-        return NPCSkillProvider(skills, availableSkills)
+        return NPCSkillProvider(emptyMap(), availableSkills)
     }
 
     /**

@@ -192,14 +192,18 @@ class ContextExtractor(
         val npcKeywords = extractKeywords(text, config.minKeywordLength)
         val npcContexts = mutableListOf<NPCContextInfo>()
 
+        val allNPCNames = plugin.characterRegistry.allNPCs().map { it.name }
         npcKeywords.forEach { keyword ->
-            plugin.npcDataManager.getAllNPCNames().forEach { npcName ->
+            allNPCNames.forEach { npcName ->
                 if (npcName.equals(keyword, ignoreCase = true)) {
                     val npcContext =
-                        plugin.npcDataManager
-                            .getNPC(
-                                npcName,
-                            )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                        net.citizensnpcs.api.CitizensAPI
+                            .getNPCRegistry()
+                            .firstOrNull { it.name.equals(npcName, ignoreCase = true) }
+                            ?.let {
+                                com.canefe.story.npc
+                                    .CitizensStoryNPC(it)
+                            }?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
                     if (npcContext != null) {
                         val lastFewMemories =
                             npcContext.getMemoriesForPrompt(

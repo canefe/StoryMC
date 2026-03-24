@@ -25,20 +25,14 @@ class AICharacter(
          */
         fun from(npc: StoryNPC): AICharacter {
             val plugin = Story.instance
-            val npcData = plugin.npcDataManager.getNPCData(npc)
-            val characterId =
-                try {
-                    plugin.characterRegistry.getCharacterIdForNPC(npc)
-                } catch (_: Exception) {
-                    null
-                }
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
             return AICharacter(
                 npc = npc,
-                id = characterId,
+                id = record?.id,
                 name = npc.name,
-                role = npcData?.role ?: "",
-                appearance = npcData?.appearance ?: "",
-                context = npcData?.context ?: "",
+                role = "",
+                appearance = record?.appearance ?: "",
+                context = "",
                 skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc)),
             )
         }

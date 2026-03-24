@@ -13,7 +13,6 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.StubStoryNPC
-import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
@@ -235,9 +234,9 @@ class CommandManager(
             .withArguments(
                 TextArgument("npc").replaceSuggestions(
                     ArgumentSuggestions.strings { _ ->
-                        plugin.npcDataManager
-                            .getAllNPCNames()
-                            .map { "\"$it\"" }
+                        plugin.characterRegistry
+                            .allNPCs()
+                            .map { "\"${it.name}\"" }
                             .toTypedArray()
                     },
                 ),
@@ -255,54 +254,39 @@ class CommandManager(
                     val context = args.get("context") as String
 
                     // Resolve NPC from name
-                    val resolvedNpc = plugin.npcDataManager.getNPC(npcName)
+                    val resolvedNpc =
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .firstOrNull {
+                                it.name.equals(npcName, ignoreCase = true)
+                            }?.let { CitizensStoryNPC(it) }
 
-                    // Check if NPC exists first
-                    val npcData =
-                        (
-                            if (resolvedNpc !=
-                                null
-                            ) {
-                                plugin.npcDataManager.getNPCData(resolvedNpc)
-                            } else {
-                                plugin.npcDataManager.getNPCData(npcName)
+                    // Check if NPC exists in character registry
+                    val record = plugin.characterRegistry.getByName(npcName)
+                    if (record == null) {
+                        // Initialize NPC data if it doesn't exist
+                        val npcContext =
+                            plugin.npcContextGenerator
+                                .getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName)) ?: run {
+                                sender.sendError("NPC context not found. Please create the NPC first.")
+                                return@CommandExecutor
                             }
+                        plugin.storage.saveCharacterData(
+                            CharacterDTO(
+                                name = npcName,
+                                appearance = "",
+                                locationName = "Wilderness",
+                            ),
                         )
-                            ?: run {
-                                // Initialize NPC data if it doesn't exist
-                                val npcContext =
-                                    plugin.npcContextGenerator
-                                        .getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName)) ?: run {
-                                        sender.sendError("NPC context not found. Please create the NPC first.")
-                                        return@CommandExecutor
-                                    }
-                                plugin.storage.saveCharacterData(
-                                    CharacterDTO(
-                                        name = npcName,
-                                        role = npcContext.role,
-                                        context = npcContext.context,
-                                        appearance = "",
-                                        locationName = "Wilderness",
-                                    ),
-                                )
-                                (
-                                    if (resolvedNpc !=
-                                        null
-                                    ) {
-                                        plugin.npcDataManager.getNPCData(resolvedNpc)
-                                    } else {
-                                        plugin.npcDataManager.getNPCData(npcName)
-                                    }
-                                )
-                                    ?: run {
-                                        sender.sendError("Failed to create NPC data for $npcName")
-                                        return@CommandExecutor
-                                    }
-                            }
+                        if (plugin.characterRegistry.getByName(npcName) == null) {
+                            sender.sendError("Failed to create NPC data for $npcName")
+                            return@CommandExecutor
+                        }
+                    }
 
                     sender.sendInfo("Creating memory for <yellow>$npcName</yellow> based on: <italic>$context</italic>")
 
-                    val storyNpc = plugin.npcDataManager.getNPC(npcName)
+                    val storyNpc = resolvedNpc
                     val character: Character =
                         AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
 
@@ -369,7 +353,12 @@ class CommandManager(
                     val location = (args["location"] as String).replace("\"", "")
                     val prompt = args.getOrDefault("prompt", "") as String
 
-                    val resolvedNpc = plugin.npcDataManager.getNPC(npcName)
+                    val resolvedNpc =
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .firstOrNull {
+                                it.name.equals(npcName, ignoreCase = true)
+                            }?.let { CitizensStoryNPC(it) }
                     val npcContext =
                         plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName))
                             ?: run {
@@ -383,18 +372,13 @@ class CommandManager(
                             return@CommandExecutor
                         }
 
-                    // Set the Location for the NPC
-                    val npcData =
-                        NPCData(
-                            npcName,
-                            npcContext.role,
-                            storyLocation,
-                            npcContext.context,
-                        )
-
+                    // Save the character data
                     plugin.storage.saveCharacterData(
-                        CharacterDTO
-                            .from(npcData),
+                        CharacterDTO(
+                            name = npcName,
+                            appearance = "",
+                            locationName = storyLocation.name,
+                        ),
                     )
 
                     if (prompt.isNotEmpty()) {
@@ -481,22 +465,13 @@ class CommandManager(
                                                 return@Runnable
                                             }
 
-                                            // add npcContext.context before 'response'
-                                            val contextWithNPCContext = "${npcContext.context} $context"
-
-                                            val npcData =
-                                                NPCData(
-                                                    npcName,
-                                                    npcContext.role,
-                                                    storyLocation,
-                                                    contextWithNPCContext,
-                                                )
-
-                                            npcData.appearance = appearance
-
+                                            // Save character data with AI-generated context
                                             plugin.storage.saveCharacterData(
-                                                CharacterDTO
-                                                    .from(npcData),
+                                                CharacterDTO(
+                                                    name = npcName,
+                                                    appearance = appearance,
+                                                    locationName = storyLocation.name,
+                                                ),
                                             )
                                             sender.sendSuccess(
                                                 "AI-generated profile for <yellow>$npcName</yellow> created!",
@@ -1404,18 +1379,13 @@ class CommandManager(
 
         for (npcName in generatedNPCs) {
             val npcPlan = npcPlans.find { it.name == npcName } ?: continue
-            val storyNpc = plugin.npcDataManager.getNPC(npcName)
-            val npcData =
-                (
-                    if (storyNpc !=
-                        null
-                    ) {
-                        plugin.npcDataManager.getNPCData(storyNpc)
-                    } else {
-                        plugin.npcDataManager.getNPCData(npcName)
-                    }
-                )
-                    ?: continue
+            val storyNpc =
+                CitizensAPI
+                    .getNPCRegistry()
+                    .firstOrNull {
+                        it.name.equals(npcName, ignoreCase = true)
+                    }?.let { CitizensStoryNPC(it) }
+            val record = plugin.characterRegistry.getByName(npcName) ?: continue
             val character: Character =
                 AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
 
@@ -1484,7 +1454,11 @@ class CommandManager(
 
         // Create the context for this NPC
         val npcContext =
-            plugin.npcDataManager.getNPC(plan.name)?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+            CitizensAPI
+                .getNPCRegistry()
+                .firstOrNull { it.name.equals(plan.name, ignoreCase = true) }
+                ?.let { CitizensStoryNPC(it) }
+                ?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
                 ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(plan.name))
 
         if (npcContext == null) {
@@ -1546,19 +1520,12 @@ class CommandManager(
                                 npcInfo.appearance ?: "A ${plan.role.lowercase()} with an unremarkable appearance."
 
                             // Create and save NPC data
-                            val expandedContext = "${npcContext.context} $context"
-                            val npcData =
-                                com.canefe.story.npc.data.NPCData(
-                                    plan.name,
-                                    plan.role,
-                                    location,
-                                    expandedContext,
-                                )
-
-                            npcData.appearance = appearance
                             plugin.storage.saveCharacterData(
-                                CharacterDTO
-                                    .from(npcData),
+                                CharacterDTO(
+                                    name = plan.name,
+                                    appearance = appearance,
+                                    locationName = location.name,
+                                ),
                             )
 
                             if (debug) {

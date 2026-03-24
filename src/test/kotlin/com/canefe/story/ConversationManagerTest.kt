@@ -46,7 +46,7 @@ class ConversationManagerTest {
         plugin.npcContextGenerator = mockk(relaxed = true)
         plugin.sessionManager = mockk(relaxed = true)
         plugin.skillManager = mockk(relaxed = true)
-        plugin.npcDataManager = mockk(relaxed = true)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         plugin.conversationManager =
             ConversationManager(

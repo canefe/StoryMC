@@ -202,8 +202,8 @@ class NPCMessageService(
             plugin,
             Runnable {
                 // Fire CharacterSpeakEvent on the main thread
-                val npcData = plugin.npcDataManager.getNPCData(npc)
-                if (npcData != null) {
+                val record = plugin.characterRegistry.getByStoryNPC(npc)
+                if (record != null) {
                     val speaker = AICharacter.from(npc)
                     val nearby = buildNearbyFromNPC(npc, speaker)
                     val event = CharacterSpeakEvent(speaker, nearby, message)
@@ -481,14 +481,7 @@ class NPCMessageService(
         // Run AI determination in another thread
         CompletableFuture.runAsync {
             try {
-                val npcData = plugin.npcDataManager.getNPCData(npc)
-                val memoriesContext =
-                    npcData
-                        ?.memory
-                        ?.sortedByDescending { it.lastAccessed }
-                        ?.take(3)
-                        ?.joinToString("\n") { it.content }
-                        ?: ""
+                val memoriesContext = "" // Memories are stored externally
 
                 val prompt = mutableListOf<ConversationMessage>()
                 prompt.add(
@@ -707,7 +700,7 @@ class NPCMessageService(
             .getNearbyNPCs(npc, radius)
             .filter { it.uniqueId != npc.uniqueId }
             .forEach { nearby ->
-                plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
+                plugin.characterRegistry.getByStoryNPC(nearby) ?: return@forEach
                 result.add(AICharacter.from(nearby))
             }
 
@@ -726,7 +719,7 @@ class NPCMessageService(
         val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
         NPCUtils.getNearbyNPCs(player, radius).forEach { nearby ->
-            plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
+            plugin.characterRegistry.getByStoryNPC(nearby) ?: return@forEach
             result.add(AICharacter.from(nearby))
         }
 

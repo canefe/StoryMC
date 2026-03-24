@@ -137,7 +137,6 @@ class ConfigService(
             plugin.npcContextGenerator.loadConfig()
             plugin.lorebookManager.loadConfig()
             plugin.scheduleManager.reloadSchedules()
-            plugin.npcDataManager.loadConfig()
             plugin.locationManager.loadAllLocations()
             plugin.worldEventManager.loadAll()
             plugin.rumorManager.loadAll()
@@ -148,7 +147,6 @@ class ConfigService(
             plugin.relationshipManager.load()
             plugin.sessionManager.load()
             plugin.voiceManager.load()
-            plugin.npcNameManager.reloadNameBanks()
 
             // Reconnect event bus transports (Redis)
             plugin.eventBus.shutdown()

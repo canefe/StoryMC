@@ -103,12 +103,12 @@ class RelationshipManager(
     fun getAllRelationships(sourceId: String): Map<String, Relationship> {
         val allRelationships = relationships[sourceId] ?: return emptyMap()
 
-        // Filter out relationships where target doesn't have valid NPCData
+        // Filter out relationships where target doesn't exist
         return allRelationships.filterKeys { targetName ->
             // Keep only relationships where either:
-            // 1. The target has valid NPC data, or
+            // 1. The target has a valid character record, or
             // 2. The target is a known player name
-            plugin.npcDataManager.getNPCData(targetName) != null ||
+            plugin.characterRegistry.getByName(targetName) != null ||
                 Bukkit.getOfflinePlayer(targetName).hasPlayedBefore()
         }
     }
@@ -141,17 +141,16 @@ class RelationshipManager(
      * This should be called periodically to simulate ambient relationship building
      */
     fun processAmbientRelationships() {
-        val npcNames = plugin.npcDataManager.getAllNPCNames()
         val npcs = mutableListOf<StoryNPC>()
         // Loop Citizens registry
         for (citizensNpc in CitizensAPI.getNPCRegistry()) {
             val npc = CitizensStoryNPC(citizensNpc)
             val npcName = npc.name
-            if (npcName == null || !npcs.contains(npc)) continue
+            if (npcName == null) continue
 
-            // Check if NPC is spawned
-            val npcData = plugin.npcDataManager.getNPCData(npc)
-            if (npcData == null || !npc.isSpawned) continue
+            // Check if NPC is spawned and registered
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
+            if (record == null || !npc.isSpawned) continue
 
             // Add NPC to the list if not already present
             if (!npcs.contains(npc)) {
@@ -265,7 +264,7 @@ class RelationshipManager(
      * Find potential relationship targets mentioned in memory content
      */
     private fun findRelationshipTargets(content: String): List<String> {
-        val allNpcs = plugin.npcDataManager.getAllNPCNames()
+        val allNpcs = plugin.characterRegistry.allNPCs().map { it.name }
         val allPlayers = Bukkit.getOnlinePlayers().map { it.name }
         val allValidNames = (allNpcs + allPlayers)
 
@@ -376,7 +375,7 @@ class RelationshipManager(
     }
 
     private fun extractTargetsWithAI(content: String): List<String> {
-        val allNpcs = plugin.npcDataManager.getAllNPCNames()
+        val allNpcs = plugin.characterRegistry.allNPCs().map { it.name }
         val allPlayers = Bukkit.getOnlinePlayers().map { it.characterName }
         val allEntities = (allNpcs + allPlayers).joinToString("\n")
 

@@ -26,7 +26,6 @@ enum class StorageBackend {
 }
 
 class StorageFactory private constructor(
-    var npcStorage: NpcStorage,
     var locationStorage: LocationStorage,
     var questStorage: QuestStorage,
     var sessionStorage: SessionStorage,
@@ -100,7 +99,6 @@ class StorageFactory private constructor(
                 shutdown()
                 mongoClientManager = mongo
 
-                npcStorage = MongoNpcStorage(mongo, logger)
                 locationStorage = MongoLocationStorage(mongo)
                 questStorage = MongoQuestStorage(mongo)
                 sessionStorage = MongoSessionStorage(mongo)
@@ -126,7 +124,6 @@ class StorageFactory private constructor(
                 shutdown()
                 sqliteManager = sqlite
 
-                npcStorage = SQLiteNpcStorage(sqlite, logger)
                 locationStorage = SQLiteLocationStorage(sqlite)
                 questStorage = SQLiteQuestStorage(sqlite)
                 sessionStorage = SQLiteSessionStorage(sqlite)
@@ -144,7 +141,6 @@ class StorageFactory private constructor(
             StorageBackend.YAML -> {
                 shutdown()
 
-                npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
                 locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
                 questStorage = YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
                 sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
@@ -218,7 +214,6 @@ class StorageFactory private constructor(
                 StorageBackend.YAML -> {}
             }
 
-            val npcStorage: NpcStorage
             val locationStorage: LocationStorage
             val questStorage: QuestStorage
             val sessionStorage: SessionStorage
@@ -232,7 +227,6 @@ class StorageFactory private constructor(
             when (actualBackend) {
                 StorageBackend.MONGODB -> {
                     val mc = mongoClient!!
-                    npcStorage = MongoNpcStorage(mc, logger)
                     locationStorage = MongoLocationStorage(mc)
                     questStorage = MongoQuestStorage(mc)
                     sessionStorage = MongoSessionStorage(mc)
@@ -245,7 +239,6 @@ class StorageFactory private constructor(
 
                 StorageBackend.SQLITE -> {
                     val sc = sqliteClient!!
-                    npcStorage = SQLiteNpcStorage(sc, logger)
                     locationStorage = SQLiteLocationStorage(sc)
                     questStorage = SQLiteQuestStorage(sc)
                     sessionStorage = SQLiteSessionStorage(sc)
@@ -257,7 +250,6 @@ class StorageFactory private constructor(
                 }
 
                 StorageBackend.YAML -> {
-                    npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
                     locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
                     questStorage =
                         YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
@@ -273,7 +265,6 @@ class StorageFactory private constructor(
             logger.info("Storage backend: $actualBackend")
 
             return StorageFactory(
-                npcStorage = npcStorage,
                 locationStorage = locationStorage,
                 questStorage = questStorage,
                 sessionStorage = sessionStorage,

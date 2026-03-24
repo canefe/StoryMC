@@ -54,9 +54,9 @@ class LoreBookManager(
     private fun getNPCKnowledgeCategories(npc: StoryNPC): Set<String> =
         npcKnowledgeCategories.getOrPut(npc.name.lowercase()) {
             val categories = mutableSetOf("common")
-            val npcData = plugin.npcDataManager.getNPCData(npc)
-            if (npcData != null) {
-                categories.addAll(npcData.knowledgeCategories)
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
+            if (record != null) {
+                categories.addAll(record.knowledgeCategories)
             }
             categories
         }

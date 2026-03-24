@@ -1,10 +1,10 @@
 package com.canefe.story.storage.mongo
 
 import com.canefe.story.api.character.CharacterRecord
-import com.canefe.story.api.character.CharacterRecord.CharacterType
 import com.canefe.story.storage.MongoClientManager
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.ReplaceOptions
+import kotlinx.serialization.json.Json
 import org.bson.Document
 import java.util.logging.Logger
 
@@ -17,21 +17,26 @@ class MongoCharacterStorage(
     private val logger: Logger,
 ) {
     private val collection get() = mongoClient.getCollection("characters")
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
     fun findById(characterId: String): CharacterRecord? {
         val doc = collection.find(Filters.eq("_id", characterId)).first() ?: return null
-        return documentToRecord(doc)
+        return deserialize(doc)
     }
 
     fun findByName(name: String): CharacterRecord? {
         val doc = collection.find(Filters.regex("name", "^${Regex.escape(name)}$", "i")).first() ?: return null
-        return documentToRecord(doc)
+        return deserialize(doc)
     }
 
-    fun findAll(): List<CharacterRecord> = collection.find().mapNotNull { documentToRecord(it) }.toList()
+    fun findAll(): List<CharacterRecord> = collection.find().mapNotNull { deserialize(it) }.toList()
 
     fun save(record: CharacterRecord) {
-        val doc = recordToDocument(record)
+        val doc = serialize(record)
         collection.replaceOne(
             Filters.eq("_id", record.id),
             doc,
@@ -43,33 +48,21 @@ class MongoCharacterStorage(
         collection.deleteOne(Filters.eq("_id", characterId))
     }
 
-    private fun recordToDocument(record: CharacterRecord): Document =
-        Document().apply {
-            put("_id", record.id)
-            put("name", record.name)
-            put("race", record.race)
-            put("appearance", record.appearance)
-            put("traits", record.traits)
-            put("type", record.type.name.lowercase())
-        }
+    private fun serialize(record: CharacterRecord): Document {
+        val jsonStr = json.encodeToString(CharacterRecord.serializer(), record)
+        val doc = Document.parse(jsonStr)
+        // MongoDB uses _id as primary key
+        doc["_id"] = record.id
+        doc.remove("id")
+        return doc
+    }
 
-    private fun documentToRecord(doc: Document): CharacterRecord? {
+    private fun deserialize(doc: Document): CharacterRecord? {
         return try {
-            CharacterRecord(
-                id = doc.getString("_id"),
-                name = doc.getString("name") ?: return null,
-                race = doc.getString("race"),
-                appearance = doc.getString("appearance") ?: "",
-                traits = doc.getList("traits", String::class.java) ?: emptyList(),
-                type =
-                    doc.getString("type")?.let {
-                        try {
-                            CharacterType.valueOf(it.uppercase())
-                        } catch (_: Exception) {
-                            CharacterType.NPC
-                        }
-                    } ?: CharacterType.NPC,
-            )
+            // Map _id back to id field
+            val id = doc.getString("_id") ?: return null
+            doc["id"] = id
+            json.decodeFromString(CharacterRecord.serializer(), doc.toJson())
         } catch (e: Exception) {
             logger.warning("Failed to deserialize character document: ${e.message}")
             null

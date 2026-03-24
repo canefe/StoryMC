@@ -571,13 +571,6 @@ class NPCResponseService(
         // Build Character objects for all participants
         val npcCharacters =
             conversation.npcs.mapNotNull { storyNpc ->
-                val npcData = plugin.npcDataManager.getNPCData(storyNpc)
-                if (npcData?.generic == true) {
-                    if (plugin.config.debugMessages) {
-                        plugin.logger.info("Skipping memory creation for generic NPC: ${storyNpc.name}")
-                    }
-                    return@mapNotNull null
-                }
                 AICharacter.from(storyNpc)
             }
 
@@ -684,24 +677,7 @@ class NPCResponseService(
             return future
         }
 
-        // Check if NPC is generic - skip memory creation for generic NPCs
         val npc = if (character is AICharacter) character.npc else null
-        val npcData =
-            if (npc !=
-                null
-            ) {
-                plugin.npcDataManager.getNPCData(npc)
-            } else {
-                plugin.npcDataManager.getNPCData(characterName)
-            }
-        if (npcData?.generic == true && !isPlayer) {
-            if (plugin.config.debugMessages) {
-                plugin.logger.info("Skipping memory creation for generic NPC: $characterName")
-            }
-            future.complete(null)
-            return future
-        }
-
         val player = if (character is PlayerCharacter) character.player else null
 
         // Convert conversation history to a format suitable for responseContext
@@ -732,20 +708,6 @@ class NPCResponseService(
         ).thenAccept { combinedResponse ->
             if (combinedResponse.isNullOrBlank()) {
                 plugin.logger.warning("Failed to get combined response for $characterName")
-                future.complete(null)
-                return@thenAccept
-            }
-
-            val npcDataForMemory =
-                if (npc !=
-                    null
-                ) {
-                    plugin.npcDataManager.getNPCData(npc)
-                } else {
-                    plugin.npcDataManager.getNPCData(characterName)
-                }
-            if (npcDataForMemory == null) {
-                plugin.logger.warning("No NPC data found for $characterName")
                 future.complete(null)
                 return@thenAccept
             }
@@ -921,17 +883,15 @@ class NPCResponseService(
         val future = CompletableFuture<Memory?>()
         val characterName = character.name
 
-        // Check if NPC exists
+        // Check if NPC exists in character registry
         val npc = if (character is AICharacter) character.npc else null
-        val npcData =
-            if (npc !=
-                null
-            ) {
-                plugin.npcDataManager.getNPCData(npc)
+        val record =
+            if (npc != null) {
+                plugin.characterRegistry.getByStoryNPC(npc)
             } else {
-                plugin.npcDataManager.getNPCData(characterName)
+                plugin.characterRegistry.getByName(characterName)
             }
-        if (npcData == null) {
+        if (record == null) {
             future.complete(null)
             return future
         }
@@ -975,13 +935,8 @@ class NPCResponseService(
         // Process using existing functionality
         summarizeConversationForSingleNPC(syntheticConversation, character)
             .thenAccept {
-                val latestMemory =
-                    plugin.npcDataManager
-                        .getNPCData(characterName)
-                        ?.memory
-                        ?.lastOrNull()
-
-                future.complete(latestMemory)
+                // Memory is now stored externally; return null since we can't retrieve it locally
+                future.complete(null)
             }.exceptionally { e ->
                 plugin.logger.warning("Failed to create memory for $characterName: ${e.message}")
                 future.completeExceptionally(e)

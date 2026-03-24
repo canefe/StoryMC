@@ -114,22 +114,11 @@ interface StoryAPI {
          */
         @JvmStatic
         fun getNPCByName(npcName: String): APINPCData? {
-            val storyNpc = instance.npcDataManager.getNPC(npcName)
-            val npcData =
-                (
-                    if (storyNpc !=
-                        null
-                    ) {
-                        instance.npcDataManager.getNPCData(storyNpc)
-                    } else {
-                        instance.npcDataManager.getNPCData(npcName)
-                    }
-                )
-                    ?: return null
+            val record = instance.characterRegistry.getByName(npcName) ?: return null
             return APINPCData(
-                name = npcData.name,
-                context = npcData.context,
-                appearance = npcData.appearance,
+                name = record.name,
+                context = "",
+                appearance = record.appearance,
             )
         }
 
@@ -273,7 +262,7 @@ interface StoryAPI {
         @JvmStatic
         fun getCharacterByNPC(npc: net.citizensnpcs.api.npc.NPC): AICharacter? {
             val storyNpc = CitizensStoryNPC(npc)
-            instance.npcDataManager.getNPCData(storyNpc) ?: return null
+            instance.characterRegistry.getByStoryNPC(storyNpc) ?: return null
             return AICharacter.from(storyNpc)
         }
 

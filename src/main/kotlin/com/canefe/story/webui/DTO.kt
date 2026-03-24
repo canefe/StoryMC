@@ -1,9 +1,9 @@
 package com.canefe.story.webui
 
 import com.canefe.story.Story
+import com.canefe.story.api.character.CharacterRecord
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
 import java.util.*
 
@@ -108,14 +108,14 @@ fun Conversation.applyFromDTO(
     }
 }
 
-fun NPCData.toDTO(): NPCContextDTO =
+fun CharacterRecord.toDTO(plugin: Story): NPCContextDTO =
     NPCContextDTO(
         name = name,
-        role = role,
-        context = context,
-        locationName = storyLocation?.name ?: "Unknown",
-        avatar = avatar,
-        memories = memory.map { it.toDTO() },
+        role = "",
+        context = "",
+        locationName = "Unknown",
+        avatar = plugin.characterRegistry.getMinecraftConfig(id)?.avatar ?: "",
+        memories = emptyList(),
     )
 
 fun Memory.toDTO(): MemoryDTO =

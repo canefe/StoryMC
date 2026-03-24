@@ -61,22 +61,8 @@ class QuestManager(
     fun getValidLocations(): List<String> = plugin.locationManager.getAllLocations().map { it.name }
 
     fun getValidTalkTargets(npc: StoryNPC): List<String> {
-        // First get the location of npc (Get his npcData)
-        val npcData = plugin.npcDataManager.getNPCData(npc)
-        val location = npcData?.storyLocation
-
-        // get all npc names from that StoryLocation
-        for (npcName in plugin.npcDataManager.getAllNPCNames()) {
-            val npcFile = File(plugin.npcDataManager.npcDirectory, "$npcName.yml")
-            val npcConfig = YamlConfiguration.loadConfiguration(npcFile)
-            val npcLocation = npcConfig.getString("location") ?: continue
-
-            if (npcLocation == location?.name) {
-                return listOf(npcName)
-            }
-        }
-
-        return listOf(npc.name)
+        // Return nearby NPC names from registry
+        return plugin.characterRegistry.allNPCs().map { it.name }
     }
 
     private val questFolder: File =

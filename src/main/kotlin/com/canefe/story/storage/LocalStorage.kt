@@ -6,7 +6,6 @@ import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.information.Rumor
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.lore.LoreBookManager.LoreBook
-import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.quest.Quest
 import org.bukkit.Location
@@ -28,13 +27,7 @@ class LocalStorage(
         content: String,
         significance: Double,
     ): CompletableFuture<Void> {
-        plugin.npcDataManager.createMemoryForNPC(characterName, content, significance)
-
-        val savedMemories = plugin.npcDataManager.loadNPCMemory(characterName)
-        savedMemories.lastOrNull()?.let { memory ->
-            plugin.relationshipManager.updateRelationshipFromMemory(memory, characterName)
-        }
-
+        // Memory storage is handled externally (Go orchestrator / vector DB)
         return CompletableFuture.completedFuture(null)
     }
 
@@ -49,24 +42,12 @@ class LocalStorage(
     // ── Character Data ──────────────────────────────────────────────────
 
     override fun saveCharacterData(character: CharacterDTO): CompletableFuture<Void> {
-        val location = character.locationName?.let { plugin.locationManager.getLocation(it) }
-        val key = character.id ?: character.name
-        val npcData =
-            plugin.npcDataManager.getNPCData(key)
-                ?: NPCData(character.name, character.role, location, character.context)
-
-        npcData.role = character.role
-        npcData.context = character.context
-        npcData.appearance = character.appearance
-        npcData.avatar = character.avatar
-        if (location != null) npcData.storyLocation = location
-
-        plugin.npcDataManager.saveNPCData(key, npcData)
+        // Character data is managed by CharacterRegistry (MongoDB)
         return CompletableFuture.completedFuture(null)
     }
 
     override fun deleteCharacterData(characterName: String): CompletableFuture<Void> {
-        plugin.npcDataManager.deleteNPCFile(characterName)
+        // Character data is managed by CharacterRegistry (MongoDB)
         return CompletableFuture.completedFuture(null)
     }
 
