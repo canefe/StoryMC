@@ -9,6 +9,7 @@ import com.canefe.story.command.story.quest.QuestCommand
 import com.canefe.story.command.story.session.SessionCommand
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.YamlMigrator
 import com.canefe.story.util.Msg.sendError
@@ -415,7 +416,9 @@ class StoryCommand(
         npcName: String,
         npcContexts: MutableList<String>,
     ) {
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+        val npcContext =
+            plugin.npcDataManager.getNPC(npcName)?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(npcName))
         val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 5)
         if (npcContext != null) {
             npcContexts.add("$npcName's context: ${npcContext.context} ")

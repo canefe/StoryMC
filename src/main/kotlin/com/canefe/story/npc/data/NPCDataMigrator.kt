@@ -2,6 +2,7 @@ package com.canefe.story.npc.data
 
 import com.canefe.story.Story
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.memory.Memory
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
@@ -77,7 +78,12 @@ class NPCDataMigrator(
                 }
 
                 // Generate new NPC data using the context generator
-                val newNPCContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+                val newNPCContext =
+                    plugin.npcDataManager
+                        .getNPC(
+                            npcName,
+                        )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                        ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(npcName))
                 if (newNPCContext != null) {
                     val newNPCData =
                         NPCData(

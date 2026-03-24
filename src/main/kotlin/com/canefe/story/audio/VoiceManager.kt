@@ -2,6 +2,7 @@ package com.canefe.story.audio
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.util.*
 import org.bukkit.entity.Player
 import java.util.*
@@ -235,7 +236,7 @@ class VoiceManager(
 
         // Check if the NPC has a custom voice set in their data
         try {
-            val npcData = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
+            val npcData = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
             if (npcData?.customVoice != null) {
                 plugin.logger.info(
                     "Using custom voice '${npcData.customVoice}' for NPC ${npc.name}",
@@ -261,7 +262,7 @@ class VoiceManager(
 
         // Check if the player has a custom voice set in their NPC data
         try {
-            val playerData = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)
+            val playerData = plugin.npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
             if (playerData?.customVoice != null) {
                 plugin.logger.info(
                     "Using custom voice '${playerData.customVoice}' for player ${player.name}",

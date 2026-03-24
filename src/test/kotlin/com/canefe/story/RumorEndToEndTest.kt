@@ -87,9 +87,22 @@ class RumorEndToEndTest {
                 memories = emptyList(),
             )
         plugin.npcContextGenerator = mockk(relaxed = true)
-        every { plugin.npcContextGenerator.getOrCreateContextForNPC(npcName) } returns npcContext
         every { plugin.npcContextGenerator.getOrCreateContextForNPC(any<com.canefe.story.api.StoryNPC>()) } returns
             npcContext
+        every {
+            plugin.npcContextGenerator.getOrCreateContextForNPC(
+                any<com.canefe.story.api.character.Character>(),
+            )
+        } returns
+            npcContext
+        // Recreate ConversationManager so it picks up the mocked npcContextGenerator
+        plugin.conversationManager =
+            com.canefe.story.conversation.ConversationManager(
+                plugin,
+                plugin.npcContextGenerator,
+                plugin.npcResponseService,
+                plugin.worldInformationManager,
+            )
     }
 
     private fun mockAIAlwaysReturn(response: String) {

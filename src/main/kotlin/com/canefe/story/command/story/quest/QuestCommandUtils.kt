@@ -1,6 +1,7 @@
 package com.canefe.story.command.story.quest
 
 import com.canefe.story.Story
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.command.base.CommandComponentUtils
 import com.canefe.story.location.LocationManager
 import com.canefe.story.quest.QuestStatus
@@ -177,9 +178,10 @@ class QuestCommandUtils {
             return
         }
         // Get memories for the target player
+        val contextPlayer = (target as? Player) ?: player
         val contextResult =
             story.npcContextGenerator.getOrCreateContextForNPC(
-                ((target as? Player) ?: player).characterName,
+                PlayerCharacter.from(contextPlayer),
             )
         val memories =
             contextResult?.memories?.let { memList ->

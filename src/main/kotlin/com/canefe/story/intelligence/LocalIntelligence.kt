@@ -2,6 +2,7 @@ package com.canefe.story.intelligence
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.util.*
@@ -35,7 +36,7 @@ class LocalIntelligence(
                     conversation.players.joinToString("\n") { playerId ->
                         val player = Bukkit.getPlayer(playerId) ?: return@joinToString ""
                         val nickname = player.characterName
-                        val ctx = npcContextGenerator.getOrCreateContextForNPC(nickname)
+                        val ctx = npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
                         "$nickname: ${ctx?.appearance ?: "No appearance information available."}"
                     } +
                     "\n=========================",

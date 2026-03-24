@@ -7,6 +7,7 @@ import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.util.*
@@ -45,7 +46,14 @@ class NPCResponseService(
             }
 
         // Get NPC context - this might trigger name resolution and NPC replacement
-        val npcContext = contextService.getOrCreateContextForNPC(originalCharName)
+        val npcContext =
+            if (isPlayerCharacter && player != null) {
+                contextService.getOrCreateContextForNPC(PlayerCharacter.from(player))
+            } else if (npc != null) {
+                contextService.getOrCreateContextForNPC(npc)
+            } else {
+                contextService.getOrCreateContextForNPC(StubStoryNPC(originalCharName))
+            }
 
         // Check if NPC was replaced during context generation
         var actualNPC: StoryNPC? = npc
@@ -74,7 +82,7 @@ class NPCResponseService(
                         )
 
                         // Refresh the context for the new NPC to get updated bio if generated
-                        contextService.getOrCreateContextForNPC(actualCharName)
+                        contextService.getOrCreateContextForNPC(newNPC)
                     } else {
                         // If we can't find a replacement, the conversation is probably broken
                         plugin.logger.warning(
@@ -327,7 +335,7 @@ class NPCResponseService(
                 .runTaskLater(
                     plugin,
                     Runnable {
-                        val npcContext = contextService.getOrCreateContextForNPC(npc.name)
+                        val npcContext = contextService.getOrCreateContextForNPC(npc)
                         plugin.npcMessageService.broadcastNPCStreamMessage(
                             response,
                             npc,
@@ -511,7 +519,7 @@ class NPCResponseService(
         plugin.npcMessageService.broadcastNPCMessage(
             response,
             npc,
-            npcContext = contextService.getOrCreateContextForNPC(npc.name),
+            npcContext = contextService.getOrCreateContextForNPC(npc),
         )
 
         return CompletableFuture.completedFuture(response)
@@ -570,38 +578,13 @@ class NPCResponseService(
                     }
                     return@mapNotNull null
                 }
-                AICharacter(
-                    npc = storyNpc,
-                    id =
-                        plugin.characterRegistry.let { reg ->
-                            try {
-                                reg.getCharacterIdForNPC(storyNpc)
-                            } catch (_: Exception) {
-                                null
-                            }
-                        },
-                    name = storyNpc.name,
-                    role = npcData?.role ?: "",
-                    appearance = npcData?.appearance ?: "",
-                    context = npcData?.context ?: "",
-                    skills =
-                        com.canefe.story.api.character.CharacterSkills(
-                            plugin.skillManager.createProviderForNPC(storyNpc.name),
-                        ),
-                )
+                AICharacter.from(storyNpc)
             }
 
         val playerCharacters =
             conversation.players.mapNotNull { uuid ->
                 val player = Bukkit.getPlayer(uuid) ?: return@mapNotNull null
-                PlayerCharacter(
-                    player = player,
-                    skills =
-                        com.canefe.story.api.character.CharacterSkills(
-                            plugin.skillManager.createProviderForCharacter(uuid, true),
-                            player,
-                        ),
-                )
+                PlayerCharacter.from(player)
             }
 
         // Create list of all futures for concurrent processing
@@ -975,7 +958,7 @@ class NPCResponseService(
         )
 
         // Second message: NPC context from data
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(characterName)?.context
+        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(character)?.context
         if (npcContext != null) {
             syntheticConversation.add(ConversationMessage("system", npcContext))
         }

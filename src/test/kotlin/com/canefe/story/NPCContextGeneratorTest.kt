@@ -2,6 +2,7 @@ package com.canefe.story
 
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.npc.NPCContextGenerator
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.name.NPCNameManager
@@ -90,7 +91,7 @@ class NPCContextGeneratorTest {
 
     @Test
     fun `getOrCreateContextForNPC generates context with traits and quirks`() {
-        val ctx: NPCContext? = generator.getOrCreateContextForNPC("Guard")
+        val ctx: NPCContext? = generator.getOrCreateContextForNPC(StubStoryNPC("Guard"))
 
         assertNotNull(ctx)
 
@@ -106,7 +107,7 @@ class NPCContextGeneratorTest {
     fun `generic npc gets canonical name and temporary personality`() {
         val generator = NPCContextGenerator(plugin)
 
-        val context = generator.getOrCreateContextForNPC("Guard")
+        val context = generator.getOrCreateContextForNPC(StubStoryNPC("Guard"))
 
         assertNotNull(context, "Context should not be null")
         // load npc data to check name

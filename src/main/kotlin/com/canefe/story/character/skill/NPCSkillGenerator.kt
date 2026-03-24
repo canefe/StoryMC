@@ -1,6 +1,7 @@
 package com.canefe.story.character.skill
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCData
 import com.google.gson.JsonParser
@@ -21,9 +22,10 @@ class NPCSkillGenerator(
      * Get or generate skills for an NPC. Returns cached skills if available,
      * otherwise generates via LLM and saves to storage.
      */
-    fun getOrGenerateSkills(npcName: String): CompletableFuture<Map<String, Int>> {
+    fun getOrGenerateSkills(npc: StoryNPC): CompletableFuture<Map<String, Int>> {
+        val npcName = npc.name
         val npcData =
-            plugin.npcDataManager.getNPCData(npcName)
+            plugin.npcDataManager.getNPCData(npc)
                 ?: return CompletableFuture.completedFuture(emptyMap())
 
         // Already has skills

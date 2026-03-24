@@ -264,7 +264,8 @@ class NPCResponseServiceTest {
 
             val npcContext = mockk<NPCContext>(relaxed = true)
             every { npcContext.context } returns "Test NPC context"
-            every { mockNPCContextGenerator.getOrCreateContextForNPC("TestNPC") } returns npcContext
+            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<StoryNPC>()) } returns npcContext
+            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<Character>()) } returns npcContext
 
             // Mock the conversation summarization to complete successfully
             every {
@@ -295,7 +296,8 @@ class NPCResponseServiceTest {
 
             val npcContext = mockk<NPCContext>(relaxed = true)
             every { npcContext.context } returns "Test NPC context"
-            every { mockNPCContextGenerator.getOrCreateContextForNPC("TestNPC") } returns npcContext
+            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<StoryNPC>()) } returns npcContext
+            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<Character>()) } returns npcContext
 
             // Mock the conversation summarization
             every {

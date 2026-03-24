@@ -2,6 +2,7 @@ package com.canefe.story.event
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.ConversationJoinEvent
 import com.canefe.story.api.event.ConversationStartEvent
 import com.canefe.story.api.event.NPCParticipant
@@ -164,7 +165,7 @@ class NPCInteractionListener(
 
         // Get player context
         val playerContext =
-            plugin.npcContextGenerator.getOrCreateContextForNPC(playerCharacterName)
+            plugin.npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
                 ?: run {
                     player.sendError(
                         "Could not find character data for $playerCharacterName.",
@@ -193,21 +194,18 @@ class NPCInteractionListener(
                     "\n===APPEARANCES===\n" +
                     conversation.npcs.joinToString("\n") { npc ->
                         val npcContext =
-                            plugin.npcContextGenerator.getOrCreateContextForNPC(
-                                npc.name,
-                            )
+                            plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
                         "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
                     } +
                     // We treat players as NPCs for this purpose
                     conversation.players.joinToString("\n") { playerId ->
                         val p = Bukkit.getPlayer(playerId)
                         if (p == null) return@joinToString ""
-                        val pName = p.name
-                        val nickname = Bukkit.getPlayer(playerId)?.characterName ?: pName
                         val pContext =
                             plugin.npcContextGenerator.getOrCreateContextForNPC(
-                                nickname,
+                                PlayerCharacter.from(p),
                             )
+                        val nickname = p.characterName
                         "$nickname: ${pContext?.appearance ?: "No appearance information available."}"
                     } +
                     "\n=========================",

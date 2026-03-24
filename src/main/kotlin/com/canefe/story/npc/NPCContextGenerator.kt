@@ -2,11 +2,14 @@ package com.canefe.story.npc
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterDTO
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
-import com.canefe.story.npc.memory.Memory
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.entity.Player
 import java.io.File
 import kotlin.random.Random
 
@@ -16,173 +19,148 @@ import kotlin.random.Random
 class NPCContextGenerator(
     private val plugin: Story,
 ) {
-    /**
-     * Generates a default context for a new NPC.
-     */
-    private fun generateDefaultContext(npcName: String): String {
+    private fun generateDefaultContext(name: String): String {
         val random = Random(System.currentTimeMillis())
-
-        // Randomly select personality traits
         val trait = plugin.config.traitList.random(random)
         val quirk = plugin.config.quirkList.random(random)
         val motivation = plugin.config.motivationList.random(random)
         val flaw = plugin.config.flawList.random(random)
         val tone = plugin.config.toneList.random(random)
-
-        // Construct personality description
-        val personality =
-            " is $trait, has the quirk of $quirk, " +
-                "is motivated by $motivation, and their flaw is $flaw. " +
-                "They speak in a $tone tone."
-
-        // Construct the context
-        return "$npcName$personality"
+        return "$name is $trait, has the quirk of $quirk, " +
+            "is motivated by $motivation, and their flaw is $flaw. " +
+            "They speak in a $tone tone."
     }
 
-    /**
-     * Generates a temporary personality context for generic NPCs.
-     * This creates new personality traits for each conversation while preserving custom context.
-     */
     private fun generateTemporaryPersonality(
-        npcName: String,
+        name: String,
         customContext: String,
     ): String {
         val random = Random(System.currentTimeMillis())
-
-        // Randomly select personality traits
         val trait = plugin.config.traitList.random(random)
         val quirk = plugin.config.quirkList.random(random)
         val motivation = plugin.config.motivationList.random(random)
         val flaw = plugin.config.flawList.random(random)
         val tone = plugin.config.toneList.random(random)
-
-        // Construct temporary personality description
         val temporaryPersonality =
-            "$npcName is $trait, has the quirk of $quirk, " +
+            "$name is $trait, has the quirk of $quirk, " +
                 "is motivated by $motivation, and their flaw is $flaw. " +
                 "They speak in a $tone tone. " +
                 "The time is ${plugin.timeService.getHours()}:${plugin.timeService.getMinutes()} and the season is ${plugin.timeService.getSeason()}."
+        return if (customContext.isNotBlank()) "$temporaryPersonality $customContext" else temporaryPersonality
+    }
 
-        // Combine with custom context if it exists
-        return if (customContext.isNotBlank()) {
-            "$temporaryPersonality $customContext"
-        } else {
-            temporaryPersonality
-        }
+    // ── Public API ──────────────────────────────────────────────────────
+
+    /**
+     * Primary entry point: get or create context for a Character.
+     */
+    fun getOrCreateContextForNPC(character: Character): NPCContext? {
+        val npc = if (character is AICharacter) character.npc else null
+        val player = if (character is PlayerCharacter) character.player else null
+        return getOrCreateContextInternal(
+            displayName = character.name,
+            entityId = character.entityId.toString(),
+            npc = npc,
+            player = player,
+        )
     }
 
     /**
-     * Get or create context for an NPC using the NPC entity (preferred method)
+     * Get or create context for a StoryNPC.
      */
     fun getOrCreateContextForNPC(npc: StoryNPC): NPCContext? =
-        getOrCreateContextForNPCInternal(npc.name, npc.uniqueId.toString(), npc)
+        getOrCreateContextInternal(
+            displayName = npc.name,
+            entityId = npc.uniqueId.toString(),
+            npc = npc,
+        )
 
-    /**
-     * Get or create context for an NPC using just the name (fallback method)
-     */
-    fun getOrCreateContextForNPC(npcName: String): NPCContext? = getOrCreateContextForNPCInternal(npcName, null)
+    // ── Internal ────────────────────────────────────────────────────────
 
-    private fun getOrCreateContextForNPCInternal(
-        npcName: String,
-        actualEntityId: String?,
+    private fun getOrCreateContextInternal(
+        displayName: String,
+        entityId: String?,
         npc: StoryNPC? = null,
+        player: Player? = null,
     ): NPCContext? {
         try {
-            // FIRST: Check if this is a generic NPC that needs name aliasing
-            // Load existing NPC data to check if it's generic
-            val npcData = plugin.npcDataManager.getNPCData(npcName)
+            val npcData =
+                when {
+                    npc != null -> plugin.npcDataManager.getNPCData(npc)
+                    else -> plugin.npcDataManager.getNPCData(displayName)
+                }
 
             // If this is a generic NPC with a name bank, resolve its canonical name
             val actualName =
                 if (npcData?.generic == true && npcData.nameBank != null) {
-                    // Use name resolver to get or generate canonical name
                     val canonicalName =
                         plugin.npcNameResolver.resolveCanonicalName(
-                            displayName = npcName,
-                            // Use actual entity ID first, then stored npcId, then fallback to name
-                            entityId = actualEntityId ?: npcData.npcId ?: npcName,
+                            displayName = displayName,
+                            entityId = entityId ?: npcData.npcId ?: displayName,
                             location = npcData.storyLocation?.name,
                         )
 
-                    // If a new canonical name was generated and this NPC is in an active conversation,
-                    // we need to create a new Citizens NPC and replace it in the conversation
-                    if (canonicalName != npcName && npcData.canonicalName != canonicalName) {
-                        // Find the NPC in any active conversation
+                    if (canonicalName != displayName && npcData.canonicalName != canonicalName) {
                         val activeConversations = plugin.conversationManager.getAllActiveConversations()
                         for (conversation in activeConversations) {
-                            val originalNPC = conversation.getNPCByName(npcName)
+                            val originalNPC = conversation.getNPCByName(displayName)
                             if (originalNPC != null) {
-                                // Get the alias that was generated
                                 val alias =
                                     plugin.npcNameManager.getOrCreateAlias(
-                                        npcId =
-                                            actualEntityId ?: npcData.npcId
-                                                ?: npcName,
-                                        // Use actual entity ID first
+                                        npcId = entityId ?: npcData.npcId ?: displayName,
                                         anchorKey = npcData.anchorKey,
                                         nameBankName = npcData.nameBank!!,
                                         location = npcData.storyLocation?.name,
                                     )
-
-                                // Create and replace the NPC in conversations
                                 plugin.npcNameResolver.createAndReplaceNPCInConversations(originalNPC, alias)
-
-                                break // Only need to do this once
+                                break
                             }
                         }
                     }
 
                     canonicalName
                 } else {
-                    npcName
+                    displayName
                 }
 
-            // Let's find the NPC entity's current StoryLocation if exists.
+            // Resolve location
             var location = plugin.locationManager.getOrCreateDefaultLocation()
-
-            // If we have an NPC entity, try to get its location from its stored data
             if (npc != null && npc.isSpawned && npc.entity != null) {
                 val npcLocation = plugin.locationManager.getLocationByPosition2D(npc.entity!!.location)
-                if (npcLocation != null) {
-                    location = npcLocation
-                }
+                if (npcLocation != null) location = npcLocation
             }
 
-            // Load existing NPC data including all data and memories using the resolved name
+            // Load NPC data
             val finalNpcData =
-                plugin.npcDataManager.getNPCData(npcName) ?: NPCData(
-                    actualName, // Use the canonical name for the display name in context
+                when {
+                    npc != null -> plugin.npcDataManager.getNPCData(npc)
+                    else -> plugin.npcDataManager.getNPCData(displayName)
+                } ?: NPCData(
+                    actualName,
                     "Default role",
                     location,
-                    context = generateDefaultContext(actualName), // Use canonical name in context
+                    context = generateDefaultContext(actualName),
                 )
 
-            // Save updated NPC data with existing memories preserved
-            plugin.storage.saveCharacterData(
-                CharacterDTO.from(finalNpcData),
-            )
+            // Save updated NPC data
+            plugin.storage.saveCharacterData(CharacterDTO.from(finalNpcData))
 
-            // For generic NPCs, generate temporary personality while preserving custom context
+            // For generic NPCs, generate temporary personality
             val finalContext =
                 if (finalNpcData.generic) {
-                    generateTemporaryPersonality(actualName, finalNpcData.context) // Use canonical name in personality
+                    generateTemporaryPersonality(actualName, finalNpcData.context)
                 } else {
                     finalNpcData.context
                 }
 
-            // For generic NPCs, use empty memories list instead of persistent memories
-            val memories =
-                if (finalNpcData.generic) {
-                    emptyList<Memory>()
-                } else {
-                    finalNpcData.memory
-                }
+            // For generic NPCs, use empty memories
+            val memories = if (finalNpcData.generic) emptyList() else finalNpcData.memory
 
-            // Get relationships for this NPC
-            val relationships = plugin.relationshipManager.getAllRelationships(npcName)
+            // Get relationships
+            val relationships = plugin.relationshipManager.getAllRelationships(displayName)
 
             return NPCContext(
-                finalNpcData.name, // Use canonical name in the context
+                name = finalNpcData.name,
                 role = finalNpcData.role,
                 context = finalContext,
                 appearance = finalNpcData.appearance,
@@ -200,6 +178,8 @@ class NPCContextGenerator(
         }
     }
 
+    // ── General contexts ────────────────────────────────────────────────
+
     private val generalContexts: MutableList<String> = mutableListOf()
     private val generalContextFile = File(plugin.dataFolder, "general-contexts.yml")
 
@@ -213,11 +193,7 @@ class NPCContextGenerator(
 
     private fun loadGeneralContexts() {
         generalContexts.clear()
-
-        if (!generalContextFile.exists()) {
-            return
-        }
-
+        if (!generalContextFile.exists()) return
         val config = YamlConfiguration.loadConfiguration(generalContextFile)
         generalContexts.addAll(config.getStringList("contexts"))
     }

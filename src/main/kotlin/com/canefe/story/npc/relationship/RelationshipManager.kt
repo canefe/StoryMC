@@ -150,7 +150,7 @@ class RelationshipManager(
             if (npcName == null || !npcs.contains(npc)) continue
 
             // Check if NPC is spawned
-            val npcData = plugin.npcDataManager.getNPCData(npcName)
+            val npcData = plugin.npcDataManager.getNPCData(npc)
             if (npcData == null || !npc.isSpawned) continue
 
             // Add NPC to the list if not already present

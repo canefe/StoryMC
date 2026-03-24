@@ -173,7 +173,11 @@ class SessionManager(
         if (mentionedNPCs.isNotEmpty()) {
             contextBuilder.append("RELEVANT NPCS:\n")
             mentionedNPCs.take(3).forEach { npcName ->
-                val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+                val npcContext =
+                    plugin.npcDataManager
+                        .getNPC(
+                            npcName,
+                        )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
                 val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 3)
                 if (npcContext != null) {
                     contextBuilder.append("- $npcName: ${npcContext.context}\n")

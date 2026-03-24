@@ -3,7 +3,6 @@ package com.canefe.story.quest
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
-import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
 import com.canefe.story.npc.CitizensStoryNPC
@@ -408,20 +407,7 @@ class QuestManager(
                 null
             } ?: return
         val storyNpc = CitizensStoryNPC(citizensNpc)
-        val npcData = plugin.npcDataManager.getNPCData(storyNpc)
-        val character =
-            AICharacter(
-                npc = storyNpc,
-                id =
-                    try {
-                        plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
-                    } catch (_: Exception) {
-                        null
-                    },
-                name = storyNpc.name,
-                role = npcData?.role ?: "",
-                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(storyNpc.name)),
-            )
+        val character = AICharacter.from(storyNpc)
         val contextPrompt =
             """
             You have heard that ${player.characterName} has completed the quest you gave: ${quest.title}.

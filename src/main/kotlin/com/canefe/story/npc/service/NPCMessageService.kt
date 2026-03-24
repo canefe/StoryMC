@@ -3,7 +3,6 @@ package com.canefe.story.npc.service
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
-import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
@@ -174,7 +173,7 @@ class NPCMessageService(
             if (cachedGender != null) {
                 CompletableFuture.completedFuture(cachedGender)
             } else {
-                determineNPCGenderAsync(npc.name)
+                determineNPCGenderAsync(npc)
                     .thenApply { gender ->
                         // Cache the result for future use
                         genderCache[npc.name] = gender
@@ -205,15 +204,7 @@ class NPCMessageService(
                 // Fire CharacterSpeakEvent on the main thread
                 val npcData = plugin.npcDataManager.getNPCData(npc)
                 if (npcData != null) {
-                    val speaker =
-                        AICharacter(
-                            npc = npc,
-                            name = npcData.name,
-                            role = npcData.role,
-                            appearance = npcData.appearance,
-                            context = npcData.context,
-                            skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc.name)),
-                        )
+                    val speaker = AICharacter.from(npc)
                     val nearby = buildNearbyFromNPC(npc, speaker)
                     val event = CharacterSpeakEvent(speaker, nearby, message)
                     Bukkit.getPluginManager().callEvent(event)
@@ -349,11 +340,7 @@ class NPCMessageService(
         player: Player,
         color: String? = null,
     ) {
-        val speaker =
-            PlayerCharacter(
-                player = player,
-                skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(player.uniqueId, true), player),
-            )
+        val speaker = PlayerCharacter.from(player)
         val nearby = buildNearbyFromPlayer(player, speaker)
         val event = CharacterSpeakEvent(speaker, nearby, message)
         Bukkit.getPluginManager().callEvent(event)
@@ -362,7 +349,7 @@ class NPCMessageService(
         val playerName = player.characterName
 
         // Get player context for avatar support (using NPC data system for players)
-        val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)
+        val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
 
         // Normal chat format
         val parsedMessages =
@@ -456,7 +443,8 @@ class NPCMessageService(
      * Asynchronously determines an NPC's gender
      * Returns a CompletableFuture that will be completed with the gender
      */
-    private fun determineNPCGenderAsync(npcName: String): CompletableFuture<String> {
+    private fun determineNPCGenderAsync(npc: StoryNPC): CompletableFuture<String> {
+        val npcName = npc.name
         // Create the result future
         val resultFuture = CompletableFuture<String>()
 
@@ -467,7 +455,7 @@ class NPCMessageService(
         }
 
         // First try the fast approach with tags and pronouns
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
         val contextStr = npcContext?.context ?: ""
 
         // Check for explicit gender tag
@@ -493,7 +481,7 @@ class NPCMessageService(
         // Run AI determination in another thread
         CompletableFuture.runAsync {
             try {
-                val npcData = plugin.npcDataManager.getNPCData(npcName)
+                val npcData = plugin.npcDataManager.getNPCData(npc)
                 val memoriesContext =
                     npcData
                         ?.memory
@@ -719,29 +707,12 @@ class NPCMessageService(
             .getNearbyNPCs(npc, radius)
             .filter { it.uniqueId != npc.uniqueId }
             .forEach { nearby ->
-                val data = plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
-                result.add(
-                    AICharacter(
-                        npc = nearby,
-                        name = data.name,
-                        role = data.role,
-                        appearance = data.appearance,
-                        context = data.context,
-                        skills =
-                            CharacterSkills(
-                                plugin.skillManager.createProviderForNPC(nearby.name),
-                            ),
-                    ),
-                )
+                plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
+                result.add(AICharacter.from(nearby))
             }
 
         NPCUtils.getNearbyPlayers(npc, radius).forEach { p ->
-            result.add(
-                PlayerCharacter(
-                    player = p,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
-                ),
-            )
+            result.add(PlayerCharacter.from(p))
         }
 
         return result
@@ -755,29 +726,15 @@ class NPCMessageService(
         val result = mutableSetOf<com.canefe.story.api.character.Character>()
 
         NPCUtils.getNearbyNPCs(player, radius).forEach { nearby ->
-            val data = plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
-            result.add(
-                AICharacter(
-                    npc = nearby,
-                    name = data.name,
-                    role = data.role,
-                    appearance = data.appearance,
-                    context = data.context,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(nearby.name)),
-                ),
-            )
+            plugin.npcDataManager.getNPCData(nearby) ?: return@forEach
+            result.add(AICharacter.from(nearby))
         }
 
         NPCUtils
             .getNearbyPlayers(player, radius)
             .filter { it.uniqueId != player.uniqueId }
             .forEach { p ->
-                result.add(
-                    PlayerCharacter(
-                        player = p,
-                        skills = CharacterSkills(plugin.skillManager.createProviderForCharacter(p.uniqueId, true), p),
-                    ),
-                )
+                result.add(PlayerCharacter.from(p))
             }
 
         return result

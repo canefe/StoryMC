@@ -195,7 +195,11 @@ class ContextExtractor(
         npcKeywords.forEach { keyword ->
             plugin.npcDataManager.getAllNPCNames().forEach { npcName ->
                 if (npcName.equals(keyword, ignoreCase = true)) {
-                    val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
+                    val npcContext =
+                        plugin.npcDataManager
+                            .getNPC(
+                                npcName,
+                            )?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
                     if (npcContext != null) {
                         val lastFewMemories =
                             npcContext.getMemoriesForPrompt(

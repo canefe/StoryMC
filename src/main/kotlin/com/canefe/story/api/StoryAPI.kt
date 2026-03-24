@@ -3,7 +3,6 @@ package com.canefe.story.api
 import com.canefe.story.Story
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
-import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
@@ -105,14 +104,7 @@ interface StoryAPI {
          * Get a [PlayerCharacter] for a player.
          */
         @JvmStatic
-        fun getCharacter(player: Player): PlayerCharacter {
-            val skills =
-                CharacterSkills(
-                    provider = instance.skillManager.createProviderForCharacter(player.uniqueId, true),
-                    player = player,
-                )
-            return PlayerCharacter(player = player, skills = skills)
-        }
+        fun getCharacter(player: Player): PlayerCharacter = PlayerCharacter.from(player)
 
         /**
          * Get NPC data by name
@@ -121,14 +113,25 @@ interface StoryAPI {
          * @return The NPC data API wrapper if found, null otherwise
          */
         @JvmStatic
-        fun getNPCByName(npcName: String): APINPCData? =
-            instance.npcDataManager.getNPCData(npcName)?.let { npcData ->
-                APINPCData(
-                    name = npcData.name,
-                    context = npcData.context,
-                    appearance = npcData.appearance,
+        fun getNPCByName(npcName: String): APINPCData? {
+            val storyNpc = instance.npcDataManager.getNPC(npcName)
+            val npcData =
+                (
+                    if (storyNpc !=
+                        null
+                    ) {
+                        instance.npcDataManager.getNPCData(storyNpc)
+                    } else {
+                        instance.npcDataManager.getNPCData(npcName)
+                    }
                 )
-            }
+                    ?: return null
+            return APINPCData(
+                name = npcData.name,
+                context = npcData.context,
+                appearance = npcData.appearance,
+            )
+        }
 
         /**
          * Ask LLM to generate a response to a context (asynchronous)
@@ -270,16 +273,8 @@ interface StoryAPI {
         @JvmStatic
         fun getCharacterByNPC(npc: net.citizensnpcs.api.npc.NPC): AICharacter? {
             val storyNpc = CitizensStoryNPC(npc)
-            val npcData = instance.npcDataManager.getNPCData(storyNpc) ?: return null
-            val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(npc.name))
-            return AICharacter(
-                npc = storyNpc,
-                name = npcData.name,
-                role = npcData.role,
-                appearance = npcData.appearance,
-                context = npcData.context,
-                skills = skills,
-            )
+            instance.npcDataManager.getNPCData(storyNpc) ?: return null
+            return AICharacter.from(storyNpc)
         }
 
         /**
@@ -304,16 +299,7 @@ interface StoryAPI {
             try {
                 val storyNpc = instance.mythicMobConversation.getOrCreateNPCAdapter(entity)
                 if (storyNpc != null) {
-                    val npcData = instance.npcDataManager.getNPCData(storyNpc)
-                    val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(storyNpc.name))
-                    return AICharacter(
-                        npc = storyNpc,
-                        name = storyNpc.name,
-                        role = npcData?.role ?: "NPC",
-                        appearance = npcData?.appearance ?: "",
-                        context = npcData?.context ?: "",
-                        skills = skills,
-                    )
+                    return AICharacter.from(storyNpc)
                 }
             } catch (_: Throwable) {
             }
@@ -406,7 +392,7 @@ interface StoryAPI {
         ): CompletableFuture<String> {
             val npc = character.npc
             val conversation = instance.conversationManager.getConversation(npc)
-            val npcContext = instance.npcContextGenerator.getOrCreateContextForNPC(npc.name)
+            val npcContext = instance.npcContextGenerator.getOrCreateContextForNPC(npc)
 
             if (!llm) {
                 // Raw broadcast, no LLM

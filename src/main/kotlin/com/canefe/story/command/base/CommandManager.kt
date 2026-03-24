@@ -5,7 +5,7 @@ import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterDTO
-import com.canefe.story.api.character.CharacterSkills
+import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
@@ -254,14 +254,25 @@ class CommandManager(
                     val type = args.get("type") as String
                     val context = args.get("context") as String
 
+                    // Resolve NPC from name
+                    val resolvedNpc = plugin.npcDataManager.getNPC(npcName)
+
                     // Check if NPC exists first
                     val npcData =
-                        plugin.npcDataManager.getNPCData(npcName)
+                        (
+                            if (resolvedNpc !=
+                                null
+                            ) {
+                                plugin.npcDataManager.getNPCData(resolvedNpc)
+                            } else {
+                                plugin.npcDataManager.getNPCData(npcName)
+                            }
+                        )
                             ?: run {
                                 // Initialize NPC data if it doesn't exist
                                 val npcContext =
                                     plugin.npcContextGenerator
-                                        .getOrCreateContextForNPC(npcName) ?: run {
+                                        .getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName)) ?: run {
                                         sender.sendError("NPC context not found. Please create the NPC first.")
                                         return@CommandExecutor
                                     }
@@ -274,46 +285,26 @@ class CommandManager(
                                         locationName = "Wilderness",
                                     ),
                                 )
-                                plugin.npcDataManager.getNPCData(npcName) ?: run {
-                                    sender.sendError("Failed to create NPC data for $npcName")
-                                    return@CommandExecutor
-                                }
+                                (
+                                    if (resolvedNpc !=
+                                        null
+                                    ) {
+                                        plugin.npcDataManager.getNPCData(resolvedNpc)
+                                    } else {
+                                        plugin.npcDataManager.getNPCData(npcName)
+                                    }
+                                )
+                                    ?: run {
+                                        sender.sendError("Failed to create NPC data for $npcName")
+                                        return@CommandExecutor
+                                    }
                             }
 
                     sender.sendInfo("Creating memory for <yellow>$npcName</yellow> based on: <italic>$context</italic>")
 
                     val storyNpc = plugin.npcDataManager.getNPC(npcName)
                     val character: Character =
-                        if (storyNpc != null) {
-                            AICharacter(
-                                npc = storyNpc,
-                                id =
-                                    try {
-                                        plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
-                                    } catch (
-                                        _: Exception,
-                                    ) {
-                                        null
-                                    },
-                                name = storyNpc.name,
-                                role = npcData.role,
-                                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
-                            )
-                        } else {
-                            // Fallback for NPCs not currently spawned in Citizens
-                            AICharacter(
-                                npc = StubStoryNPC(npcName),
-                                id =
-                                    try {
-                                        plugin.characterRegistry.getByName(npcName)?.id
-                                    } catch (_: Exception) {
-                                        null
-                                    },
-                                name = npcName,
-                                role = npcData.role,
-                                skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
-                            )
-                        }
+                        AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
 
                     plugin.npcResponseService
                         .generateNPCMemory(character, type, context)
@@ -378,11 +369,13 @@ class CommandManager(
                     val location = (args["location"] as String).replace("\"", "")
                     val prompt = args.getOrDefault("prompt", "") as String
 
+                    val resolvedNpc = plugin.npcDataManager.getNPC(npcName)
                     val npcContext =
-                        plugin.npcContextGenerator.getOrCreateContextForNPC(npcName) ?: run {
-                            sender.sendError("NPC context not found. Please create the NPC first.")
-                            return@CommandExecutor
-                        }
+                        plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName))
+                            ?: run {
+                                sender.sendError("NPC context not found. Please create the NPC first.")
+                                return@CommandExecutor
+                            }
 
                     val storyLocation =
                         plugin.locationManager.getLocation(location) ?: run {
@@ -746,7 +739,7 @@ class CommandManager(
             plugin.conversationManager.handleHolograms(conversation, resolvedNpc.name)
             val shouldStream = plugin.config.streamMessages
             val npcContext =
-                plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc.name) ?: run {
+                plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc) ?: run {
                     player.sendError("NPC context not found. Please create the NPC first.")
                     return
                 }
@@ -770,7 +763,7 @@ class CommandManager(
                         conversation.npcNames.joinToString("\n") +
                         "\n===APPEARANCES===\n" +
                         conversation.npcs.joinToString("\n") { npc ->
-                            val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
+                            val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
                             "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
                         } +
                         // We treat players as NPCs for this purpose
@@ -782,7 +775,10 @@ class CommandManager(
                             }
                             val playerName = player.name
                             val nickname = Bukkit.getPlayer(playerName)?.characterName ?: playerName
-                            val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(nickname)
+                            val playerContext =
+                                plugin.npcContextGenerator.getOrCreateContextForNPC(
+                                    PlayerCharacter.from(player),
+                                )
                             "$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
                         } +
                         "\n=========================",
@@ -1408,21 +1404,20 @@ class CommandManager(
 
         for (npcName in generatedNPCs) {
             val npcPlan = npcPlans.find { it.name == npcName } ?: continue
-            val npcData = plugin.npcDataManager.getNPCData(npcName) ?: continue
             val storyNpc = plugin.npcDataManager.getNPC(npcName)
-            val character: Character =
-                AICharacter(
-                    npc = storyNpc ?: StubStoryNPC(npcName),
-                    id =
-                        try {
-                            plugin.characterRegistry.getByName(npcName)?.id
-                        } catch (_: Exception) {
-                            null
-                        },
-                    name = npcName,
-                    role = npcData.role,
-                    skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npcName)),
+            val npcData =
+                (
+                    if (storyNpc !=
+                        null
+                    ) {
+                        plugin.npcDataManager.getNPCData(storyNpc)
+                    } else {
+                        plugin.npcDataManager.getNPCData(npcName)
+                    }
                 )
+                    ?: continue
+            val character: Character =
+                AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
 
             // Generate core background memories
             val coreMemoryFuture =
@@ -1488,7 +1483,9 @@ class CommandManager(
         val future = CompletableFuture<Boolean>()
 
         // Create the context for this NPC
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(plan.name)
+        val npcContext =
+            plugin.npcDataManager.getNPC(plan.name)?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
+                ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(plan.name))
 
         if (npcContext == null) {
             future.complete(false)

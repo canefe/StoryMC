@@ -50,8 +50,9 @@ class LocalStorage(
 
     override fun saveCharacterData(character: CharacterDTO): CompletableFuture<Void> {
         val location = character.locationName?.let { plugin.locationManager.getLocation(it) }
+        val key = character.id ?: character.name
         val npcData =
-            plugin.npcDataManager.getNPCData(character.name)
+            plugin.npcDataManager.getNPCData(key)
                 ?: NPCData(character.name, character.role, location, character.context)
 
         npcData.role = character.role
@@ -60,7 +61,7 @@ class LocalStorage(
         npcData.avatar = character.avatar
         if (location != null) npcData.storyLocation = location
 
-        plugin.npcDataManager.saveNPCData(character.name, npcData)
+        plugin.npcDataManager.saveNPCData(key, npcData)
         return CompletableFuture.completedFuture(null)
     }
 

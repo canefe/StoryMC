@@ -12,6 +12,19 @@ class CharacterSkills(
     private val provider: SkillProvider,
     private val player: Player? = null,
 ) {
+    companion object {
+        val EMPTY =
+            CharacterSkills(
+                object : SkillProvider {
+                    override fun getSkillLevel(skill: String): Int = 0
+
+                    override fun getAllSkills(): List<String> = emptyList()
+
+                    override fun hasSkill(skill: String): Boolean = false
+                },
+            )
+    }
+
     private var modifierCache: MutableMap<String, Int> = mutableMapOf()
     private var lastCacheUpdate: Long = 0L
     private val CACHE_TTL = 5000L
