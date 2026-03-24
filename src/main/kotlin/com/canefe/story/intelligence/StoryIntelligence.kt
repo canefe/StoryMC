@@ -47,4 +47,13 @@ interface StoryIntelligence {
      * @return Summary text to replace old messages
      */
     fun summarizeMessageHistory(conversation: Conversation): CompletableFuture<String?>
+
+    /**
+     * Process a completed conversation to extract world information (rumors, personal knowledge).
+     *
+     * In local mode: does LLM analysis and stores results locally.
+     * In bridge mode: sends conversation data to Go orchestrator, which routes to story-bot
+     * for extraction and persistence via story-mcp. Kotlin doesn't touch storage.
+     */
+    fun processConversationInformation(request: ConversationInformationRequest): CompletableFuture<Void>
 }

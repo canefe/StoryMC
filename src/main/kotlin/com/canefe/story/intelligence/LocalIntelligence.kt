@@ -4,6 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.information.Rumor
 import com.canefe.story.util.EssentialsUtils
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
@@ -183,5 +184,226 @@ Generate brief physical reactions for each NPC listed above.""",
             )
 
         return plugin.getAIResponse(prompts, lowCost = false)
+    }
+
+    override fun processConversationInformation(request: ConversationInformationRequest): CompletableFuture<Void> {
+        if (request.messages.isEmpty()) return CompletableFuture.completedFuture(null)
+
+        val prompts = buildAnalysisPrompt(request)
+
+        val result = CompletableFuture<Void>()
+        plugin
+            .getAIResponse(prompts)
+            .thenAccept { analysisResult ->
+                try {
+                    if (!analysisResult.isNullOrEmpty() && !analysisResult.contains("Nothing significant")) {
+                        val findings = parseAnalysisResult(analysisResult)
+                        storeFindings(
+                            findings,
+                            request.npcNames,
+                            request.locationName,
+                            request.relevantLocations.keys.toList(),
+                        )
+                    }
+                    result.complete(null)
+                } catch (e: Exception) {
+                    plugin.logger.severe("Error analyzing conversation significance: ${e.message}")
+                    result.completeExceptionally(e)
+                }
+            }.exceptionally { e ->
+                plugin.logger.severe("Error getting AI response for conversation analysis: ${e.message}")
+                result.completeExceptionally(e)
+                null
+            }
+        return result
+    }
+
+    private fun buildAnalysisPrompt(request: ConversationInformationRequest): List<ConversationMessage> {
+        val locationsDescription =
+            request.relevantLocations.entries.joinToString("\n") { (name, context) ->
+                "- $name: $context"
+            }
+
+        val prompt =
+            """
+            Analyze the following conversation between NPCs.
+            Conversation location: ${request.locationName}
+            NPCs involved: ${request.npcNames.joinToString(", ")}
+
+            Relevant locations with context:
+            $locationsDescription
+
+            Identify significant information that should be:
+            1. Remembered by specific NPCs involved (personal knowledge)
+            2. Spread as rumors throughout specific locations (location-based knowledge)
+            3. Ignored as trivial conversation
+
+            For each finding, specify:
+            ---
+            Type: [PERSONAL or RUMOR]
+            Target: [NPC name or specific location name]
+            Importance: [LOW, MEDIUM, HIGH]
+            Information: [Concise description of what should be remembered]
+            ---
+            If nothing significant occurred, respond with 'Nothing significant.'
+            """.trimIndent()
+
+        val prompts = mutableListOf<ConversationMessage>()
+        prompts.add(ConversationMessage(role = "system", content = prompt))
+        prompts.addAll(request.messages)
+        return prompts
+    }
+
+    private fun parseAnalysisResult(analysis: String): List<ExtractedInformation> {
+        val results = mutableListOf<ExtractedInformation>()
+        val findings = analysis.split("---")
+
+        for (finding in findings) {
+            if (finding.trim().isEmpty()) continue
+
+            val info = mutableMapOf<String, String>()
+            for (line in finding.split("\n")) {
+                val trimmedLine = line.trim()
+                if (trimmedLine.isEmpty()) continue
+                val parts = trimmedLine.split(":", limit = 2)
+                if (parts.size != 2) continue
+                val key = parts[0].trim()
+                val value = parts[1].trim()
+                if (key.equals("Type", ignoreCase = true) ||
+                    key.equals("Target", ignoreCase = true) ||
+                    key.equals("Importance", ignoreCase = true) ||
+                    key.equals("Information", ignoreCase = true)
+                ) {
+                    info[key] = value
+                }
+            }
+
+            val type = info["Type"] ?: continue
+            val target = info["Target"] ?: continue
+            val information = info["Information"] ?: continue
+            val importance = info["Importance"] ?: "MEDIUM"
+
+            val infoType =
+                when {
+                    type.equals("RUMOR", ignoreCase = true) -> ExtractedInformation.InformationType.RUMOR
+                    type.equals("PERSONAL", ignoreCase = true) -> ExtractedInformation.InformationType.PERSONAL
+                    else -> continue
+                }
+            val infoImportance =
+                when {
+                    importance.equals("HIGH", ignoreCase = true) -> ExtractedInformation.Importance.HIGH
+                    importance.equals("LOW", ignoreCase = true) -> ExtractedInformation.Importance.LOW
+                    else -> ExtractedInformation.Importance.MEDIUM
+                }
+
+            results.add(ExtractedInformation(infoType, target, infoImportance, information))
+        }
+        return results
+    }
+
+    /**
+     * Local fallback: stores extracted findings directly via plugin managers.
+     * In bridge mode, this never runs — Go/story-bot handles persistence.
+     */
+    private fun storeFindings(
+        findings: List<ExtractedInformation>,
+        npcNames: List<String>,
+        locationName: String,
+        relevantLocations: List<String>,
+    ) {
+        for (finding in findings) {
+            when (finding.type) {
+                ExtractedInformation.InformationType.RUMOR -> {
+                    when {
+                        // Target is a known location
+                        relevantLocations.any { it.equals(finding.target, ignoreCase = true) } -> {
+                            addLocationRumor(finding.target, finding.information, finding.importance)
+                        }
+                        // Target is "all" or "location"
+                        finding.target.equals("location", ignoreCase = true) ||
+                            finding.target.equals("all", ignoreCase = true) -> {
+                            for (loc in relevantLocations) {
+                                addLocationRumor(loc, finding.information, finding.importance)
+                                propagateToParentLocations(loc, finding.information, finding.importance)
+                            }
+                        }
+                        // Target might be NPC names
+                        else -> {
+                            val targetNpcs = finding.target.split(",\\s*".toRegex())
+                            val validTargetFound = targetNpcs.any { npcNames.contains(it.trim()) }
+                            if (validTargetFound) {
+                                addLocationRumor(locationName, "Rumor: ${finding.information}", finding.importance)
+                            } else {
+                                addLocationRumor(locationName, finding.information, finding.importance)
+                            }
+                        }
+                    }
+                }
+                ExtractedInformation.InformationType.PERSONAL -> {
+                    addPersonalKnowledge(finding.target, finding.information)
+                }
+            }
+        }
+    }
+
+    private fun addLocationRumor(
+        locationName: String,
+        information: String,
+        importance: ExtractedInformation.Importance,
+    ) {
+        if (!plugin.sessionManager.hasActiveSession()) {
+            plugin.logger.info("Location rumor skipped for $locationName — no active session")
+            return
+        }
+
+        val prefix =
+            when (importance) {
+                ExtractedInformation.Importance.HIGH -> "Major news: "
+                ExtractedInformation.Importance.MEDIUM -> "Local rumor: "
+                ExtractedInformation.Importance.LOW -> "Minor gossip: "
+            }
+
+        val significance =
+            when (importance) {
+                ExtractedInformation.Importance.HIGH -> 0.9
+                ExtractedInformation.Importance.MEDIUM -> 0.6
+                ExtractedInformation.Importance.LOW -> 0.3
+            }
+
+        val rumor =
+            Rumor(
+                content = "$prefix$information",
+                gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+                location = locationName,
+                significance = significance,
+            )
+        plugin.rumorManager.addRumor(rumor)
+        plugin.logger.info("Added rumor to $locationName: $information")
+    }
+
+    private fun propagateToParentLocations(
+        locationName: String,
+        information: String,
+        importance: ExtractedInformation.Importance,
+    ) {
+        val location = plugin.locationManager.getLocation(locationName) ?: return
+        location.parentLocationName?.let { parentName ->
+            val reducedImportance =
+                when (importance) {
+                    ExtractedInformation.Importance.HIGH -> ExtractedInformation.Importance.MEDIUM
+                    ExtractedInformation.Importance.MEDIUM -> ExtractedInformation.Importance.LOW
+                    ExtractedInformation.Importance.LOW -> return@let
+                }
+            addLocationRumor(parentName, "Distant rumor: $information", reducedImportance)
+            propagateToParentLocations(parentName, information, reducedImportance)
+        }
+    }
+
+    private fun addPersonalKnowledge(
+        npcName: String,
+        information: String,
+    ) {
+        plugin.npcDataManager.createMemoryForNPC(npcName, information)
+        plugin.logger.info("Added memory to $npcName: $information")
     }
 }
