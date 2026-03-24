@@ -260,13 +260,13 @@ class CommandManager(
                                         sender.sendError("NPC context not found. Please create the NPC first.")
                                         return@CommandExecutor
                                     }
-                                plugin.npcDataManager.saveNPCData(
-                                    npcName,
-                                    NPCData(
-                                        npcName,
-                                        npcContext.role,
-                                        plugin.locationManager.getLocation("Wilderness"),
-                                        npcContext.context,
+                                plugin.storage.saveCharacterData(
+                                    com.canefe.story.api.character.CharacterDTO(
+                                        name = npcName,
+                                        role = npcContext.role,
+                                        context = npcContext.context,
+                                        appearance = "",
+                                        locationName = "Wilderness",
                                     ),
                                 )
                                 plugin.npcDataManager.getNPCData(npcName) ?: run {
@@ -361,7 +361,10 @@ class CommandManager(
                             npcContext.context,
                         )
 
-                    plugin.npcDataManager.saveNPCData(npcName, npcData)
+                    plugin.storage.saveCharacterData(
+                        com.canefe.story.api.character.CharacterDTO
+                            .from(npcData),
+                    )
 
                     if (prompt.isNotEmpty()) {
                         // Inform player we're generating context
@@ -460,7 +463,10 @@ class CommandManager(
 
                                             npcData.appearance = appearance
 
-                                            plugin.npcDataManager.saveNPCData(npcName, npcData)
+                                            plugin.storage.saveCharacterData(
+                                                com.canefe.story.api.character.CharacterDTO
+                                                    .from(npcData),
+                                            )
                                             sender.sendSuccess(
                                                 "AI-generated profile for <yellow>$npcName</yellow> created!",
                                             )
@@ -1500,7 +1506,10 @@ class CommandManager(
                                 )
 
                             npcData.appearance = appearance
-                            plugin.npcDataManager.saveNPCData(plan.name, npcData)
+                            plugin.storage.saveCharacterData(
+                                com.canefe.story.api.character.CharacterDTO
+                                    .from(npcData),
+                            )
 
                             if (debug) {
                                 plugin.logger.info("Generated NPC: ${plan.name} - ${plan.role}")

@@ -25,7 +25,7 @@ class SessionCommand(
         CommandAPICommand("start")
             .executes(
                 CommandExecutor { sender, _ ->
-                    utils.sessionManager.startSession()
+                    utils.story.storage.startSession()
                     sender.sendSuccess("Session started.")
                 },
             )
@@ -34,7 +34,7 @@ class SessionCommand(
         CommandAPICommand("end")
             .executes(
                 CommandExecutor { sender, _ ->
-                    utils.sessionManager.endSession()
+                    utils.story.storage.endSession()
                     sender.sendSuccess("Session ended.")
                 },
             )
@@ -64,7 +64,7 @@ class SessionCommand(
             .executes(
                 CommandExecutor { sender, args ->
                     val text = args.get("text") as String
-                    utils.sessionManager.feed(text)
+                    utils.story.storage.feedSession(text)
                     sender.sendSuccess("Noted: $text")
                 },
             )

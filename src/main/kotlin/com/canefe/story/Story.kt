@@ -39,8 +39,11 @@ import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionManager
+import com.canefe.story.storage.BridgeStorage
+import com.canefe.story.storage.LocalStorage
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
+import com.canefe.story.storage.StoryStorage
 import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
@@ -163,6 +166,10 @@ open class Story :
 
     // Intelligence — abstraction for all LLM/thinking operations
     lateinit var intelligence: StoryIntelligence
+        private set
+
+    // Storage — abstraction for persistent write operations
+    lateinit var storage: StoryStorage
         private set
 
     // Configuration and state
@@ -387,6 +394,17 @@ open class Story :
                 local
             }
 
+        // Initialize storage provider
+        val localStorage = LocalStorage(this)
+        storage =
+            if (configService.bridgeEnabled) {
+                val bridgeStorage = BridgeStorage(this, localStorage, eventBus)
+                Bukkit.getScheduler().runTaskLater(this, Runnable { bridgeStorage.requestCapabilities() }, 40L)
+                bridgeStorage
+            } else {
+                localStorage
+            }
+
         // Initialize perception (unregister old listener on reload)
         if (::perceptionService.isInitialized) {
             perceptionService.stopProximityPublisher()
@@ -403,9 +421,10 @@ open class Story :
         // Initialize character sync from sim
         CharacterSyncService(this).register()
 
+        val mode = if (configService.bridgeEnabled) "Bridge" else "Local"
         logger.info(
             "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
-                ", intelligence: ${if (configService.bridgeEnabled) "Bridge" else "Local"}",
+                ", intelligence: $mode, storage: $mode",
         )
     }
 

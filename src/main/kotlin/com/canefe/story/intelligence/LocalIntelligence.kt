@@ -4,7 +4,6 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.information.Rumor
 import com.canefe.story.util.EssentialsUtils
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
@@ -351,11 +350,6 @@ Generate brief physical reactions for each NPC listed above.""",
         information: String,
         importance: ExtractedInformation.Importance,
     ) {
-        if (!plugin.sessionManager.hasActiveSession()) {
-            plugin.logger.info("Location rumor skipped for $locationName — no active session")
-            return
-        }
-
         val prefix =
             when (importance) {
                 ExtractedInformation.Importance.HIGH -> "Major news: "
@@ -370,15 +364,12 @@ Generate brief physical reactions for each NPC listed above.""",
                 ExtractedInformation.Importance.LOW -> 0.3
             }
 
-        val rumor =
-            Rumor(
-                content = "$prefix$information",
-                gameCreatedAt = plugin.timeService.getCurrentGameTime(),
-                location = locationName,
-                significance = significance,
-            )
-        plugin.rumorManager.addRumor(rumor)
-        plugin.logger.info("Added rumor to $locationName: $information")
+        plugin.storage.addRumor(
+            content = "$prefix$information",
+            location = locationName,
+            significance = significance,
+            gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+        )
     }
 
     private fun propagateToParentLocations(
@@ -403,7 +394,6 @@ Generate brief physical reactions for each NPC listed above.""",
         npcName: String,
         information: String,
     ) {
-        plugin.npcDataManager.createMemoryForNPC(npcName, information)
-        plugin.logger.info("Added memory to $npcName: $information")
+        plugin.storage.createMemory(npcName, information)
     }
 }

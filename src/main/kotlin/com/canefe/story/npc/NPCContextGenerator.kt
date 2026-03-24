@@ -157,7 +157,10 @@ class NPCContextGenerator(
                 )
 
             // Save updated NPC data with existing memories preserved
-            plugin.npcDataManager.saveNPCData(npcName, finalNpcData)
+            plugin.storage.saveCharacterData(
+                com.canefe.story.api.character.CharacterDTO
+                    .from(finalNpcData),
+            )
 
             // For generic NPCs, generate temporary personality while preserving custom context
             val finalContext =

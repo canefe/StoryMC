@@ -165,7 +165,7 @@ class NPCDataMigrator(
 
                     // Update relationships based on memory content
                     memories.forEach { memory ->
-                        plugin.relationshipManager.updateRelationshipFromMemory(memory, npcName)
+                        plugin.storage.updateRelationshipFromMemory(memory, npcName)
                     }
 
                     plugin.logger.info("Successfully migrated $npcName data: created ${memories.size} memories")

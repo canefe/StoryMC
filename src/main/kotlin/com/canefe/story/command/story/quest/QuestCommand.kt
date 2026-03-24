@@ -564,8 +564,8 @@ class QuestCommand(
                     val player = args[0] as Player
                     val questId = args[1] as String
 
-                    val success =
-                        plugin.questManager.assignQuestToPlayer(player, questId)
+                    plugin.storage.assignQuest(player, questId)
+                    val success = true
                     if (success) {
                         val quest = plugin.questManager.getQuest(questId)
                         sender.sendSuccess(
@@ -696,7 +696,7 @@ class QuestCommand(
                     val questId = args[1] as String
 
                     if (player.isOnline) {
-                        plugin.questManager.completeQuest(player.player!!, questId)
+                        plugin.storage.completeQuest(player.player!!, questId)
                     } else {
                         plugin.questManager.completeQuest(player, questId)
                     }
@@ -729,7 +729,7 @@ class QuestCommand(
 
                     if (player.isOnline) {
                         quests.forEach { (quest, _) ->
-                            plugin.questManager.completeQuest(player.player!!, quest.id)
+                            plugin.storage.completeQuest(player.player!!, quest.id)
                         }
                     } else {
                         quests.forEach { (quest, _) ->
@@ -790,7 +790,7 @@ class QuestCommand(
                     val player = args[0] as Player
                     val questId = args[1] as String
 
-                    plugin.questManager.updateObjectiveProgress(player, questId)
+                    plugin.storage.updateQuestProgress(player, questId)
                     sender.sendSuccess(
                         "Updated progress for quest $questId for ${player.name}",
                     )

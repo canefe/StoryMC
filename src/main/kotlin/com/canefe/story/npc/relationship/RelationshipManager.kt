@@ -180,15 +180,9 @@ class RelationshipManager(
                     if (currentTime - lastInteraction > hourInGameTime) {
                         npcLastAmbientInteraction[lastInteractionKey] = currentTime
 
-                        // Create memory about ambient interaction (session-gated)
+                        // Create memory about ambient interaction (session-gated, chains relationship update)
                         val memoryContent = "I spent some time near ${npc2.name} today."
-                        plugin.npcDataManager.createMemoryForNPC(npc1.name, memoryContent, 1.5)
-
-                        // Update relationship based on the memory
-                        val savedMemories = plugin.npcDataManager.loadNPCMemory(npc1.name)
-                        savedMemories.lastOrNull()?.let { memory ->
-                            updateRelationshipFromMemory(memory, npc1.name)
-                        }
+                        plugin.storage.createMemory(npc1.name, memoryContent, 1.5)
                     }
                 }
             }

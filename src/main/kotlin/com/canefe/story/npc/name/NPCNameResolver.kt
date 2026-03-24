@@ -103,7 +103,10 @@ class NPCNameResolver(
                 }
 
             // Save the new specific NPC file
-            plugin.npcDataManager.saveNPCData(canonicalFileName, newNpcData)
+            plugin.storage.saveCharacterData(
+                com.canefe.story.api.character.CharacterDTO
+                    .from(newNpcData),
+            )
 
             // Generate contextual bio for the new specific NPC
             generateContextualBioForNewNPC(newNpcData, existingData)
@@ -394,7 +397,10 @@ class NPCNameResolver(
 
                                 // Save the updated data using the same filename convention as the initial creation
                                 val canonicalFileName = newNpcData.name.replace(" ", "_").lowercase()
-                                plugin.npcDataManager.saveNPCData(canonicalFileName, newNpcData)
+                                plugin.storage.saveCharacterData(
+                                    com.canefe.story.api.character.CharacterDTO
+                                        .from(newNpcData),
+                                )
 
                                 plugin.logger.info("Generated contextual bio for NPC '${newNpcData.name}'")
                             } catch (e: Exception) {

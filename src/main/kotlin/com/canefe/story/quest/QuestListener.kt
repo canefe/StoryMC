@@ -56,10 +56,10 @@ class QuestListener(
                     if (objective.type == ObjectiveType.COLLECT) {
                         // Use our new matcher for complex item targets
                         if (itemMatchesTarget(item, objective.target)) {
-                            plugin.questManager.updateObjectiveProgress(
+                            plugin.storage.updateQuestProgress(
                                 event.player,
                                 questId,
-                                ObjectiveType.COLLECT,
+                                ObjectiveType.COLLECT.name,
                                 objective.target,
                                 item.amount,
                             )
@@ -227,10 +227,10 @@ class QuestListener(
 
         for ((questId, playerQuest) in questEntries) {
             if (playerQuest.status == QuestStatus.IN_PROGRESS) {
-                plugin.questManager.updateObjectiveProgress(
+                plugin.storage.updateQuestProgress(
                     player,
                     questId,
-                    type,
+                    type.name,
                     target,
                 )
             }

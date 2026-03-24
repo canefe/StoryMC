@@ -72,7 +72,7 @@ class CreateLocationCommand(
                                     } else {
                                         "${location.description}\n$newText"
                                     }
-                                commandUtils.locationManager.saveLocation(location)
+                                commandUtils.story.storage.saveLocation(location)
 
                                 player.sendSuccess(
                                     "AI-generated context added to location <gold>'$locationName'</gold>.",
@@ -100,7 +100,7 @@ class CreateLocationCommand(
 
                     // Save initial location (createLocation already saves, but ensure
                     // persisted)
-                    commandUtils.locationManager.saveLocation(location)
+                    commandUtils.story.storage.saveLocation(location)
 
                     sender.sendSuccess(
                         "Location <gold>'$locationName'</gold> created successfully without a set location.",
@@ -136,7 +136,7 @@ class CreateLocationCommand(
                                     } else {
                                         "${location.description}\n$newText"
                                     }
-                                commandUtils.locationManager.saveLocation(location)
+                                commandUtils.story.storage.saveLocation(location)
 
                                 sender.sendSuccess(
                                     "AI-generated context added to location <gold>'$locationName'</gold>.",
