@@ -2,6 +2,7 @@ package com.canefe.story.command.base
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
@@ -261,7 +262,7 @@ class CommandManager(
                                         return@CommandExecutor
                                     }
                                 plugin.storage.saveCharacterData(
-                                    com.canefe.story.api.character.CharacterDTO(
+                                    CharacterDTO(
                                         name = npcName,
                                         role = npcContext.role,
                                         context = npcContext.context,
@@ -362,7 +363,7 @@ class CommandManager(
                         )
 
                     plugin.storage.saveCharacterData(
-                        com.canefe.story.api.character.CharacterDTO
+                        CharacterDTO
                             .from(npcData),
                     )
 
@@ -464,7 +465,7 @@ class CommandManager(
                                             npcData.appearance = appearance
 
                                             plugin.storage.saveCharacterData(
-                                                com.canefe.story.api.character.CharacterDTO
+                                                CharacterDTO
                                                     .from(npcData),
                                             )
                                             sender.sendSuccess(
@@ -1507,7 +1508,7 @@ class CommandManager(
 
                             npcData.appearance = appearance
                             plugin.storage.saveCharacterData(
-                                com.canefe.story.api.character.CharacterDTO
+                                CharacterDTO
                                     .from(npcData),
                             )
 

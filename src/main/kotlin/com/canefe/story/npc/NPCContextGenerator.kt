@@ -2,6 +2,7 @@ package com.canefe.story.npc
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.data.NPCData
 import com.canefe.story.npc.memory.Memory
@@ -158,8 +159,7 @@ class NPCContextGenerator(
 
             // Save updated NPC data with existing memories preserved
             plugin.storage.saveCharacterData(
-                com.canefe.story.api.character.CharacterDTO
-                    .from(finalNpcData),
+                CharacterDTO.from(finalNpcData),
             )
 
             // For generic NPCs, generate temporary personality while preserving custom context

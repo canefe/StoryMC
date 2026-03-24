@@ -2,6 +2,7 @@ package com.canefe.story.npc.name
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.data.NPCData
@@ -104,7 +105,7 @@ class NPCNameResolver(
 
             // Save the new specific NPC file
             plugin.storage.saveCharacterData(
-                com.canefe.story.api.character.CharacterDTO
+                CharacterDTO
                     .from(newNpcData),
             )
 
@@ -398,7 +399,7 @@ class NPCNameResolver(
                                 // Save the updated data using the same filename convention as the initial creation
                                 val canonicalFileName = newNpcData.name.replace(" ", "_").lowercase()
                                 plugin.storage.saveCharacterData(
-                                    com.canefe.story.api.character.CharacterDTO
+                                    CharacterDTO
                                         .from(newNpcData),
                                 )
 
