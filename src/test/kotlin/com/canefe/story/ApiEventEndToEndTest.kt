@@ -6,8 +6,6 @@ import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.event.NPCInteractionListener
-import com.canefe.story.location.data.StoryLocation
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.testutils.waitUntil
@@ -84,25 +82,8 @@ class ApiEventEndToEndTest {
         npcName: String,
         locationName: String,
     ) {
-        val location = StoryLocation(locationName)
-        val npcContext =
-            NPCContext(
-                name = npcName,
-                role = "guard",
-                context = "A town guard.",
-                location = location,
-                avatar = "",
-                memories = emptyList(),
-            )
-        plugin.npcContextGenerator = mockk(relaxed = true)
-        every { plugin.npcContextGenerator.getOrCreateContextForNPC(any<com.canefe.story.api.StoryNPC>()) } returns
-            npcContext
-        every {
-            plugin.npcContextGenerator.getOrCreateContextForNPC(
-                any<com.canefe.story.api.character.Character>(),
-            )
-        } returns
-            npcContext
+        // No-op: NPCContext and npcContextGenerator have been removed.
+        // Location and NPC setup is handled by setupNPCAndPlayer.
     }
 
     private fun mockAIAlwaysReturn(response: String) {

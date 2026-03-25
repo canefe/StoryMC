@@ -192,39 +192,17 @@ class ContextExtractor(
         val npcKeywords = extractKeywords(text, config.minKeywordLength)
         val npcContexts = mutableListOf<NPCContextInfo>()
 
-        val allNPCNames = plugin.characterRegistry.allNPCs().map { it.name }
+        val allNPCRecords = plugin.characterRegistry.allNPCs()
         npcKeywords.forEach { keyword ->
-            allNPCNames.forEach { npcName ->
-                if (npcName.equals(keyword, ignoreCase = true)) {
-                    val npcContext =
-                        net.citizensnpcs.api.CitizensAPI
-                            .getNPCRegistry()
-                            .firstOrNull { it.name.equals(npcName, ignoreCase = true) }
-                            ?.let {
-                                com.canefe.story.npc
-                                    .CitizensStoryNPC(it)
-                            }?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
-                    if (npcContext != null) {
-                        val lastFewMemories =
-                            npcContext.getMemoriesForPrompt(
-                                plugin.timeService,
-                                config.maxRecentMemories,
-                            )
-                        val recentMemoriesString =
-                            if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-                                lastFewMemories
-                            } else {
-                                ""
-                            }
-
-                        npcContexts.add(
-                            NPCContextInfo(
-                                name = npcName,
-                                context = npcContext.context,
-                                recentMemories = recentMemoriesString,
-                            ),
-                        )
-                    }
+            allNPCRecords.forEach { record ->
+                if (record.name.equals(keyword, ignoreCase = true)) {
+                    npcContexts.add(
+                        NPCContextInfo(
+                            name = record.name,
+                            context = record.appearance,
+                            recentMemories = "",
+                        ),
+                    )
                 }
             }
         }

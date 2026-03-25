@@ -22,7 +22,6 @@ import com.canefe.story.intelligence.LocalIntelligence
 import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
-import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.behavior.NPCBehaviorManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
@@ -118,7 +117,6 @@ open class Story :
     lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
 
     lateinit var scheduleManager: ScheduleManager
-    lateinit var npcContextGenerator: NPCContextGenerator
     lateinit var lorebookManager: LoreBookManager
     lateinit var sessionManager: SessionManager
     lateinit var taskManager: TaskManager
@@ -282,7 +280,6 @@ open class Story :
         typingSessionManager = TypingSessionManager(this)
         contextExtractor = ContextExtractor(this)
         audioManager = AudioManager(this)
-        npcContextGenerator = NPCContextGenerator(this)
         // Run character migration and load registry
         if (::characterRegistry.isInitialized) {
             characterRegistry.loadAll()
@@ -308,7 +305,6 @@ open class Story :
         conversationManager =
             ConversationManager(
                 this,
-                npcContextGenerator,
                 npcResponseService,
                 worldInformationManager,
             )
@@ -336,6 +332,20 @@ open class Story :
         val needsSwitch =
             desired != current ||
                 (desired == StorageBackend.MONGODB && !storageFactory.isMongoConnected)
+
+        // Initialize character registry if not yet initialized and MongoDB is available
+        if (!::characterRegistry.isInitialized) {
+            val mongoClient = storageFactory.mongoClient
+            if (mongoClient != null) {
+                characterRegistry =
+                    CharacterRegistry(
+                        MongoCharacterStorage(mongoClient, logger),
+                        MongoFrontendConfigStorage(mongoClient, logger),
+                        logger,
+                    )
+                characterRegistry.loadAll()
+            }
+        }
 
         if (!needsSwitch) return
 

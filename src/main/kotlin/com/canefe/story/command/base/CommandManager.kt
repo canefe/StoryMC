@@ -5,7 +5,6 @@ import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterDTO
-import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
@@ -262,15 +261,7 @@ class CommandManager(
                             }?.let { CitizensStoryNPC(it) }
 
                     // Check if NPC exists in character registry
-                    val record = plugin.characterRegistry.getByName(npcName)
-                    if (record == null) {
-                        // Initialize NPC data if it doesn't exist
-                        val npcContext =
-                            plugin.npcContextGenerator
-                                .getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName)) ?: run {
-                                sender.sendError("NPC context not found. Please create the NPC first.")
-                                return@CommandExecutor
-                            }
+                    if (plugin.characterRegistry.getByName(npcName) == null) {
                         plugin.storage.saveCharacterData(
                             CharacterDTO(
                                 name = npcName,
@@ -359,12 +350,11 @@ class CommandManager(
                             .firstOrNull {
                                 it.name.equals(npcName, ignoreCase = true)
                             }?.let { CitizensStoryNPC(it) }
-                    val npcContext =
-                        plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc ?: StubStoryNPC(npcName))
-                            ?: run {
-                                sender.sendError("NPC context not found. Please create the NPC first.")
-                                return@CommandExecutor
-                            }
+                    // Ensure NPC exists in character registry
+                    if (plugin.characterRegistry.getByName(npcName) == null) {
+                        sender.sendError("NPC not found in character registry. Please create the NPC first.")
+                        return@CommandExecutor
+                    }
 
                     val storyLocation =
                         plugin.locationManager.getLocation(location) ?: run {
@@ -390,16 +380,7 @@ class CommandManager(
                         // Create a system message to instruct the AI
                         val messages: MutableList<ConversationMessage> = ArrayList()
 
-                        // Add General Context and Location context
-                        messages.add(
-                            ConversationMessage(
-                                "system",
-                                plugin.npcContextGenerator
-                                    .getGeneralContexts()
-                                    .joinToString("\n"),
-                            ),
-                        )
-
+                        // Add Location context
                         messages.add(
                             ConversationMessage(
                                 "system",
@@ -476,7 +457,6 @@ class CommandManager(
                                             sender.sendSuccess(
                                                 "AI-generated profile for <yellow>$npcName</yellow> created!",
                                             )
-                                            sender.sendInfo("Role: <yellow>${npcContext.role}</yellow>")
                                             sender.sendInfo(
                                                 "Context summary: <yellow>${
                                                     if (context.length > 50) {
@@ -713,11 +693,10 @@ class CommandManager(
             // Show holograms for the NPCs
             plugin.conversationManager.handleHolograms(conversation, resolvedNpc.name)
             val shouldStream = plugin.config.streamMessages
-            val npcContext =
-                plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc) ?: run {
-                    player.sendError("NPC context not found. Please create the NPC first.")
-                    return
-                }
+            if (plugin.characterRegistry.getByStoryNPC(resolvedNpc) == null) {
+                player.sendError("NPC not found in character registry.")
+                return
+            }
 
             // Get only the messages from the conversation for context
             val recentMessages =
@@ -738,8 +717,8 @@ class CommandManager(
                         conversation.npcNames.joinToString("\n") +
                         "\n===APPEARANCES===\n" +
                         conversation.npcs.joinToString("\n") { npc ->
-                            val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
-                            "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
+                            val npcRecord = plugin.characterRegistry.getByStoryNPC(npc)
+                            "${npc.name}: ${npcRecord?.appearance ?: "No appearance information available."}"
                         } +
                         // We treat players as NPCs for this purpose
                         conversation.players?.joinToString("\n") { playerId ->
@@ -750,11 +729,8 @@ class CommandManager(
                             }
                             val playerName = player.name
                             val nickname = Bukkit.getPlayer(playerName)?.characterName ?: playerName
-                            val playerContext =
-                                plugin.npcContextGenerator.getOrCreateContextForNPC(
-                                    PlayerCharacter.from(player),
-                                )
-                            "$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
+                            val playerRecord = plugin.characterRegistry.getByPlayer(player)
+                            "$nickname: ${playerRecord?.appearance ?: "No appearance information available."}"
                         } +
                         "\n=========================",
                 )
@@ -1200,7 +1176,7 @@ class CommandManager(
         messages.add(
             ConversationMessage(
                 "system",
-                plugin.npcContextGenerator.getGeneralContexts().joinToString("\n"),
+                "", // General contexts removed
             ),
         )
 
@@ -1452,16 +1428,9 @@ class CommandManager(
     ): CompletableFuture<Boolean> {
         val future = CompletableFuture<Boolean>()
 
-        // Create the context for this NPC
-        val npcContext =
-            CitizensAPI
-                .getNPCRegistry()
-                .firstOrNull { it.name.equals(plan.name, ignoreCase = true) }
-                ?.let { CitizensStoryNPC(it) }
-                ?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
-                ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(plan.name))
-
-        if (npcContext == null) {
+        // Check if the NPC exists in character registry
+        val npcRecord = plugin.characterRegistry.getByName(plan.name)
+        if (npcRecord == null) {
             future.complete(false)
             return future
         }
@@ -1481,7 +1450,7 @@ class CommandManager(
         messages.add(
             ConversationMessage(
                 "system",
-                plugin.npcContextGenerator.getGeneralContexts().joinToString("\n"),
+                "", // General contexts removed
             ),
         )
 

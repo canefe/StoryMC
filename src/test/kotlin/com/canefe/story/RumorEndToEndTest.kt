@@ -1,10 +1,9 @@
 package com.canefe.story
 
 import com.canefe.story.command.base.CommandManager
+import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.event.NPCInteractionListener
-import com.canefe.story.location.data.StoryLocation
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.testutils.waitUntil
@@ -76,30 +75,13 @@ class RumorEndToEndTest {
         npcName: String,
         locationName: String,
     ) {
-        val location = StoryLocation(locationName)
-        val npcContext =
-            NPCContext(
-                name = npcName,
-                role = "guard",
-                context = "A town guard.",
-                location = location,
-                avatar = "",
-                memories = emptyList(),
-            )
-        plugin.npcContextGenerator = mockk(relaxed = true)
-        every { plugin.npcContextGenerator.getOrCreateContextForNPC(any<com.canefe.story.api.StoryNPC>()) } returns
-            npcContext
-        every {
-            plugin.npcContextGenerator.getOrCreateContextForNPC(
-                any<com.canefe.story.api.character.Character>(),
-            )
-        } returns
-            npcContext
-        // Recreate ConversationManager so it picks up the mocked npcContextGenerator
+        // StubStoryNPC has no entity, so location falls back to defaultLocationName
+        plugin.configService.defaultLocationName = locationName
+
+        // Recreate ConversationManager with current service mocks
         plugin.conversationManager =
-            com.canefe.story.conversation.ConversationManager(
+            ConversationManager(
                 plugin,
-                plugin.npcContextGenerator,
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )

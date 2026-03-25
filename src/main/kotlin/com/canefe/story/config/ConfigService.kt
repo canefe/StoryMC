@@ -134,7 +134,6 @@ class ConfigService(
 
         try {
             plugin.promptService.reload()
-            plugin.npcContextGenerator.loadConfig()
             plugin.lorebookManager.loadConfig()
             plugin.scheduleManager.reloadSchedules()
             plugin.locationManager.loadAllLocations()
@@ -147,6 +146,10 @@ class ConfigService(
             plugin.relationshipManager.load()
             plugin.sessionManager.load()
             plugin.voiceManager.load()
+            try {
+                plugin.characterRegistry.reload()
+            } catch (_: UninitializedPropertyAccessException) {
+            }
 
             // Reconnect event bus transports (Redis)
             plugin.eventBus.shutdown()

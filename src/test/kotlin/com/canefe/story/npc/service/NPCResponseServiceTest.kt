@@ -1,16 +1,13 @@
 package com.canefe.story.npc.service
 
 import com.canefe.story.Story
-import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterRecord
 import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.Conversation
-import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.StubStoryNPC
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.testutils.makeStoryNpc
@@ -35,7 +32,6 @@ class NPCResponseServiceTest {
     private lateinit var npcResponseService: NPCResponseService
 
     // Mocked dependencies
-    private lateinit var mockNPCContextGenerator: NPCContextGenerator
     private lateinit var mockAIResponseService: AIResponseService
     private lateinit var mockTimeService: TimeService
     private lateinit var mockRelationshipManager: RelationshipManager
@@ -65,13 +61,11 @@ class NPCResponseServiceTest {
         every { Bukkit.getOnlinePlayers() } returns emptyList()
 
         // Initialize mocked dependencies
-        mockNPCContextGenerator = mockk(relaxed = true)
         mockAIResponseService = mockk(relaxed = true)
         mockTimeService = mockk(relaxed = true)
         mockRelationshipManager = mockk(relaxed = true)
 
         // Set up plugin dependencies
-        plugin.npcContextGenerator = mockNPCContextGenerator
         plugin.aiResponseService = mockAIResponseService
         plugin.timeService = mockTimeService
         plugin.relationshipManager = mockRelationshipManager
@@ -260,11 +254,6 @@ class NPCResponseServiceTest {
             every { plugin.characterRegistry.getByName("TestNPC") } returns record
             every { plugin.characterRegistry.getByStoryNPC(any()) } returns record
 
-            val npcContext = mockk<NPCContext>(relaxed = true)
-            every { npcContext.context } returns "Test NPC context"
-            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<StoryNPC>()) } returns npcContext
-            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<Character>()) } returns npcContext
-
             // Mock the conversation summarization to complete successfully
             every {
                 npcResponseService.summarizeConversationForSingleNPC(any(), any<Character>())
@@ -284,11 +273,6 @@ class NPCResponseServiceTest {
             val record = mockk<CharacterRecord>(relaxed = true)
             every { plugin.characterRegistry.getByName("TestNPC") } returns record
             every { plugin.characterRegistry.getByStoryNPC(any()) } returns record
-
-            val npcContext = mockk<NPCContext>(relaxed = true)
-            every { npcContext.context } returns "Test NPC context"
-            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<StoryNPC>()) } returns npcContext
-            every { mockNPCContextGenerator.getOrCreateContextForNPC(any<Character>()) } returns npcContext
 
             // Mock the conversation summarization
             every {
@@ -398,8 +382,6 @@ class NPCResponseServiceTest {
 
             // Mock location manager
             every { plugin.locationManager.getLocation(location) } returns null
-            every { plugin.npcContextGenerator.getGeneralContexts() } returns
-                listOf("General context")
             every { plugin.lorebookManager.findLoresByKeywords(any()) } returns emptyList()
 
             // Act
@@ -421,8 +403,6 @@ class NPCResponseServiceTest {
 
             // Mock location manager
             every { plugin.locationManager.getLocation(location) } returns null
-            every { plugin.npcContextGenerator.getGeneralContexts() } returns
-                listOf("General context")
             every { plugin.lorebookManager.findLoresByKeywords(any()) } returns emptyList()
 
             // Act
@@ -444,8 +424,6 @@ class NPCResponseServiceTest {
 
             // Mock location manager
             every { plugin.locationManager.getLocation(location) } returns null
-            every { plugin.npcContextGenerator.getGeneralContexts() } returns
-                listOf("General context")
             every { plugin.lorebookManager.findLoresByKeywords(any()) } returns emptyList()
 
             // Act

@@ -16,9 +16,25 @@ data class FrontendConfig(
 ) {
     // ── Minecraft convenience accessors ─────────────────────────────────
 
-    val minecraftUuid: UUID? get() = (properties["minecraftUuid"] as? String)?.let { UUID.fromString(it) }
+    val minecraftUuid: UUID? get() =
+        (properties["minecraftUuid"] as? String)?.let {
+            try {
+                UUID.fromString(it)
+            } catch (_: Exception) {
+                null
+            }
+        }
     val citizensNpcId: Int? get() = (properties["citizensNpcId"] as? Number)?.toInt()
-    val citizensUuid: UUID? get() = (properties["citizensUuid"] as? String)?.let { UUID.fromString(it) }
+    val citizensUuid: UUID? get() =
+        (properties["citizensUuid"] as? String)?.let {
+            try {
+                UUID.fromString(it)
+            } catch (
+                _: Exception,
+            ) {
+                null
+            }
+        }
     val avatar: String? get() = properties["avatar"] as? String
     val displayHandle: String? get() = properties["displayHandle"] as? String
     val randomPathing: Boolean get() = properties["randomPathing"] as? Boolean ?: true

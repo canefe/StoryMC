@@ -6,7 +6,6 @@ import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.CharacterSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.*
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
@@ -160,7 +159,6 @@ class NPCMessageService(
         message: String,
         npc: StoryNPC,
         color: String? = null,
-        npcContext: NPCContext? = null,
         streaming: Boolean = false,
         shouldBroadcast: Boolean = true,
         voicePending: Boolean = false,
@@ -184,16 +182,17 @@ class NPCMessageService(
                     }
             }
 
-        // Get the context if not provided
-        val context = npcContext ?: plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
+        // Get character record and avatar
+        val record = plugin.characterRegistry.getByStoryNPC(npc)
+        val avatar = record?.let { plugin.characterRegistry.getMinecraftConfig(it.id)?.avatar ?: "" } ?: ""
 
         // Format the message
         val parsedMessages =
             formatMessage(
                 message = message,
-                name = npcContext?.name ?: npc.name,
+                name = record?.name ?: npc.name,
                 color = color,
-                avatar = context?.avatar,
+                avatar = avatar,
                 characterId = if (streaming && npc.entity != null) npc.entity!!.uniqueId else null,
                 voicePending = voicePending,
             )
@@ -319,14 +318,12 @@ class NPCMessageService(
         message: String,
         npc: StoryNPC,
         color: String? = null,
-        npcContext: NPCContext? = null,
         voicePending: Boolean = false,
     ) {
         broadcastNPCMessage(
             message = message,
             npc = npc,
             color = color,
-            npcContext = npcContext,
             streaming = true,
             voicePending = voicePending,
         )
@@ -348,8 +345,9 @@ class NPCMessageService(
 
         val playerName = player.characterName
 
-        // Get player context for avatar support (using NPC data system for players)
-        val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
+        // Get player avatar from character registry
+        val playerRecord = plugin.characterRegistry.getByPlayer(player)
+        val playerAvatar = playerRecord?.let { plugin.characterRegistry.getMinecraftConfig(it.id)?.avatar ?: "" } ?: ""
 
         // Normal chat format
         val parsedMessages =
@@ -357,7 +355,7 @@ class NPCMessageService(
                 message = message,
                 name = playerName,
                 color = color,
-                avatar = playerContext?.avatar, // Add avatar support for players
+                avatar = playerAvatar,
             )
 
         // Speech bubble format
@@ -366,7 +364,7 @@ class NPCMessageService(
                 message = message,
                 name = playerName,
                 color = color,
-                avatar = playerContext?.avatar, // Add avatar support for players
+                avatar = playerAvatar,
                 characterId = player.uniqueId,
             )
 
@@ -402,7 +400,7 @@ class NPCMessageService(
                                     message = message,
                                     name = playerName,
                                     color = color,
-                                    avatar = playerContext?.avatar,
+                                    avatar = playerAvatar,
                                     isClientPlayer = true,
                                 )
                             } else {
@@ -455,8 +453,8 @@ class NPCMessageService(
         }
 
         // First try the fast approach with tags and pronouns
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
-        val contextStr = npcContext?.context ?: ""
+        val record = plugin.characterRegistry.getByStoryNPC(npc)
+        val contextStr = record?.appearance ?: ""
 
         // Check for explicit gender tag
         val genderTagRegex = Regex("GENDER:\\s*(\\w+)", RegexOption.IGNORE_CASE)

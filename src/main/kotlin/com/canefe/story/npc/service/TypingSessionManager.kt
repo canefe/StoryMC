@@ -2,7 +2,7 @@ package com.canefe.story.npc.service
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.npc.data.NPCContext
+import com.canefe.story.api.character.CharacterRecord
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import java.util.*
@@ -27,7 +27,7 @@ class TypingSessionManager(
      */
     inner class TypingSession(
         val npc: StoryNPC,
-        val npcContext: NPCContext?,
+        val npcContext: CharacterRecord?,
         val fullText: String,
         val typingSpeed: Int = 4, // Characters per tick
         val location: Location = npc.entity!!.location,
@@ -77,7 +77,7 @@ class TypingSessionManager(
      */
     fun startTyping(
         npc: StoryNPC,
-        npcContext: NPCContext?,
+        npcContext: CharacterRecord?,
         fullText: String,
         messageFormat: String = "<npc_text>",
         typingSpeed: Int = 2,

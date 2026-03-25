@@ -9,8 +9,6 @@ import com.canefe.story.command.story.quest.QuestCommand
 import com.canefe.story.command.story.session.SessionCommand
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.npc.CitizensStoryNPC
-import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
@@ -19,7 +17,6 @@ import dev.jorel.commandapi.arguments.GreedyStringArgument
 import dev.jorel.commandapi.arguments.PlayerArgument
 import dev.jorel.commandapi.arguments.TextArgument
 import dev.jorel.commandapi.executors.CommandExecutor
-import net.citizensnpcs.api.CitizensAPI
 import kotlin.collections.get
 import kotlin.compareTo
 import kotlin.text.get
@@ -415,20 +412,8 @@ class StoryCommand(
         npcName: String,
         npcContexts: MutableList<String>,
     ) {
-        val npcContext =
-            CitizensAPI
-                .getNPCRegistry()
-                .firstOrNull { it.name.equals(npcName, ignoreCase = true) }
-                ?.let { CitizensStoryNPC(it) }
-                ?.let { plugin.npcContextGenerator.getOrCreateContextForNPC(it) }
-                ?: plugin.npcContextGenerator.getOrCreateContextForNPC(StubStoryNPC(npcName))
-        val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 5)
-        if (npcContext != null) {
-            npcContexts.add("$npcName's context: ${npcContext.context} ")
-            if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-                npcContexts.add("$npcName's recent memories: $lastFewMemories")
-            }
-        }
+        val record = plugin.characterRegistry.getByName(npcName) ?: return
+        npcContexts.add("$npcName's appearance: ${record.appearance}")
     }
 
     // Helper function to split messages

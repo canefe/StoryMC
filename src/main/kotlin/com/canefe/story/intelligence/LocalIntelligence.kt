@@ -2,7 +2,6 @@ package com.canefe.story.intelligence
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.util.*
@@ -20,8 +19,6 @@ class LocalIntelligence(
         npc: StoryNPC,
         conversation: Conversation,
     ): CompletableFuture<String> {
-        val npcContextGenerator = plugin.npcContextGenerator
-
         // Get only the messages from the conversation for context
         val recentMessages = conversation.history.map { it.content }
 
@@ -30,14 +27,14 @@ class LocalIntelligence(
             mutableListOf(
                 "\n===APPEARANCES===\n" +
                     conversation.npcs.joinToString("\n") { convNpc ->
-                        val ctx = npcContextGenerator.getOrCreateContextForNPC(convNpc)
-                        "${convNpc.name}: ${ctx?.appearance ?: "No appearance information available."}"
+                        val record = plugin.characterRegistry.getByStoryNPC(convNpc)
+                        "${convNpc.name}: ${record?.appearance ?: "No appearance information available."}"
                     } +
                     conversation.players.joinToString("\n") { playerId ->
                         val player = Bukkit.getPlayer(playerId) ?: return@joinToString ""
                         val nickname = player.characterName
-                        val ctx = npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
-                        "$nickname: ${ctx?.appearance ?: "No appearance information available."}"
+                        val record = plugin.characterRegistry.getByPlayer(player)
+                        "$nickname: ${record?.appearance ?: "No appearance information available."}"
                     } +
                     "\n=========================",
                 "====CURRENT CONVERSATION====\n" +
@@ -88,10 +85,9 @@ class LocalIntelligence(
 
         val npcDescriptions =
             reactingNPCs.joinToString("\n") { npc ->
-                val context = plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
-                val role = context?.role ?: "unknown"
-                val personality = context?.context?.take(150) ?: "no details"
-                "- ${npc.name} ($role): $personality"
+                val record = plugin.characterRegistry.getByStoryNPC(npc)
+                val personality = record?.appearance?.take(150) ?: "no details"
+                "- ${npc.name}: $personality"
             }
 
         val recentHistory =

@@ -45,7 +45,6 @@ class MessageHistorySummarizationTest {
         plugin.commandManager = mockk(relaxed = true)
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
-        plugin.npcContextGenerator = mockk(relaxed = true)
         plugin.sessionManager = mockk(relaxed = true)
         plugin.aiResponseService = mockk(relaxed = true)
 
@@ -56,7 +55,6 @@ class MessageHistorySummarizationTest {
         plugin.conversationManager =
             ConversationManager(
                 plugin,
-                plugin.npcContextGenerator,
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )

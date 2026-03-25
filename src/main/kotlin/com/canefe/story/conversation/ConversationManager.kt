@@ -8,7 +8,6 @@ import com.canefe.story.audio.VoiceManager
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
-import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.util.NPCUtils
@@ -23,7 +22,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ConversationManager(
     private val plugin: Story,
-    private val npcContextGenerator: NPCContextGenerator,
     private val npcResponseService: NPCResponseService,
     private val worldInformationManager: WorldInformationManager,
 ) {
@@ -301,7 +299,9 @@ class ConversationManager(
             val conversationLocation =
                 conversation.npcs.firstOrNull()?.let { npc ->
                     // Get the actual physical location where the NPC currently is
-                    npcContextGenerator.getOrCreateContextForNPC(npc)?.location?.name
+                    npc.entity?.location?.let { loc ->
+                        plugin.locationManager.getLocationByPosition2D(loc)?.name
+                    }
                 } ?: plugin.configService.defaultLocationName
 
             // Create conversation information source
@@ -837,11 +837,9 @@ class ConversationManager(
      */
     private fun sendThinkingIndicator(npc: StoryNPC) {
         if (!npc.isSpawned || npc.entity == null) return
-        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc)
         plugin.npcMessageService.broadcastNPCStreamMessage(
             message = "*thinking...*",
             npc = npc,
-            npcContext = npcContext,
         )
     }
 
@@ -1008,14 +1006,12 @@ class ConversationManager(
 
         // Add to history and broadcast
         if (addToHistory) conversation.addNPCMessage(npc, message)
-        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc)
         val voiceWillFollow = plugin.voiceManager.willGenerateVoice(npc)
 
         // Send streaming message first (triggers bubble on client)
         plugin.npcMessageService.broadcastNPCStreamMessage(
             message = message,
             npc = npc,
-            npcContext = npcContext,
             voicePending = voiceWillFollow,
         )
         // Send the final non-streaming message after a short delay
@@ -1026,7 +1022,6 @@ class ConversationManager(
                 plugin.npcMessageService.broadcastNPCMessage(
                     message = message,
                     npc = npc,
-                    npcContext = npcContext,
                 )
             },
             1L, // 1 tick delay

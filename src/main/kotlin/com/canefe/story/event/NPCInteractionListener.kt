@@ -2,7 +2,6 @@ package com.canefe.story.event
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.ConversationJoinEvent
 import com.canefe.story.api.event.ConversationStartEvent
 import com.canefe.story.api.event.NPCParticipant
@@ -163,9 +162,9 @@ class NPCInteractionListener(
     ) {
         val playerCharacterName = player.characterName
 
-        // Get player context
-        val playerContext =
-            plugin.npcContextGenerator.getOrCreateContextForNPC(PlayerCharacter.from(player))
+        // Get player record from character registry
+        val playerRecord =
+            plugin.characterRegistry.getByPlayer(player)
                 ?: run {
                     player.sendError(
                         "Could not find character data for $playerCharacterName.",
@@ -193,20 +192,16 @@ class NPCInteractionListener(
                     conversation.npcNames.joinToString("\n") +
                     "\n===APPEARANCES===\n" +
                     conversation.npcs.joinToString("\n") { npc ->
-                        val npcContext =
-                            plugin.npcContextGenerator.getOrCreateContextForNPC(npc)
-                        "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
+                        val record = plugin.characterRegistry.getByStoryNPC(npc)
+                        "${npc.name}: ${record?.appearance ?: "No appearance information available."}"
                     } +
                     // We treat players as NPCs for this purpose
                     conversation.players.joinToString("\n") { playerId ->
                         val p = Bukkit.getPlayer(playerId)
                         if (p == null) return@joinToString ""
-                        val pContext =
-                            plugin.npcContextGenerator.getOrCreateContextForNPC(
-                                PlayerCharacter.from(p),
-                            )
+                        val pRecord = plugin.characterRegistry.getByPlayer(p)
                         val nickname = p.characterName
-                        "$nickname: ${pContext?.appearance ?: "No appearance information available."}"
+                        "$nickname: ${pRecord?.appearance ?: "No appearance information available."}"
                     } +
                     "\n=========================",
             )
@@ -230,7 +225,7 @@ class NPCInteractionListener(
         responseContext = responseContext + talkAsNpcPrompt
 
         // Generate AI response using player-specific method
-        generatePlayerAIResponse(player, playerCharacterName, playerContext, responseContext)
+        generatePlayerAIResponse(player, playerCharacterName, playerRecord, responseContext)
             .thenApply { response ->
                 // Broadcast the fleshed-out response as if it's from the player
                 val shouldStream = plugin.config.streamMessages
@@ -349,7 +344,7 @@ class NPCInteractionListener(
     private fun generatePlayerAIResponse(
         player: Player,
         characterName: String,
-        playerContext: com.canefe.story.npc.data.NPCContext,
+        playerRecord: com.canefe.story.api.character.CharacterRecord,
         responseContext: List<String>,
     ): java.util.concurrent.CompletableFuture<String> {
         val prompts: MutableList<ConversationMessage> = ArrayList()
@@ -362,23 +357,11 @@ class NPCInteractionListener(
             ),
         )
 
-        // Add location context
-        val location = playerContext.location
-        if (location != null) {
-            prompts.add(
-                ConversationMessage(
-                    "system",
-                    "===HOME(CONTEXT) LOCATION===\n" +
-                        location.getContextForPrompt(plugin.locationManager),
-                ),
-            )
-        }
-
         // Check current location
         val entityPos = player.location
         val actualLocation = plugin.locationManager.getLocationByPosition2D(entityPos, 150.0)
 
-        if (actualLocation != null && location != null && location.name != actualLocation.name) {
+        if (actualLocation != null) {
             val locationInfo =
                 "===CURRENT LOCATION===\n" +
                     "You are currently physically at ${actualLocation.name}.\n" +
@@ -406,41 +389,15 @@ class NPCInteractionListener(
             )
         }
 
-        // Add character information
-        prompts.add(
-            ConversationMessage(
-                "system",
-                "===CHARACTER INFORMATION===\n" + playerContext.context,
-            ),
-        )
-
         // Add appearance information if available
-        if (playerContext.appearance.isNotEmpty()) {
+        if (playerRecord.appearance.isNotEmpty()) {
             prompts.add(
                 ConversationMessage(
                     "system",
-                    "===PHYSICAL APPEARANCE===\n" + playerContext.appearance,
+                    "===PHYSICAL APPEARANCE===\n" + playerRecord.appearance,
                 ),
             )
         }
-
-        // Add memories
-        playerContext.getMemoriesForPrompt(plugin.timeService).let { memories ->
-            if (memories.isNotEmpty()) {
-                prompts.add(ConversationMessage("system", "===MEMORY===\n$memories"))
-            }
-        }
-
-        // Add general instructions
-        prompts.add(ConversationMessage("system", "===INSTRUCTIONS===\n"))
-        prompts.add(
-            ConversationMessage(
-                "system",
-                plugin.npcContextGenerator
-                    .getGeneralContexts()
-                    .joinToString(separator = "\n"),
-            ),
-        )
 
         // Include current time
         prompts.add(

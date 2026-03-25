@@ -381,11 +381,10 @@ interface StoryAPI {
         ): CompletableFuture<String> {
             val npc = character.npc
             val conversation = instance.conversationManager.getConversation(npc)
-            val npcContext = instance.npcContextGenerator.getOrCreateContextForNPC(npc)
 
             if (!llm) {
                 // Raw broadcast, no LLM
-                instance.npcMessageService.broadcastNPCMessage(message, npc, npcContext = npcContext)
+                instance.npcMessageService.broadcastNPCMessage(message, npc)
                 conversation?.addNPCMessage(npc, message)
                 return CompletableFuture.completedFuture(message)
             }
@@ -410,7 +409,7 @@ interface StoryAPI {
                     isConversation = conversation != null,
                 ).thenApply { response ->
                     val finalMessage = response?.trim() ?: message
-                    instance.npcMessageService.broadcastNPCMessage(finalMessage, npc, npcContext = npcContext)
+                    instance.npcMessageService.broadcastNPCMessage(finalMessage, npc)
                     conversation?.addNPCMessage(npc, finalMessage)
                     finalMessage
                 }

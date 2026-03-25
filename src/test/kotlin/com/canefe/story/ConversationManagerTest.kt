@@ -43,7 +43,6 @@ class ConversationManagerTest {
         // Replace systems we will observe with mocks
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
-        plugin.npcContextGenerator = mockk(relaxed = true)
         plugin.sessionManager = mockk(relaxed = true)
         plugin.skillManager = mockk(relaxed = true)
         plugin.characterRegistry = mockk(relaxed = true)
@@ -51,7 +50,6 @@ class ConversationManagerTest {
         plugin.conversationManager =
             ConversationManager(
                 plugin,
-                plugin.npcContextGenerator,
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )

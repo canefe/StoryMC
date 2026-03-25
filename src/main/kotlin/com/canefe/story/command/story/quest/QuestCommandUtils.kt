@@ -1,7 +1,6 @@
 package com.canefe.story.command.story.quest
 
 import com.canefe.story.Story
-import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.command.base.CommandComponentUtils
 import com.canefe.story.location.LocationManager
 import com.canefe.story.quest.QuestStatus
@@ -177,58 +176,10 @@ class QuestCommandUtils {
             player.sendMessage(story.miniMessage.deserialize("<red>Error: Target player has no name!"))
             return
         }
-        // Get memories for the target player
-        val contextPlayer = (target as? Player) ?: player
-        val contextResult =
-            story.npcContextGenerator.getOrCreateContextForNPC(
-                PlayerCharacter.from(contextPlayer),
-            )
-        val memories =
-            contextResult?.memories?.let { memList ->
-                val memoryList = ArrayList(memList)
-                memoryList.sortWith { m1, m2 ->
-                    m2.gameCreatedAt.compareTo(m1.gameCreatedAt) // Sort by creation time, newest first
-                }
-                memoryList
-            }
-
-        if (memories == null) {
-            player.sendMessage(story.miniMessage.deserialize("<red>Error: No memories found for ${target.name}"))
-            return
-        }
-
-        if (memories.isEmpty()) {
-            val noMemoriesPage =
-                story.miniMessage.deserialize("<gold>No Memories Found</gold>\n\n<gray>You have no recorded memories.")
-            meta.addPages(noMemoriesPage)
-        } else {
-            var memoryIndex = 1
-            memories.forEach { memory ->
-                // get cur page index
-                var pageIndex = meta.pages().size
-                if (pageIndex == 0) {
-                    meta.addPages(
-                        story.miniMessage.deserialize("<#8e44ad>Memory</#8e44ad>\n"),
-                    ) // Ensure we start with at least one page
-                    pageIndex = 1
-                }
-                // Add memory title
-                meta.page(
-                    pageIndex,
-                    story.miniMessage.deserialize(
-                        "<#8e44ad>Memory</#8e44ad> <gray><i>(${memory.getElapsedTime(story.timeService)} ago)\n\n",
-                    ),
-                )
-                memoryIndex = memoryIndex + 1
-
-                splitIntoPages(memory.content).forEach { page ->
-                    val content = meta.page(pageIndex).append(Component.text(page))
-                    meta.page(pageIndex, content)
-                    pageIndex = pageIndex + 1
-                    meta.addPages(Component.text("\n\n")) // Add empty page to continue
-                }
-            }
-        }
+        // Memories are now stored externally (not Kotlin's concern)
+        val noMemoriesPage =
+            story.miniMessage.deserialize("<gold>No Memories Found</gold>\n\n<gray>Memories are managed externally.")
+        meta.addPages(noMemoriesPage)
 
         // Set the metadata back to the book
         book.itemMeta = meta

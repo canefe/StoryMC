@@ -4,11 +4,10 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
+import com.canefe.story.api.character.CharacterRecord
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.npc.StubStoryNPC
-import com.canefe.story.npc.data.NPCContext
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.util.*
 import com.google.gson.JsonObject
@@ -23,9 +22,6 @@ import kotlin.math.min
 class NPCResponseService(
     private val plugin: Story,
 ) {
-    // generate get() reference to plugin.npcContextGenerator
-    private val contextService = plugin.npcContextGenerator
-
     fun generateNPCResponse(
         npc: StoryNPC? = null,
         responseContext: List<String>,
@@ -45,14 +41,14 @@ class NPCResponseService(
                 npc?.name ?: "Unknown"
             }
 
-        // Get NPC context - this might trigger name resolution and NPC replacement
-        val npcContext =
+        // Get character record from registry
+        val record: CharacterRecord? =
             if (isPlayerCharacter && player != null) {
-                contextService.getOrCreateContextForNPC(PlayerCharacter.from(player))
+                plugin.characterRegistry.getByPlayer(player)
             } else if (npc != null) {
-                contextService.getOrCreateContextForNPC(npc)
+                plugin.characterRegistry.getByStoryNPC(npc)
             } else {
-                contextService.getOrCreateContextForNPC(StubStoryNPC(originalCharName))
+                plugin.characterRegistry.getByName(originalCharName)
             }
 
         // Check if NPC was replaced during context generation
@@ -65,12 +61,10 @@ class NPCResponseService(
             if (conversation != null) {
                 // Check if the original NPC is still in the conversation
                 if (!conversation.hasNPC(npc)) {
-                    // The NPC was replaced, find the new one by looking for NPCs with similar
-                    // context
+                    // The NPC was replaced, find the new one by looking for NPCs with similar name
                     val newNPC =
                         conversation.npcs.find { conversationNPC ->
-                            // Try to match by canonical name if available in context
-                            npcContext?.let { context -> conversationNPC.name == context.name }
+                            record?.let { rec -> conversationNPC.name == rec.name }
                                 ?: false
                         }
 
@@ -80,9 +74,6 @@ class NPCResponseService(
                         plugin.logger.info(
                             "NPC replacement detected: using ${newNPC.name} instead of ${npc.name}",
                         )
-
-                        // Refresh the context for the new NPC to get updated bio if generated
-                        contextService.getOrCreateContextForNPC(newNPC)
                     } else {
                         // If we can't find a replacement, the conversation is probably broken
                         plugin.logger.warning(
@@ -105,18 +96,6 @@ class NPCResponseService(
         )
 
         // Add location context with clear section header
-        val location = npcContext?.location
-
-        if (location != null) {
-            prompts.add(
-                ConversationMessage(
-                    "system",
-                    "===HOME(CONTEXT) LOCATION===\n" +
-                        location.getContextForPrompt(plugin.locationManager),
-                ),
-            )
-        }
-
         val entityPos =
             if (isPlayerCharacter) {
                 player.location
@@ -129,46 +108,12 @@ class NPCResponseService(
         // Check if NPC is spawned to determine actual location
         if (entityPos != null) {
             val actualLocation = plugin.locationManager.getLocationByPosition2D(entityPos, 150.0)
-
-            // If actual location exists and differs from context location
-            if (actualLocation != null && location != null) {
-                // Check if they're exactly the same location
-                val exactSameLocation = (location.name == actualLocation.name)
-
-                // If not the exact same location
-                if (!exactSameLocation) {
-                    // Check if they share the same parent location
-                    val sameParentLocation =
-                        (
-                            location.hasParent() &&
-                                actualLocation.hasParent() &&
-                                location.parentLocationName ==
-                                actualLocation.parentLocationName
-                        ) ||
-                            (
-                                !location.hasParent() &&
-                                    actualLocation.parentLocationName == location.name
-                            )
-
-                    // Add current location information with appropriate detail level
-                    val locationInfo =
-                        if (sameParentLocation) {
-                            // Only include this specific sublocation's context, not parent
-                            // context
-                            "===CURRENT SUBLOCATION===\n" +
-                                "You are currently at ${actualLocation.name} (within ${actualLocation.parentLocationName}).\n" +
-                                "Sublocation details:\n" +
-                                actualLocation.description
-                        } else {
-                            // Include full context (with parent context) for completely
-                            // different locations
-                            "===CURRENT LOCATION===\n" +
-                                "You are currently physically at ${actualLocation.name}.\n" +
-                                actualLocation.getContextForPrompt(plugin.locationManager)
-                        }
-
-                    prompts.add(ConversationMessage("system", locationInfo))
-                }
+            if (actualLocation != null) {
+                val locationInfo =
+                    "===CURRENT LOCATION===\n" +
+                        "You are currently physically at ${actualLocation.name}.\n" +
+                        actualLocation.getContextForPrompt(plugin.locationManager)
+                prompts.add(ConversationMessage("system", locationInfo))
             }
         }
 
@@ -204,32 +149,12 @@ class NPCResponseService(
             )
         }
 
-        // Add the NPC context with clear section headers
-        if (npcContext != null) {
+        // Add appearance information if available
+        if (record != null && record.appearance.isNotEmpty()) {
             prompts.add(
                 ConversationMessage(
                     "system",
-                    "===CHARACTER INFORMATION===\n" + npcContext.context,
-                ),
-            )
-
-            // Add appearance information if available
-            if (npcContext.appearance.isNotEmpty()) {
-                prompts.add(
-                    ConversationMessage(
-                        "system",
-                        "===PHYSICAL APPEARANCE===\n" + npcContext.appearance,
-                    ),
-                )
-            }
-        }
-
-        // Finally, add NPCs memories with clear section header
-        npcContext?.getMemoriesForPrompt(plugin.timeService)?.let { memories ->
-            prompts.add(
-                ConversationMessage(
-                    "system",
-                    "===MEMORY===\n" + memories,
+                    "===PHYSICAL APPEARANCE===\n" + record.appearance,
                 ),
             )
         }
@@ -251,7 +176,7 @@ class NPCResponseService(
             prompts.add(
                 ConversationMessage(
                     "system",
-                    contextService.getGeneralContexts().joinToString(separator = "\n"),
+                    "", // General contexts removed
                 ),
             )
         }
@@ -280,12 +205,10 @@ class NPCResponseService(
                     plugin.npcMessageService.broadcastNPCStreamMessage(
                         finalResponse,
                         npc,
-                        npcContext = npcContext,
                     )
                     plugin.npcMessageService.broadcastNPCMessage(
                         finalResponse,
                         npc,
-                        npcContext = npcContext,
                     )
                 } else if (player != null) {
                     // Send to the player character
@@ -310,7 +233,7 @@ class NPCResponseService(
      */
     fun generateNPCResponseWithTypingEffect(
         npc: StoryNPC,
-        npcContext: NPCContext?,
+        npcRecord: CharacterRecord?,
         responseContext: List<String>,
         typingSpeed: Int = 8,
         radius: Double = plugin.config.chatRadius,
@@ -322,7 +245,7 @@ class NPCResponseService(
             // Start the typing effect for this NPC
             plugin.typingSessionManager.startTyping(
                 npc = npc,
-                npcContext = npcContext,
+                npcContext = npcRecord,
                 fullText = response,
                 typingSpeed = typingSpeed,
                 radius = radius,
@@ -335,16 +258,13 @@ class NPCResponseService(
                 .runTaskLater(
                     plugin,
                     Runnable {
-                        val npcContext = contextService.getOrCreateContextForNPC(npc)
                         plugin.npcMessageService.broadcastNPCStreamMessage(
                             response,
                             npc,
-                            npcContext = npcContext,
                         )
                         plugin.npcMessageService.broadcastNPCMessage(
                             response,
                             npc,
-                            npcContext = npcContext,
                         )
 
                         // remove holograms after 3 seconds
@@ -519,7 +439,6 @@ class NPCResponseService(
         plugin.npcMessageService.broadcastNPCMessage(
             response,
             npc,
-            npcContext = contextService.getOrCreateContextForNPC(npc),
         )
 
         return CompletableFuture.completedFuture(response)
@@ -918,9 +837,9 @@ class NPCResponseService(
         )
 
         // Second message: NPC context from data
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(character)?.context
-        if (npcContext != null) {
-            syntheticConversation.add(ConversationMessage("system", npcContext))
+        val characterRecord = plugin.characterRegistry.getByName(characterName)
+        if (characterRecord != null) {
+            syntheticConversation.add(ConversationMessage("system", characterRecord.appearance))
         }
 
         // Use PromptService to get the NPC memory generation prompt
@@ -969,7 +888,7 @@ class NPCResponseService(
         messages.add(
             ConversationMessage(
                 "system",
-                plugin.npcContextGenerator.getGeneralContexts().joinToString("\n"),
+                "", // General contexts removed
             ),
         )
 

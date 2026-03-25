@@ -19,5 +19,11 @@ data class CharacterRecord(
     val knowledgeCategories: List<String> = emptyList(),
 ) {
     @Serializable
-    enum class CharacterType { NPC, PLAYER }
+    enum class CharacterType {
+        @kotlinx.serialization.SerialName("npc")
+        NPC,
+
+        @kotlinx.serialization.SerialName("player")
+        PLAYER,
+    }
 }

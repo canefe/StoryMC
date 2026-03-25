@@ -274,15 +274,15 @@ class SkillCheckService(
 
         val messages = mutableListOf<ConversationMessage>()
 
-        // Add character context
-        val characterContext = plugin.npcContextGenerator.getOrCreateContextForNPC(result.actor)
-        if (characterContext != null) {
+        // Add character context from character registry
+        val record = plugin.characterRegistry.getByName(result.actor.name)
+        if (record != null) {
             messages.add(
                 ConversationMessage(
                     "system",
                     "You are roleplaying as ${result.actor.name}.\n" +
-                        "===CHARACTER===\n${characterContext.context}\n" +
-                        "===APPEARANCE===\n${characterContext.appearance}",
+                        "===CHARACTER===\n\n" +
+                        "===APPEARANCE===\n${record.appearance}",
                 ),
             )
         }
