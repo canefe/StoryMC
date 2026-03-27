@@ -115,7 +115,7 @@ dependencies {
 
     // HTTP Client
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
