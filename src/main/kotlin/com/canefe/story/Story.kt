@@ -36,11 +36,8 @@ import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionManager
-import com.canefe.story.storage.BridgeStorage
-import com.canefe.story.storage.LocalStorage
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
-import com.canefe.story.storage.StoryStorage
 import com.canefe.story.storage.mongo.MongoCharacterStorage
 import com.canefe.story.storage.mongo.MongoFrontendConfigStorage
 import com.canefe.story.task.TaskManager
@@ -155,8 +152,8 @@ open class Story :
     lateinit var intelligence: StoryIntelligence
         private set
 
-    // Storage — abstraction for persistent write operations
-    lateinit var storage: StoryStorage
+    // Domain events — emits intents to Go orchestrator instead of direct storage writes
+    lateinit var domainEvents: DomainEventEmitter
         private set
 
     // Character registry — central lookup for character identity
@@ -397,6 +394,10 @@ open class Story :
         eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
         eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
         eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+        eventBus.on<QuestAssignIntent> { IntentExecutor.executeQuestAssignIntent(this, it) }
+        eventBus.on<QuestUpdateIntent> { IntentExecutor.executeQuestUpdateIntent(this, it) }
+        eventBus.on<QuestCompleteIntent> { IntentExecutor.executeQuestCompleteIntent(this, it) }
+        eventBus.on<CharacterUpdateIntent> { IntentExecutor.executeCharacterUpdateIntent(this, it) }
 
         // Initialize intelligence provider
         val local = LocalIntelligence(this)
@@ -409,16 +410,8 @@ open class Story :
                 local
             }
 
-        // Initialize storage provider
-        val localStorage = LocalStorage(this)
-        storage =
-            if (configService.bridgeEnabled) {
-                val bridgeStorage = BridgeStorage(this, localStorage, eventBus)
-                Bukkit.getScheduler().runTaskLater(this, Runnable { bridgeStorage.requestCapabilities() }, 40L)
-                bridgeStorage
-            } else {
-                localStorage
-            }
+        // Initialize domain event emitter (replaces storage layer)
+        domainEvents = DomainEventEmitter(eventBus, logger, configService.bridgeEnabled)
 
         // Initialize perception (unregister old listener on reload)
         if (::perceptionService.isInitialized) {
@@ -439,7 +432,7 @@ open class Story :
         val mode = if (configService.bridgeEnabled) "Bridge" else "Local"
         logger.info(
             "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
-                ", intelligence: $mode, storage: $mode",
+                ", intelligence: $mode",
         )
     }
 

@@ -25,7 +25,7 @@ class SessionCommand(
         CommandAPICommand("start")
             .executes(
                 CommandExecutor { sender, _ ->
-                    utils.story.storage.startSession()
+                    plugin.sessionManager.startSession()
                     sender.sendSuccess("Session started.")
                 },
             )
@@ -34,7 +34,7 @@ class SessionCommand(
         CommandAPICommand("end")
             .executes(
                 CommandExecutor { sender, _ ->
-                    utils.story.storage.endSession()
+                    plugin.sessionManager.endSession()
                     sender.sendSuccess("Session ended.")
                 },
             )
@@ -64,7 +64,7 @@ class SessionCommand(
             .executes(
                 CommandExecutor { sender, args ->
                     val text = args.get("text") as String
-                    utils.story.storage.feedSession(text)
+                    plugin.domainEvents.emitSessionFeed(text)
                     sender.sendSuccess("Noted: $text")
                 },
             )

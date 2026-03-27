@@ -748,7 +748,7 @@ class NPCResponseService(
                 )
             }
 
-            plugin.storage.createMemory(character.id ?: characterName, memoryContent, significance)
+            plugin.domainEvents.emitMemoryObserved(character.id ?: characterName, memoryContent, significance)
 
             val endTime = System.currentTimeMillis()
             if (plugin.config.debugMessages) {

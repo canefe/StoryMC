@@ -60,7 +60,7 @@ class UpdateLocationCommand(
                                         } else {
                                             "${location.description}\n$newUpdate"
                                         }
-                                    commandUtils.story.storage.saveLocation(location)
+                                    commandUtils.locationManager.saveLocation(location)
                                     sender.sendSuccess(
                                         "AI-generated context added to location <gold>'$locationName'</gold>.",
                                     )

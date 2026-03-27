@@ -361,7 +361,7 @@ Generate brief physical reactions for each NPC listed above.""",
                 ExtractedInformation.Importance.LOW -> 0.3
             }
 
-        plugin.storage.addRumor(
+        plugin.domainEvents.emitRumorObserved(
             content = "$prefix$information",
             location = locationName,
             significance = significance,
@@ -391,6 +391,6 @@ Generate brief physical reactions for each NPC listed above.""",
         npcName: String,
         information: String,
     ) {
-        plugin.storage.createMemory(npcName, information)
+        plugin.domainEvents.emitMemoryObserved(npcName, information)
     }
 }

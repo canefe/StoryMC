@@ -262,7 +262,7 @@ class CommandManager(
 
                     // Check if NPC exists in character registry
                     if (plugin.characterRegistry.getByName(npcName) == null) {
-                        plugin.storage.saveCharacterData(
+                        plugin.domainEvents.emitCharacterSave(
                             CharacterDTO(
                                 name = npcName,
                                 appearance = "",
@@ -363,7 +363,7 @@ class CommandManager(
                         }
 
                     // Save the character data
-                    plugin.storage.saveCharacterData(
+                    plugin.domainEvents.emitCharacterSave(
                         CharacterDTO(
                             name = npcName,
                             appearance = "",
@@ -447,7 +447,7 @@ class CommandManager(
                                             }
 
                                             // Save character data with AI-generated context
-                                            plugin.storage.saveCharacterData(
+                                            plugin.domainEvents.emitCharacterSave(
                                                 CharacterDTO(
                                                     name = npcName,
                                                     appearance = appearance,
@@ -1489,7 +1489,7 @@ class CommandManager(
                                 npcInfo.appearance ?: "A ${plan.role.lowercase()} with an unremarkable appearance."
 
                             // Create and save NPC data
-                            plugin.storage.saveCharacterData(
+                            plugin.domainEvents.emitCharacterSave(
                                 CharacterDTO(
                                     name = plan.name,
                                     appearance = appearance,

@@ -181,7 +181,7 @@ class RelationshipManager(
 
                         // Create memory about ambient interaction (session-gated, chains relationship update)
                         val memoryContent = "I spent some time near ${npc2.name} today."
-                        plugin.storage.createMemory(npc1.name, memoryContent, 1.5)
+                        plugin.domainEvents.emitMemoryObserved(npc1.name, memoryContent, 1.5)
                     }
                 }
             }

@@ -44,6 +44,58 @@ object IntentExecutor {
         npc.navigateTo(target)
     }
 
+    fun executeQuestAssignIntent(
+        plugin: Story,
+        intent: QuestAssignIntent,
+    ) {
+        val player = plugin.server.getPlayer(intent.playerName)
+        if (player == null) {
+            plugin.logger.warning("Quest assign intent: player '${intent.playerName}' not online")
+            return
+        }
+        plugin.questManager.assignQuestToPlayer(player, intent.questId)
+    }
+
+    fun executeQuestUpdateIntent(
+        plugin: Story,
+        intent: QuestUpdateIntent,
+    ) {
+        val player = plugin.server.getPlayer(intent.playerName)
+        if (player == null) {
+            plugin.logger.warning("Quest update intent: player '${intent.playerName}' not online")
+            return
+        }
+        val type =
+            intent.objectiveType?.let {
+                try {
+                    com.canefe.story.quest.ObjectiveType.valueOf(it)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        plugin.questManager.updateObjectiveProgress(player, intent.questId, type, intent.target, intent.progress)
+    }
+
+    fun executeQuestCompleteIntent(
+        plugin: Story,
+        intent: QuestCompleteIntent,
+    ) {
+        val player = plugin.server.getPlayer(intent.playerName)
+        if (player == null) {
+            plugin.logger.warning("Quest complete intent: player '${intent.playerName}' not online")
+            return
+        }
+        plugin.questManager.completeQuest(player, intent.questId)
+    }
+
+    fun executeCharacterUpdateIntent(
+        plugin: Story,
+        intent: CharacterUpdateIntent,
+    ) {
+        plugin.characterRegistry.reload()
+        plugin.logger.info("Character registry reloaded for update to ${intent.characterId}")
+    }
+
     fun executeEmoteIntent(
         plugin: Story,
         intent: NPCEmoteIntent,

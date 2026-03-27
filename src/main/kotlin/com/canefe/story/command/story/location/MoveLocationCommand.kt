@@ -31,7 +31,7 @@ class MoveLocationCommand(
                     // Update location's coordinates
                     location.bukkitLocation = playerLocation
 
-                    commandUtils.story.storage.saveLocation(location)
+                    commandUtils.locationManager.saveLocation(location)
 
                     player.sendSuccess(
                         "Location <gold>'$locationName'</gold> updated successfully at your current location.",

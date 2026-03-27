@@ -1,9 +1,11 @@
 package com.canefe.story
 
+import com.canefe.story.bridge.RumorObservedEvent
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.event.NPCInteractionListener
+import com.canefe.story.information.Rumor
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.testutils.makeStoryNpc
 import com.canefe.story.testutils.waitUntil
@@ -63,6 +65,18 @@ class RumorEndToEndTest {
 
         plugin.configService.npcReactionsEnabled = false
         plugin.configService.autoModeEnabledByDefault = false
+
+        // Bridge domain events back to local managers for testing
+        plugin.eventBus.on<RumorObservedEvent> { event ->
+            val rumor =
+                Rumor(
+                    content = event.content,
+                    location = event.location,
+                    significance = event.significance,
+                    gameCreatedAt = event.gameCreatedAt,
+                )
+            plugin.rumorManager.addRumor(rumor)
+        }
     }
 
     @AfterEach
@@ -185,8 +199,8 @@ class RumorEndToEndTest {
     }
 
     @Test
-    fun `no rumors created when no active session`() {
-        // Do NOT start a session
+    fun `rumors emitted regardless of session state`() {
+        // Do NOT start a session — session gating is now Go's responsibility
         Assertions.assertFalse(plugin.sessionManager.hasActiveSession())
 
         plugin.locationManager.createLocation("Tavern", null)
@@ -221,11 +235,13 @@ class RumorEndToEndTest {
         fillConversationHistory(conversation, 3)
 
         plugin.conversationManager.endConversation(conversation)
-        server.scheduler.performTicks(200)
+
+        // Domain event is emitted and bridged to rumorManager by test listener
+        waitUntil(server, 400) { plugin.rumorManager.getAllRumors().isNotEmpty() }
 
         assertTrue(
-            plugin.rumorManager.getAllRumors().isEmpty(),
-            "No rumors should be created without an active session",
+            plugin.rumorManager.getAllRumors().isNotEmpty(),
+            "Rumors should be emitted as domain events regardless of session state",
         )
     }
 

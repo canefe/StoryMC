@@ -435,7 +435,7 @@ class NPCActionIntentRecognizer(
             )
 
         // Register and assign the quest
-        plugin.storage.assignQuestFromIntent(player, questId, quest, npc)
+        plugin.domainEvents.emitQuestAssignFromIntent(player, questId, quest, npc)
     }
 
     /**
