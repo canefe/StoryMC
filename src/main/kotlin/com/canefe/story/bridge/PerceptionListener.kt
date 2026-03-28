@@ -1,7 +1,7 @@
 package com.canefe.story.bridge
 
 import com.canefe.story.Story
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
@@ -81,7 +81,7 @@ class PerceptionListener(
 
         if (entity is Player) {
             return try {
-                EssentialsUtils.getNickname(entity.name)
+                if (entity is Player) entity.characterName else entity.name
             } catch (_: Exception) {
                 entity.name
             }

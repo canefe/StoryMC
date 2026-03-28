@@ -1,6 +1,7 @@
 package com.canefe.story.lore
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.storage.LoreStorage
 import org.bukkit.Bukkit
@@ -50,12 +51,12 @@ class LoreBookManager(
     }
 
     // Helper method to get categories for an NPC when needed
-    private fun getNPCKnowledgeCategories(npcName: String): Set<String> =
-        npcKnowledgeCategories.getOrPut(npcName.lowercase()) {
+    private fun getNPCKnowledgeCategories(npc: StoryNPC): Set<String> =
+        npcKnowledgeCategories.getOrPut(npc.name.lowercase()) {
             val categories = mutableSetOf("common")
-            val npcData = plugin.npcDataManager.getNPCData(npcName)
-            if (npcData != null) {
-                categories.addAll(npcData.knowledgeCategories)
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
+            if (record != null) {
+                categories.addAll(record.knowledgeCategories)
             }
             categories
         }
@@ -101,8 +102,8 @@ class LoreBookManager(
         // Get all knowledge categories accessible in this conversation
         val conversationKnowledgeCategories = mutableSetOf("common") // Everyone knows common knowledge
 
-        for (npcName in conversation.npcNames) {
-            conversationKnowledgeCategories.addAll(getNPCKnowledgeCategories(npcName))
+        for (npc in conversation.npcs) {
+            conversationKnowledgeCategories.addAll(getNPCKnowledgeCategories(npc))
         }
 
         for (loreBook in loreBooks.values) {

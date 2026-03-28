@@ -21,8 +21,11 @@ class PlayerManager(
         playerStorage = storage
     }
 
-    // Player to NPC mapping
+    // Player to NPC mapping (NPC entity UUID)
     val playerCurrentNPC = HashMap<UUID, UUID>()
+
+    // Player to NPC character ID mapping (story character ID)
+    private val playerCurrentCharacterId = HashMap<UUID, String>()
 
     // Player to conversation ID mapping for spying
     private val playerSpyingConversation = HashMap<UUID, Int>()
@@ -69,14 +72,23 @@ class PlayerManager(
     fun setCurrentNPC(
         player: UUID,
         npc: UUID,
+        characterId: String? = null,
     ) {
         playerCurrentNPC[player] = npc
+        if (characterId != null) {
+            playerCurrentCharacterId[player] = characterId
+        } else {
+            playerCurrentCharacterId.remove(player)
+        }
     }
 
     fun getCurrentNPC(player: UUID): UUID? = playerCurrentNPC[player]
 
+    fun getCurrentCharacterId(player: UUID): String? = playerCurrentCharacterId[player]
+
     fun removeCurrentNPC(player: UUID) {
         playerCurrentNPC.remove(player)
+        playerCurrentCharacterId.remove(player)
     }
 
     // Spying methods

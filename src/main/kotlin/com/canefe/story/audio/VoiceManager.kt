@@ -2,7 +2,7 @@ package com.canefe.story.audio
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -233,14 +233,14 @@ class VoiceManager(
             return npcVoice
         }
 
-        // Check if the NPC has a custom voice set in their data
+        // Check if the NPC has a custom voice set in character registry
         try {
-            val npcData = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
-            if (npcData?.customVoice != null) {
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
+            if (record?.customVoice != null) {
                 plugin.logger.info(
-                    "Using custom voice '${npcData.customVoice}' for NPC ${npc.name}",
+                    "Using custom voice '${record.customVoice}' for NPC ${npc.name}",
                 )
-                return npcData.customVoice
+                return record.customVoice
             }
         } catch (e: Exception) {
             plugin.logger.warning("Error accessing NPC data for voice selection: ${e.message}")
@@ -253,20 +253,20 @@ class VoiceManager(
     /** Determine the appropriate voice ID for a player based on their traits */
     private fun determinePlayerVoiceId(player: Player): String? {
         // Try to get player-specific voice mapping first
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         val playerVoice = audioManager.getVoiceId(playerName)
         if (playerVoice != audioManager.getVoiceId("default")) {
             return playerVoice
         }
 
-        // Check if the player has a custom voice set in their NPC data
+        // Check if the player has a custom voice set in character registry
         try {
-            val playerData = plugin.npcContextGenerator.getOrCreateContextForNPC(player.name)
-            if (playerData?.customVoice != null) {
+            val record = plugin.characterRegistry.getByPlayer(player)
+            if (record?.customVoice != null) {
                 plugin.logger.info(
-                    "Using custom voice '${playerData.customVoice}' for player ${player.name}",
+                    "Using custom voice '${record.customVoice}' for player ${player.name}",
                 )
-                return playerData.customVoice
+                return record.customVoice
             }
         } catch (e: Exception) {
             plugin.logger.warning("Error accessing player data for voice selection: ${e.message}")

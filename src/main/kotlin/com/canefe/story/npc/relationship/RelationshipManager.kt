@@ -7,7 +7,7 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.memory.Memory
 import com.canefe.story.storage.RelationshipStorage
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import java.util.concurrent.CompletableFuture
@@ -90,7 +90,7 @@ class RelationshipManager(
                     conversation.players?.any { playerId ->
                         val player = Bukkit.getPlayer(playerId)
                         player != null &&
-                            EssentialsUtils.getNickname(player.name).lowercase() == rel.targetName.lowercase()
+                            player.characterName.lowercase() == rel.targetName.lowercase()
                     } == true
             }.joinToString("\n") { rel ->
                 "$character and ${rel.targetName}'s relationship is ${rel.type} with a score of ${rel.score}." +
@@ -103,12 +103,12 @@ class RelationshipManager(
     fun getAllRelationships(sourceId: String): Map<String, Relationship> {
         val allRelationships = relationships[sourceId] ?: return emptyMap()
 
-        // Filter out relationships where target doesn't have valid NPCData
+        // Filter out relationships where target doesn't exist
         return allRelationships.filterKeys { targetName ->
             // Keep only relationships where either:
-            // 1. The target has valid NPC data, or
+            // 1. The target has a valid character record, or
             // 2. The target is a known player name
-            plugin.npcDataManager.getNPCData(targetName) != null ||
+            plugin.characterRegistry.getByName(targetName) != null ||
                 Bukkit.getOfflinePlayer(targetName).hasPlayedBefore()
         }
     }
@@ -141,17 +141,16 @@ class RelationshipManager(
      * This should be called periodically to simulate ambient relationship building
      */
     fun processAmbientRelationships() {
-        val npcNames = plugin.npcDataManager.getAllNPCNames()
         val npcs = mutableListOf<StoryNPC>()
         // Loop Citizens registry
         for (citizensNpc in CitizensAPI.getNPCRegistry()) {
             val npc = CitizensStoryNPC(citizensNpc)
             val npcName = npc.name
-            if (npcName == null || !npcs.contains(npc)) continue
+            if (npcName == null) continue
 
-            // Check if NPC is spawned
-            val npcData = plugin.npcDataManager.getNPCData(npcName)
-            if (npcData == null || !npc.isSpawned) continue
+            // Check if NPC is spawned and registered
+            val record = plugin.characterRegistry.getByStoryNPC(npc)
+            if (record == null || !npc.isSpawned) continue
 
             // Add NPC to the list if not already present
             if (!npcs.contains(npc)) {
@@ -180,15 +179,9 @@ class RelationshipManager(
                     if (currentTime - lastInteraction > hourInGameTime) {
                         npcLastAmbientInteraction[lastInteractionKey] = currentTime
 
-                        // Create memory about ambient interaction (session-gated)
+                        // Create memory about ambient interaction (session-gated, chains relationship update)
                         val memoryContent = "I spent some time near ${npc2.name} today."
-                        plugin.npcDataManager.createMemoryForNPC(npc1.name, memoryContent, 1.5)
-
-                        // Update relationship based on the memory
-                        val savedMemories = plugin.npcDataManager.loadNPCMemory(npc1.name)
-                        savedMemories.lastOrNull()?.let { memory ->
-                            updateRelationshipFromMemory(memory, npc1.name)
-                        }
+                        plugin.domainEvents.emitMemoryObserved(npc1.name, memoryContent, 1.5)
                     }
                 }
             }
@@ -271,7 +264,7 @@ class RelationshipManager(
      * Find potential relationship targets mentioned in memory content
      */
     private fun findRelationshipTargets(content: String): List<String> {
-        val allNpcs = plugin.npcDataManager.getAllNPCNames()
+        val allNpcs = plugin.characterRegistry.allNPCs().map { it.name }
         val allPlayers = Bukkit.getOnlinePlayers().map { it.name }
         val allValidNames = (allNpcs + allPlayers)
 
@@ -382,8 +375,8 @@ class RelationshipManager(
     }
 
     private fun extractTargetsWithAI(content: String): List<String> {
-        val allNpcs = plugin.npcDataManager.getAllNPCNames()
-        val allPlayers = Bukkit.getOnlinePlayers().map { EssentialsUtils.getNickname(it.name) }
+        val allNpcs = plugin.characterRegistry.allNPCs().map { it.name }
+        val allPlayers = Bukkit.getOnlinePlayers().map { it.characterName }
         val allEntities = (allNpcs + allPlayers).joinToString("\n")
 
         val prompt =

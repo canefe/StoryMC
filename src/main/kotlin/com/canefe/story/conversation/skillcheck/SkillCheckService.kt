@@ -3,7 +3,6 @@ package com.canefe.story.conversation.skillcheck
 import com.canefe.story.Story
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
-import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.SkillCheckEvent
 import com.canefe.story.conversation.Conversation
@@ -146,17 +145,7 @@ class SkillCheckService(
         // Check NPCs
         val npc = conversation.npcs.find { it.name.equals(name, ignoreCase = true) }
         if (npc != null) {
-            val npcData = plugin.npcDataManager.getNPCData(npc.name)
-            val skills =
-                CharacterSkills(
-                    provider = plugin.skillManager.createProviderForNPC(npc.name),
-                )
-            return AICharacter(
-                npc = npc,
-                name = npc.name,
-                role = npcData?.role ?: "NPC",
-                skills = skills,
-            )
+            return AICharacter.from(npc)
         }
 
         // Check players
@@ -172,12 +161,7 @@ class SkillCheckService(
                 }
 
         if (player != null) {
-            val skills =
-                CharacterSkills(
-                    provider = plugin.skillManager.createProviderForCharacter(player.uniqueId, true),
-                    player = player,
-                )
-            return PlayerCharacter(player = player, skills = skills)
+            return PlayerCharacter.from(player)
         }
 
         return null
@@ -290,15 +274,15 @@ class SkillCheckService(
 
         val messages = mutableListOf<ConversationMessage>()
 
-        // Add character context
-        val characterContext = plugin.npcContextGenerator.getOrCreateContextForNPC(result.actor.name)
-        if (characterContext != null) {
+        // Add character context from character registry
+        val record = plugin.characterRegistry.getByName(result.actor.name)
+        if (record != null) {
             messages.add(
                 ConversationMessage(
                     "system",
                     "You are roleplaying as ${result.actor.name}.\n" +
-                        "===CHARACTER===\n${characterContext.context}\n" +
-                        "===APPEARANCE===\n${characterContext.appearance}",
+                        "===CHARACTER===\n\n" +
+                        "===APPEARANCE===\n${record.appearance}",
                 ),
             )
         }

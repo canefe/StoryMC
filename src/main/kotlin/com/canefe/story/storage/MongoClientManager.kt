@@ -1,5 +1,7 @@
 package com.canefe.story.storage
 
+import com.canefe.story.information.Rumor
+import com.canefe.story.information.WorldEvent
 import com.mongodb.ConnectionString
 import com.mongodb.MongoClientSettings
 import com.mongodb.client.MongoClient
@@ -8,6 +10,8 @@ import com.mongodb.client.MongoCollection
 import com.mongodb.client.MongoDatabase
 import com.mongodb.client.model.IndexOptions
 import org.bson.Document
+import org.bson.codecs.configuration.CodecRegistries
+import org.bson.codecs.kotlinx.KotlinSerializerCodec
 import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
 
@@ -22,10 +26,24 @@ class MongoClientManager(
     private lateinit var database: MongoDatabase
 
     fun connect(): Boolean {
+        val kotlinCodecs =
+            CodecRegistries.fromCodecs(
+                KotlinSerializerCodec.create<WorldEvent>(),
+                KotlinSerializerCodec.create<Rumor>(),
+                KotlinSerializerCodec.create<LocationDocument>(),
+            )
+
+        val codecRegistry =
+            CodecRegistries.fromRegistries(
+                kotlinCodecs,
+                MongoClientSettings.getDefaultCodecRegistry(),
+            )
+
         val settings =
             MongoClientSettings
                 .builder()
                 .applyConnectionString(ConnectionString(uri))
+                .codecRegistry(codecRegistry)
                 .applyToConnectionPoolSettings { builder ->
                     builder.maxSize(maxPoolSize)
                 }.applyToClusterSettings { builder ->
@@ -49,6 +67,11 @@ class MongoClientManager(
     fun getDatabase(): MongoDatabase = database
 
     fun getCollection(name: String): MongoCollection<Document> = database.getCollection(name)
+
+    fun <T : Any> getTypedCollection(
+        name: String,
+        clazz: Class<T>,
+    ): MongoCollection<T> = database.getCollection(name, clazz)
 
     fun close() {
         if (::client.isInitialized) {
@@ -100,6 +123,26 @@ class MongoClientManager(
         // Teams
         val teams = getCollection("teams")
         teams.createIndex(Document("teamName", 1), IndexOptions().unique(true))
+
+        // World events
+        val worldEvents = getCollection("world_events")
+        worldEvents.createIndex(Document("id", 1), IndexOptions().unique(true))
+        worldEvents.createIndex(Document("location", 1).append("gameCreatedAt", -1))
+
+        // Rumors
+        val rumors = getCollection("rumors")
+        rumors.createIndex(Document("id", 1), IndexOptions().unique(true))
+        rumors.createIndex(Document("location", 1).append("gameCreatedAt", -1))
+
+        // Players
+        val players = getCollection("players")
+        players.createIndex(Document("frontends.minecraft.identifier", 1), IndexOptions().sparse(true))
+        players.createIndex(Document("frontends.discord.identifier", 1), IndexOptions().sparse(true))
+
+        // Claim codes
+        val claimCodes = getCollection("claim_codes")
+        claimCodes.createIndex(Document("code", 1), IndexOptions().unique(true))
+        claimCodes.createIndex(Document("expiresAt", 1), IndexOptions().expireAfter(0, TimeUnit.SECONDS))
 
         logger.info("[MongoDB] Indexes created successfully")
     }

@@ -2,15 +2,18 @@ package com.canefe.story.command.base
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.Character
+import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
-import com.canefe.story.npc.data.NPCData
+import com.canefe.story.npc.StubStoryNPC
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
@@ -230,9 +233,9 @@ class CommandManager(
             .withArguments(
                 TextArgument("npc").replaceSuggestions(
                     ArgumentSuggestions.strings { _ ->
-                        plugin.npcDataManager
-                            .getAllNPCNames()
-                            .map { "\"$it\"" }
+                        plugin.characterRegistry
+                            .allNPCs()
+                            .map { "\"${it.name}\"" }
                             .toTypedArray()
                     },
                 ),
@@ -249,36 +252,37 @@ class CommandManager(
                     val type = args.get("type") as String
                     val context = args.get("context") as String
 
-                    // Check if NPC exists first
-                    val npcData =
-                        plugin.npcDataManager.getNPCData(npcName)
-                            ?: run {
-                                // Initialize NPC data if it doesn't exist
-                                val npcContext =
-                                    plugin.npcContextGenerator
-                                        .getOrCreateContextForNPC(npcName) ?: run {
-                                        sender.sendError("NPC context not found. Please create the NPC first.")
-                                        return@CommandExecutor
-                                    }
-                                plugin.npcDataManager.saveNPCData(
-                                    npcName,
-                                    NPCData(
-                                        npcName,
-                                        npcContext.role,
-                                        plugin.locationManager.getLocation("Wilderness"),
-                                        npcContext.context,
-                                    ),
-                                )
-                                plugin.npcDataManager.getNPCData(npcName) ?: run {
-                                    sender.sendError("Failed to create NPC data for $npcName")
-                                    return@CommandExecutor
-                                }
-                            }
+                    // Resolve NPC from name
+                    val resolvedNpc =
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .firstOrNull {
+                                it.name.equals(npcName, ignoreCase = true)
+                            }?.let { CitizensStoryNPC(it) }
+
+                    // Check if NPC exists in character registry
+                    if (plugin.characterRegistry.getByName(npcName) == null) {
+                        plugin.domainEvents.emitCharacterSave(
+                            CharacterDTO(
+                                name = npcName,
+                                appearance = "",
+                                locationName = "Wilderness",
+                            ),
+                        )
+                        if (plugin.characterRegistry.getByName(npcName) == null) {
+                            sender.sendError("Failed to create NPC data for $npcName")
+                            return@CommandExecutor
+                        }
+                    }
 
                     sender.sendInfo("Creating memory for <yellow>$npcName</yellow> based on: <italic>$context</italic>")
 
+                    val storyNpc = resolvedNpc
+                    val character: Character =
+                        AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
+
                     plugin.npcResponseService
-                        .generateNPCMemory(npcName, type, context)
+                        .generateNPCMemory(character, type, context)
                         .thenAccept { memory ->
                             Bukkit.getScheduler().runTask(
                                 plugin,
@@ -340,11 +344,17 @@ class CommandManager(
                     val location = (args["location"] as String).replace("\"", "")
                     val prompt = args.getOrDefault("prompt", "") as String
 
-                    val npcContext =
-                        plugin.npcContextGenerator.getOrCreateContextForNPC(npcName) ?: run {
-                            sender.sendError("NPC context not found. Please create the NPC first.")
-                            return@CommandExecutor
-                        }
+                    val resolvedNpc =
+                        CitizensAPI
+                            .getNPCRegistry()
+                            .firstOrNull {
+                                it.name.equals(npcName, ignoreCase = true)
+                            }?.let { CitizensStoryNPC(it) }
+                    // Ensure NPC exists in character registry
+                    if (plugin.characterRegistry.getByName(npcName) == null) {
+                        sender.sendError("NPC not found in character registry. Please create the NPC first.")
+                        return@CommandExecutor
+                    }
 
                     val storyLocation =
                         plugin.locationManager.getLocation(location) ?: run {
@@ -352,16 +362,14 @@ class CommandManager(
                             return@CommandExecutor
                         }
 
-                    // Set the Location for the NPC
-                    val npcData =
-                        NPCData(
-                            npcName,
-                            npcContext.role,
-                            storyLocation,
-                            npcContext.context,
-                        )
-
-                    plugin.npcDataManager.saveNPCData(npcName, npcData)
+                    // Save the character data
+                    plugin.domainEvents.emitCharacterSave(
+                        CharacterDTO(
+                            name = npcName,
+                            appearance = "",
+                            locationName = storyLocation.name,
+                        ),
+                    )
 
                     if (prompt.isNotEmpty()) {
                         // Inform player we're generating context
@@ -372,16 +380,7 @@ class CommandManager(
                         // Create a system message to instruct the AI
                         val messages: MutableList<ConversationMessage> = ArrayList()
 
-                        // Add General Context and Location context
-                        messages.add(
-                            ConversationMessage(
-                                "system",
-                                plugin.npcContextGenerator
-                                    .getGeneralContexts()
-                                    .joinToString("\n"),
-                            ),
-                        )
-
+                        // Add Location context
                         messages.add(
                             ConversationMessage(
                                 "system",
@@ -447,24 +446,17 @@ class CommandManager(
                                                 return@Runnable
                                             }
 
-                                            // add npcContext.context before 'response'
-                                            val contextWithNPCContext = "${npcContext.context} $context"
-
-                                            val npcData =
-                                                NPCData(
-                                                    npcName,
-                                                    npcContext.role,
-                                                    storyLocation,
-                                                    contextWithNPCContext,
-                                                )
-
-                                            npcData.appearance = appearance
-
-                                            plugin.npcDataManager.saveNPCData(npcName, npcData)
+                                            // Save character data with AI-generated context
+                                            plugin.domainEvents.emitCharacterSave(
+                                                CharacterDTO(
+                                                    name = npcName,
+                                                    appearance = appearance,
+                                                    locationName = storyLocation.name,
+                                                ),
+                                            )
                                             sender.sendSuccess(
                                                 "AI-generated profile for <yellow>$npcName</yellow> created!",
                                             )
-                                            sender.sendInfo("Role: <yellow>${npcContext.role}</yellow>")
                                             sender.sendInfo(
                                                 "Context summary: <yellow>${
                                                     if (context.length > 50) {
@@ -700,72 +692,16 @@ class CommandManager(
 
             // Show holograms for the NPCs
             plugin.conversationManager.handleHolograms(conversation, resolvedNpc.name)
-            val shouldStream = plugin.config.streamMessages
-            val npcContext =
-                plugin.npcContextGenerator.getOrCreateContextForNPC(resolvedNpc.name) ?: run {
-                    player.sendError("NPC context not found. Please create the NPC first.")
-                    return
-                }
-
-            // Get only the messages from the conversation for context
-            val recentMessages =
-                conversation.history
-                    .map { it.content }
-
-            // Prepare response context with limited messages
-            var responseContext =
-                listOf(
-                    "====CURRENT CONVERSATION====\n" +
-                        recentMessages.joinToString("\n") +
-                        "\n=========================\n" +
-                        "This is an active conversation and you are talking to multiple characters: ${
-                            conversation.players?.joinToString(
-                                ", ",
-                            ) { Bukkit.getPlayer(it)?.name?.let { name -> EssentialsUtils.getNickname(name) } ?: "" }
-                        }. " +
-                        conversation.npcNames.joinToString("\n") +
-                        "\n===APPEARANCES===\n" +
-                        conversation.npcs.joinToString("\n") { npc ->
-                            val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npc.name)
-                            "${npc.name}: ${npcContext?.appearance ?: "No appearance information available."}"
-                        } +
-                        // We treat players as NPCs for this purpose
-                        conversation.players?.joinToString("\n") { playerId ->
-                            val player = Bukkit.getPlayer(playerId)
-                            if (player == null) {
-                                // skip this player
-                                return@joinToString ""
-                            }
-                            val playerName = player.name
-                            val nickname = EssentialsUtils.getNickname(playerName)
-                            val playerContext = plugin.npcContextGenerator.getOrCreateContextForNPC(nickname)
-                            "$nickname: ${playerContext?.appearance ?: "No appearance information available."}"
-                        } +
-                        "\n=========================",
-                )
-
-            // Add relationship context with clear section header
-            val relationships = plugin.relationshipManager.getAllRelationships(resolvedNpc.name)
-            if (relationships.isNotEmpty()) {
-                val relationshipContext =
-                    plugin.relationshipManager.buildRelationshipContext(
-                        resolvedNpc.name,
-                        relationships,
-                        conversation,
-                    )
-                if (relationshipContext.isNotEmpty()) {
-                    responseContext = responseContext + "===RELATIONSHIPS===\n$relationshipContext"
-                }
+            if (plugin.characterRegistry.getByStoryNPC(resolvedNpc) == null) {
+                player.sendError("NPC not found in character registry.")
+                return
             }
-
-            // Use PromptService to get the talk as NPC prompt, then generate via intelligence
-            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npcName, message)
-            conversation.addSystemMessage(talkAsNpcPrompt)
 
             // Reset auto mode timer to prevent double responses
             plugin.conversationManager.resetAutoTimer(conversation)
 
-            plugin.intelligence.generateNPCResponse(resolvedNpc, conversation).thenApply { response ->
+            // Delegate ghostwriting to the intelligence layer (Go orchestrator or local fallback)
+            plugin.intelligence.gmGhostwrite(resolvedNpc, conversation, message).thenApply { response ->
                 conversation.addNPCMessage(resolvedNpc, response)
                 plugin.conversationManager.speakAsNPC(resolvedNpc, response, addToHistory = false)
             }
@@ -855,7 +791,8 @@ class CommandManager(
                     val target = player.getTargetEntity(15) // Get entity player is looking at within 15 blocks
                     if (target != null && CitizensAPI.getNPCRegistry().isNPC(target)) {
                         val npc: StoryNPC = CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(target))
-                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                        val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                         player.sendSuccess("Current NPC set to ${npc.name}")
                         return@PlayerCommandExecutor
                     }
@@ -873,7 +810,8 @@ class CommandManager(
                             player.sendError("NPC with ID $npcId not found.")
                             return@PlayerCommandExecutor
                         }
-                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                        val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                         player.sendSuccess("Current NPC set to ${npc.name}")
                         return@PlayerCommandExecutor
                     }
@@ -888,7 +826,8 @@ class CommandManager(
                             val npcLocation = npc.location!!
                             val playerLocation = player.location
                             if (playerLocation.distance(npcLocation) <= 15) {
-                                plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                                val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                                plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                                 player.sendSuccess("Current NPC set to $npc")
                                 return@PlayerCommandExecutor
                             } else {
@@ -941,6 +880,54 @@ class CommandManager(
                 },
             ).register()
 
+        // claim <code> — link frontend account to player via claim code
+        CommandAPICommand("claim")
+            .withArguments(StringArgument("code"))
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val code = args["code"] as String
+                    val mongoClient = plugin.storageFactory.mongoClient
+                    if (mongoClient == null) {
+                        player.sendError("MongoDB not available.")
+                        return@PlayerCommandExecutor
+                    }
+                    val claimDoc =
+                        mongoClient
+                            .getCollection("claim_codes")
+                            .find(org.bson.Document("code", code.uppercase()))
+                            .first()
+
+                    if (claimDoc == null) {
+                        player.sendError("Invalid or expired claim code.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    val playerId = claimDoc["playerId"] as? String
+                    val frontend = claimDoc["frontend"] as? String
+
+                    if (frontend != "minecraft") {
+                        player.sendError("This claim code is not for Minecraft.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    // Link the player's UUID to the player doc
+                    val linkDoc =
+                        org.bson
+                            .Document("identifier", player.uniqueId.toString())
+                            .append("linkedAt", java.util.Date())
+                    mongoClient.getCollection("players").updateOne(
+                        org.bson.Document("_id", playerId),
+                        org.bson.Document("\$set", org.bson.Document("frontends.minecraft", linkDoc)),
+                    )
+
+                    // Delete the used code
+                    mongoClient.getCollection("claim_codes").deleteOne(org.bson.Document("code", code.uppercase()))
+
+                    player.sendSuccess("Account linked to player '$playerId'!")
+                    plugin.logger.info("Player ${player.name} claimed code $code -> $playerId")
+                },
+            ).register()
+
         registerSafeStopCommand()
     }
 
@@ -988,9 +975,7 @@ class CommandManager(
         // Get or create conversation for context
         val conversation = plugin.conversationManager.getConversation(npc)
         if (conversation != null) {
-            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
-            conversation.addSystemMessage(talkAsNpcPrompt)
-            plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+            plugin.intelligence.gmGhostwrite(npc, conversation, prompt).thenAccept { response ->
                 Bukkit.getScheduler().runTask(
                     plugin,
                     Runnable {
@@ -999,7 +984,7 @@ class CommandManager(
                 )
             }
         } else {
-            // No conversation — fall back to direct generation
+            // No conversation — fall back to direct local generation
             val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
             plugin.npcResponseService.generateNPCResponse(npc, listOf(talkAsNpcPrompt), false).thenAccept { response ->
                 Bukkit.getScheduler().runTask(
@@ -1136,19 +1121,23 @@ class CommandManager(
 
         val storyLocation = plugin.locationManager.getLocation(location)!!
 
-        plugin.askForPermission(
-            "📊 Location Analysis Complete\n" +
-                "Location: $location\n" +
-                "Context: ${storyLocation.context.joinToString(", ")}\n" +
-                "Parent: ${storyLocation.parentLocationName ?: "None"}\n" +
-                "User Context: $context\n\n" +
-                "Proceed with NPC planning phase?",
-            Runnable {
-                executeNPCPlanning(sender, location, context, npcCount, debug)
-            },
-            Runnable {
-                sender.sendError("❌ Location analysis cancelled by user.")
-            },
+        plugin.taskManager.createTask(
+            description =
+                "📊 Location Analysis Complete\n" +
+                    "Location: $location\n" +
+                    "Description: ${storyLocation.description}\n" +
+                    "Parent: ${storyLocation.parentLocationName ?: "None"}\n" +
+                    "User Context: $context\n\n" +
+                    "Proceed with NPC planning phase?",
+            permission = "story.task.respond",
+            onAccept =
+                Runnable {
+                    executeNPCPlanning(sender, location, context, npcCount, debug)
+                },
+            onRefuse =
+                Runnable {
+                    sender.sendError("❌ Location analysis cancelled by user.")
+                },
         )
     }
 
@@ -1181,7 +1170,7 @@ class CommandManager(
         messages.add(
             ConversationMessage(
                 "system",
-                plugin.npcContextGenerator.getGeneralContexts().joinToString("\n"),
+                "", // General contexts removed
             ),
         )
 
@@ -1233,17 +1222,21 @@ class CommandManager(
                                     "• ${plan.name} (${plan.role}): ${plan.background.take(80)}..."
                                 }
 
-                            plugin.askForPermission(
-                                "📋 NPC Planning Complete\n" +
-                                    "Generated ${npcPlans.size} NPC plans:\n\n$preview\n" +
-                                    (if (npcPlans.size > 3) "\n...and ${npcPlans.size - 3} more\n" else "") +
-                                    "\nProceed with NPC generation?",
-                                {
-                                    executeNPCGeneration(sender, location, npcPlans, debug)
-                                },
-                                {
-                                    sender.sendError("❌ NPC planning cancelled by user.")
-                                },
+                            plugin.taskManager.createTask(
+                                description =
+                                    "📋 NPC Planning Complete\n" +
+                                        "Generated ${npcPlans.size} NPC plans:\n\n$preview\n" +
+                                        (if (npcPlans.size > 3) "\n...and ${npcPlans.size - 3} more\n" else "") +
+                                        "\nProceed with NPC generation?",
+                                permission = "story.task.respond",
+                                onAccept =
+                                    Runnable {
+                                        executeNPCGeneration(sender, location, npcPlans, debug)
+                                    },
+                                onRefuse =
+                                    Runnable {
+                                        sender.sendError("❌ NPC planning cancelled by user.")
+                                    },
                             )
                         } catch (e: Exception) {
                             sender.sendError("❌ Failed to parse NPC plans: ${e.message}")
@@ -1318,17 +1311,21 @@ class CommandManager(
                             }
                         }
 
-                        plugin.askForPermission(
-                            "🧠 NPC Generation Complete\n" +
-                                "Successfully generated $successCount NPCs:\n" +
-                                generatedNPCs.joinToString(", ") + "\n\n" +
-                                "Proceed with memory and relationship generation?",
-                            {
-                                executeMemoryGeneration(sender, generatedNPCs, npcPlans, debug)
-                            },
-                            {
-                                sender.sendInfo("✅ NPC generation completed. Skipping memory generation.")
-                            },
+                        plugin.taskManager.createTask(
+                            description =
+                                "🧠 NPC Generation Complete\n" +
+                                    "Successfully generated $successCount NPCs:\n" +
+                                    generatedNPCs.joinToString(", ") + "\n\n" +
+                                    "Proceed with memory and relationship generation?",
+                            permission = "story.task.respond",
+                            onAccept =
+                                Runnable {
+                                    executeMemoryGeneration(sender, generatedNPCs, npcPlans, debug)
+                                },
+                            onRefuse =
+                                Runnable {
+                                    sender.sendInfo("✅ NPC generation completed. Skipping memory generation.")
+                                },
                         )
                     }
                 },
@@ -1352,12 +1349,21 @@ class CommandManager(
 
         for (npcName in generatedNPCs) {
             val npcPlan = npcPlans.find { it.name == npcName } ?: continue
+            val storyNpc =
+                CitizensAPI
+                    .getNPCRegistry()
+                    .firstOrNull {
+                        it.name.equals(npcName, ignoreCase = true)
+                    }?.let { CitizensStoryNPC(it) }
+            val record = plugin.characterRegistry.getByName(npcName) ?: continue
+            val character: Character =
+                AICharacter.from(storyNpc ?: StubStoryNPC(npcName))
 
             // Generate core background memories
             val coreMemoryFuture =
                 plugin.npcResponseService
                     .generateNPCMemory(
-                        npcName,
+                        character,
                         "experience",
                         "Core background: ${npcPlan.background}. Key relationships: ${npcPlan.relationships}. Current situation: ${npcPlan.situation}",
                     ).thenAccept { memory ->
@@ -1378,7 +1384,7 @@ class CommandManager(
                 val recentMemoryFuture =
                     plugin.npcResponseService
                         .generateNPCMemory(
-                            npcName,
+                            character,
                             "event",
                             "Recent interactions and developments: ${npcPlan.relationships}. Current goals: ${npcPlan.situation}",
                         ).thenAccept { memory ->
@@ -1416,10 +1422,9 @@ class CommandManager(
     ): CompletableFuture<Boolean> {
         val future = CompletableFuture<Boolean>()
 
-        // Create the context for this NPC
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(plan.name)
-
-        if (npcContext == null) {
+        // Check if the NPC exists in character registry
+        val npcRecord = plugin.characterRegistry.getByName(plan.name)
+        if (npcRecord == null) {
             future.complete(false)
             return future
         }
@@ -1439,7 +1444,7 @@ class CommandManager(
         messages.add(
             ConversationMessage(
                 "system",
-                plugin.npcContextGenerator.getGeneralContexts().joinToString("\n"),
+                "", // General contexts removed
             ),
         )
 
@@ -1478,17 +1483,13 @@ class CommandManager(
                                 npcInfo.appearance ?: "A ${plan.role.lowercase()} with an unremarkable appearance."
 
                             // Create and save NPC data
-                            val expandedContext = "${npcContext.context} $context"
-                            val npcData =
-                                com.canefe.story.npc.data.NPCData(
-                                    plan.name,
-                                    plan.role,
-                                    location,
-                                    expandedContext,
-                                )
-
-                            npcData.appearance = appearance
-                            plugin.npcDataManager.saveNPCData(plan.name, npcData)
+                            plugin.domainEvents.emitCharacterSave(
+                                CharacterDTO(
+                                    name = plan.name,
+                                    appearance = appearance,
+                                    locationName = location.name,
+                                ),
+                            )
 
                             if (debug) {
                                 plugin.logger.info("Generated NPC: ${plan.name} - ${plan.role}")

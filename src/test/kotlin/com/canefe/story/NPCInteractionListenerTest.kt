@@ -53,6 +53,7 @@ class NPCInteractionListenerTest {
         mockkConstructor(CommandManager::class)
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
         plugin.commandManager = mockk(relaxed = true)
 
         // Mock CitizensAPI registry globally to prevent failures in CI

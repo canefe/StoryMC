@@ -1,12 +1,12 @@
 package com.canefe.story
 
 import com.canefe.story.api.StoryAPI
+import com.canefe.story.api.character.CharacterRegistry
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.bridge.*
 import com.canefe.story.character.skill.SkillManager
 import com.canefe.story.command.base.CommandManager
-import com.canefe.story.command.story.quest.QuestCommandUtils
 import com.canefe.story.config.ConfigService
 import com.canefe.story.config.PromptService
 import com.canefe.story.context.ContextExtractor
@@ -14,19 +14,17 @@ import com.canefe.story.conversation.ConversationManager
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.conversation.radiant.RadiantConversationService
 import com.canefe.story.event.EventManager
+import com.canefe.story.information.RumorManager
+import com.canefe.story.information.WorldEventManager
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.intelligence.BridgeIntelligence
 import com.canefe.story.intelligence.LocalIntelligence
 import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
-import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.behavior.NPCBehaviorManager
-import com.canefe.story.npc.data.NPCDataManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
-import com.canefe.story.npc.name.NPCNameManager
-import com.canefe.story.npc.name.NPCNameResolver
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.npc.schedule.ScheduleManager
 import com.canefe.story.npc.service.NPCActionIntentRecognizer
@@ -40,11 +38,12 @@ import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionManager
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
+import com.canefe.story.storage.mongo.MongoCharacterStorage
+import com.canefe.story.storage.mongo.MongoFrontendConfigStorage
 import com.canefe.story.task.TaskManager
 import com.canefe.story.util.DisguiseManager
 import com.canefe.story.util.PluginUtils
 import com.canefe.story.util.TimeService
-import com.canefe.story.webui.WebUIServer
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.event.PacketListenerPriority
 import dev.jorel.commandapi.CommandAPI
@@ -52,15 +51,8 @@ import dev.jorel.commandapi.CommandAPIBukkitConfig
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
-import org.bukkit.Material
-import org.bukkit.NamespacedKey
 import org.bukkit.command.CommandSender
-import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.event.block.Action
-import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.inventory.meta.BookMeta
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.*
 import java.util.concurrent.CompletableFuture
@@ -97,8 +89,6 @@ open class Story :
 
     lateinit var contextExtractor: ContextExtractor
 
-    lateinit var npcDataManager: NPCDataManager
-
     lateinit var npcBehaviorManager: NPCBehaviorManager
         private set
 
@@ -118,11 +108,12 @@ open class Story :
 
     lateinit var npcResponseService: NPCResponseService
     lateinit var worldInformationManager: WorldInformationManager
+    lateinit var worldEventManager: WorldEventManager
+    lateinit var rumorManager: RumorManager
 
     lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
 
     lateinit var scheduleManager: ScheduleManager
-    lateinit var npcContextGenerator: NPCContextGenerator
     lateinit var lorebookManager: LoreBookManager
     lateinit var sessionManager: SessionManager
     lateinit var taskManager: TaskManager
@@ -141,21 +132,11 @@ open class Story :
 
     lateinit var storageFactory: StorageFactory
         private set
-    private var webUIServer: WebUIServer? = null
 
     lateinit var voiceManager: VoiceManager
 
     lateinit var skillCheckService: com.canefe.story.conversation.skillcheck.SkillCheckService
         private set
-    lateinit var npcSkillGenerator: com.canefe.story.character.skill.NPCSkillGenerator
-        private set
-
-    // NPC Name Aliasing System
-    lateinit var npcNameManager: com.canefe.story.npc.name.NPCNameManager
-        private set
-    lateinit var npcNameResolver: com.canefe.story.npc.name.NPCNameResolver
-        private set
-
     lateinit var api: StoryAPI
         private set
 
@@ -170,6 +151,13 @@ open class Story :
     // Intelligence — abstraction for all LLM/thinking operations
     lateinit var intelligence: StoryIntelligence
         private set
+
+    // Domain events — emits intents to Go orchestrator instead of direct storage writes
+    lateinit var domainEvents: DomainEventEmitter
+        private set
+
+    // Character registry — central lookup for character identity
+    lateinit var characterRegistry: CharacterRegistry
 
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
@@ -224,7 +212,6 @@ open class Story :
         radiantConversationService.startProximityTask()
 
         server.pluginManager.registerEvents(QuestListener(this), this)
-        // initializeWebUIServer()
         // Load configuration
         // reload() also initializes the event bus
         configService.reload()
@@ -256,17 +243,33 @@ open class Story :
         // Initialize the prompt service early since other services depend on it
         promptService = PromptService(this)
 
-        // Initialize storage
+        // Initialize storage (force SQLite in test mode)
+        val forceSqlite = System.getProperty("mockbukkit") == "true"
         storageFactory =
             StorageFactory.create(
                 dataFolder = dataFolder,
                 logger = logger,
-                backend = StorageBackend.fromString(configService.storageBackend),
+                backend =
+                    if (forceSqlite) {
+                        StorageBackend.SQLITE
+                    } else {
+                        StorageBackend.fromString(
+                            configService.storageBackend,
+                        )
+                    },
                 mongoUri = configService.mongoUri,
                 mongoDatabase = configService.mongoDatabase,
                 mongoMaxPoolSize = configService.mongoMaxPoolSize,
                 mongoConnectTimeoutMs = configService.mongoConnectTimeoutMs,
             )
+
+        // Initialize character registry (requires MongoDB)
+        val mongoClient = storageFactory.mongoClient
+        if (mongoClient != null) {
+            val charStorage = MongoCharacterStorage(mongoClient, logger)
+            val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)
+            characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger, mongoClient)
+        }
 
         timeService = TimeService(this)
         sessionManager = SessionManager(this, storageFactory.sessionStorage)
@@ -274,8 +277,11 @@ open class Story :
         typingSessionManager = TypingSessionManager(this)
         contextExtractor = ContextExtractor(this)
         audioManager = AudioManager(this)
-        npcContextGenerator = NPCContextGenerator(this)
-        npcDataManager = NPCDataManager(this, storageFactory.npcStorage)
+        // Run character migration and load registry
+        if (::characterRegistry.isInitialized) {
+            characterRegistry.loadAll()
+        }
+
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
         npcManager = NPCManager(this)
@@ -285,6 +291,8 @@ open class Story :
         npcMessageService = NPCMessageService(this)
         radiantConversationService = RadiantConversationService(this)
         npcResponseService = NPCResponseService(this)
+        worldEventManager = WorldEventManager(this, storageFactory.worldEventStorage)
+        rumorManager = RumorManager(this, storageFactory.rumorStorage)
         worldInformationManager = WorldInformationManager(this)
         npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
         lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
@@ -294,7 +302,6 @@ open class Story :
         conversationManager =
             ConversationManager(
                 this,
-                npcContextGenerator,
                 npcResponseService,
                 worldInformationManager,
             )
@@ -304,66 +311,12 @@ open class Story :
         mythicMobConversation = MythicMobConversationIntegration(this)
         skillManager = SkillManager(this)
         voiceManager = VoiceManager(this)
-        npcNameManager = NPCNameManager(this)
-        npcNameResolver = NPCNameResolver(this)
-
         skillCheckService =
             com.canefe.story.conversation.skillcheck
                 .SkillCheckService(this)
-        npcSkillGenerator =
-            com.canefe.story.character.skill
-                .NPCSkillGenerator(this)
 
         eventManager = EventManager(this)
         eventManager.registerEvents()
-
-        registerQuestBookListener()
-    }
-
-    private fun registerQuestBookListener() {
-        server.pluginManager.registerEvents(
-            object : Listener {
-                @EventHandler
-                fun onBookInteract(event: PlayerInteractEvent) {
-                    if (event.action != Action.RIGHT_CLICK_AIR &&
-                        event.action != Action.RIGHT_CLICK_BLOCK
-                    ) {
-                        return
-                    }
-                    if (event.item?.type != Material.WRITTEN_BOOK) return
-
-                    val meta = event.item?.itemMeta as? BookMeta ?: return
-                    val targetKey = NamespacedKey(this@Story, "quest_book_target")
-                    val targetUuidString =
-                        meta.persistentDataContainer.get(
-                            targetKey,
-                            PersistentDataType.STRING,
-                        )
-                            ?: return
-
-                    try {
-                        val targetUuid = UUID.fromString(targetUuidString)
-                        val targetPlayer = Bukkit.getOfflinePlayer(targetUuid)
-
-                        // Cancel the default book opening
-                        event.isCancelled = true
-
-                        // Open custom quest book interface
-                        val commandUtils = QuestCommandUtils()
-                        if (targetPlayer.isOnline) {
-                            commandUtils.openJournalBook(event.player, targetPlayer.player)
-                        } else {
-                            // If target is offline but we have their UUID, we can still try to
-                            // open their quest data
-                            commandUtils.openJournalBook(event.player, targetPlayer)
-                        }
-                    } catch (e: IllegalArgumentException) {
-                        logger.warning("Invalid UUID in quest book: $targetUuidString")
-                    }
-                }
-            },
-            this,
-        )
     }
 
     fun tryReconnectStorage(sender: CommandSender? = null) {
@@ -376,6 +329,21 @@ open class Story :
         val needsSwitch =
             desired != current ||
                 (desired == StorageBackend.MONGODB && !storageFactory.isMongoConnected)
+
+        // Initialize character registry if not yet initialized and MongoDB is available
+        if (!::characterRegistry.isInitialized) {
+            val mongoClient = storageFactory.mongoClient
+            if (mongoClient != null) {
+                characterRegistry =
+                    CharacterRegistry(
+                        MongoCharacterStorage(mongoClient, logger),
+                        MongoFrontendConfigStorage(mongoClient, logger),
+                        logger,
+                        mongoClient,
+                    )
+                characterRegistry.loadAll()
+            }
+        }
 
         if (!needsSwitch) return
 
@@ -390,13 +358,14 @@ open class Story :
             )
         ) {
             // Push new storage implementations to all managers
-            npcDataManager.updateStorage(storageFactory.npcStorage)
             locationManager.updateStorage(storageFactory.locationStorage)
             questManager.updateStorage(storageFactory.questStorage)
             sessionManager.updateStorage(storageFactory.sessionStorage)
             relationshipManager.updateStorage(storageFactory.relationshipStorage)
             lorebookManager.updateStorage(storageFactory.loreStorage)
             playerManager.updateStorage(storageFactory.playerStorage)
+            worldEventManager.updateStorage(storageFactory.worldEventStorage)
+            rumorManager.updateStorage(storageFactory.rumorStorage)
             sender?.sendMessage(
                 miniMessage.deserialize(
                     "<green>Storage backend switched to ${storageFactory.activeBackend}. All managers updated.</green>",
@@ -426,6 +395,13 @@ open class Story :
         eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
         eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
         eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+        eventBus.on<QuestAssignIntent> { IntentExecutor.executeQuestAssignIntent(this, it) }
+        eventBus.on<QuestUpdateIntent> { IntentExecutor.executeQuestUpdateIntent(this, it) }
+        eventBus.on<QuestCompleteIntent> { IntentExecutor.executeQuestCompleteIntent(this, it) }
+        eventBus.on<CharacterUpdateIntent> { IntentExecutor.executeCharacterUpdateIntent(this, it) }
+
+        // Initialize query handler for MCP/orchestrator queries
+        QueryHandler(this).initialize()
 
         // Initialize intelligence provider
         val local = LocalIntelligence(this)
@@ -437,6 +413,9 @@ open class Story :
             } else {
                 local
             }
+
+        // Initialize domain event emitter (replaces storage layer)
+        domainEvents = DomainEventEmitter(eventBus, logger, configService.bridgeEnabled)
 
         // Initialize perception (unregister old listener on reload)
         if (::perceptionService.isInitialized) {
@@ -454,16 +433,11 @@ open class Story :
         // Initialize character sync from sim
         CharacterSyncService(this).register()
 
+        val mode = if (configService.bridgeEnabled) "Bridge" else "Local"
         logger.info(
             "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
-                ", intelligence: ${if (configService.bridgeEnabled) "Bridge" else "Local"}",
+                ", intelligence: $mode",
         )
-    }
-
-    private fun initializeWebUIServer() {
-        val port = 7777
-        webUIServer = WebUIServer(this, port)
-        logger.info("WebUI server started on port $port")
     }
 
     override fun onDisable() {
@@ -473,7 +447,6 @@ open class Story :
         }
         // Cancel all tasks first to prevent new ones from being registered
         Bukkit.getScheduler().cancelTasks(this)
-        webUIServer?.shutdown()
         // Then shut down each manager in reverse order of initialization
         try {
             if (::conversationManager.isInitialized) conversationManager.cancelScheduledTasks()
@@ -552,6 +525,10 @@ open class Story :
         }
     }
 
+    @Deprecated(
+        message = "Use aiResponseService.getAIResponseAsync() directly",
+        replaceWith = ReplaceWith("aiResponseService.getAIResponseAsync(prompts, lowCost = lowCost)"),
+    )
     fun getAIResponse(
         prompts: List<ConversationMessage>,
         useStreaming: Boolean = false,
@@ -560,7 +537,6 @@ open class Story :
     ): CompletableFuture<String?> {
         if (useStreaming) {
             val future = CompletableFuture<String?>()
-            // null check streamingHandler
             if (streamHandler == null) {
                 future.completeExceptionally(
                     IllegalArgumentException(
@@ -576,88 +552,4 @@ open class Story :
 
         return aiResponseService.getAIResponseAsync(prompts, lowCost = lowCost)
     }
-
-    /**
-     * Ask for permission to perform an action from players with the specified permission. This will
-     * send a prompt with Accept/Refuse buttons.
-     *
-     * @param description Description of the action needing permission
-     * @param permission Permission required to respond (defaults to story.task.respond)
-     * @param onAccept Runnable to execute when the task is accepted
-     * @param onRefuse Runnable to execute when the task is refused
-     * @param timeoutSeconds Time in seconds before the request times out (-1 for no timeout)
-     * @param limitToSender If true, only sends to the provided sender
-     * @param sender Optional sender to limit the task to
-     * @return The ID of the created task
-     */
-    fun askForPermission(
-        description: String,
-        permission: String = "story.task.respond",
-        onAccept: Runnable,
-        onRefuse: Runnable,
-        timeoutSeconds: Int = 300,
-        limitToSender: Boolean = false,
-        sender: CommandSender? = null,
-    ): Int =
-        taskManager.createTask(
-            description = description,
-            permission = permission,
-            onAccept = onAccept,
-            onRefuse = onRefuse,
-            timeoutSeconds = timeoutSeconds,
-            limitToSender = limitToSender,
-            sender = sender,
-        )
-
-    /** Simplified version that only requires description and callbacks. */
-    fun askForPermission(
-        description: String,
-        onAccept: Runnable,
-        onRefuse: Runnable,
-    ): Int =
-        askForPermission(
-            description = description,
-            permission = "story.task.respond",
-            onAccept = onAccept,
-            onRefuse = onRefuse,
-        )
-
-    /**
-     * Creates a dialogue path selection task with three options for DMs to choose from. This is
-     * used when dialogue path selection is enabled to allow DMs to select the best NPC response
-     * from three AI-generated options.
-     *
-     * @param description Description of the dialogue selection context
-     * @param option1 First dialogue option
-     * @param option2 Second dialogue option
-     * @param option3 Third dialogue option
-     * @param onOption1 Runnable to execute when option 1 is selected
-     * @param onOption2 Runnable to execute when option 2 is selected
-     * @param onOption3 Runnable to execute when option 3 is selected
-     * @param permission Permission required to respond (defaults to story.dm)
-     * @param timeoutSeconds Time in seconds before auto-selecting option 1 (defaults to 120)
-     * @return The ID of the created dialogue path task
-     */
-    fun askForDialoguePathSelection(
-        description: String,
-        option1: String,
-        option2: String,
-        option3: String,
-        onOption1: Runnable,
-        onOption2: Runnable,
-        onOption3: Runnable,
-        permission: String = "story.dm",
-        timeoutSeconds: Int = 120,
-    ): Int =
-        taskManager.createDialoguePathTask(
-            description = description,
-            option1 = option1,
-            option2 = option2,
-            option3 = option3,
-            onOption1 = onOption1,
-            onOption2 = onOption2,
-            onOption3 = onOption3,
-            permission = permission,
-            timeoutSeconds = timeoutSeconds,
-        )
 }

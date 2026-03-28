@@ -3,8 +3,10 @@ package com.canefe.story.npc.schedule
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.duty.DutyLibrary
 import com.canefe.story.npc.duty.DutyLoopRunner
+import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.trait.EntityPoseTrait
 import org.bukkit.Bukkit
@@ -25,7 +27,16 @@ class ScheduleExecutor(
         entry: ScheduleEntry,
         schedules: Map<String, NPCSchedule>,
     ) {
-        val npc = plugin.npcDataManager.getNPC(npcName) ?: return
+        val npc =
+            CitizensAPI
+                .getNPCRegistry()
+                .firstOrNull {
+                    it.name.equals(
+                        npcName,
+                        ignoreCase = true,
+                    )
+                }?.let { CitizensStoryNPC(it) }
+                ?: return
         val npcEntity = npc.entity ?: return
 
         if (npc.isFollowing) {

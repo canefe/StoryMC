@@ -1,6 +1,7 @@
 package com.canefe.story.character.skill
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -61,10 +62,13 @@ class SkillManager(
      * Returns a provider with empty skills if not yet generated.
      */
     fun createProviderForNPC(npcName: String): SkillProvider {
-        val npcData = plugin.npcDataManager.getNPCData(npcName)
-        val skills = npcData?.skills ?: emptyMap()
         val availableSkills = getAvailableSkills()
-        return NPCSkillProvider(skills, availableSkills)
+        return NPCSkillProvider(emptyMap(), availableSkills)
+    }
+
+    fun createProviderForNPC(npc: StoryNPC): SkillProvider {
+        val availableSkills = getAvailableSkills()
+        return NPCSkillProvider(emptyMap(), availableSkills)
     }
 
     /**

@@ -12,7 +12,7 @@ class CharacterSyncService(
     fun register() {
         plugin.eventBus.on<CharacterStatsUpdate> { update ->
             update.perceptionRadius?.let {
-                plugin.perceptionService.setPerceptionRadius(update.characterName, it)
+                plugin.perceptionService.setPerceptionRadius(update.characterId, it)
             }
             // Future stats: health, mood, disposition, etc.
         }

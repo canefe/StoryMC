@@ -2,6 +2,8 @@ package com.canefe.story.npc.schedule
 
 import com.canefe.story.Story
 import com.canefe.story.location.data.StoryLocation
+import com.canefe.story.npc.CitizensStoryNPC
+import net.citizensnpcs.api.CitizensAPI
 import net.citizensnpcs.api.npc.NPC
 import net.citizensnpcs.trait.EntityPoseTrait
 import java.util.concurrent.ConcurrentHashMap
@@ -22,7 +24,12 @@ class OccupancyTracker(
         val isWithinGracePeriod = (System.currentTimeMillis() - occupancy.timestamp) < gracePeriodMs
 
         if (isWithinGracePeriod) {
-            val occupyingNPC = plugin.npcDataManager.getNPC(occupancy.npcName)
+            val occupyingNPC =
+                CitizensAPI
+                    .getNPCRegistry()
+                    .firstOrNull {
+                        it.name.equals(occupancy.npcName, ignoreCase = true)
+                    }?.let { CitizensStoryNPC(it) }
             if (occupyingNPC?.entity == null) {
                 locationOccupancy.remove(locationKey)
                 return false
@@ -30,7 +37,12 @@ class OccupancyTracker(
             return true
         }
 
-        val occupyingNPC = plugin.npcDataManager.getNPC(occupancy.npcName)
+        val occupyingNPC =
+            CitizensAPI
+                .getNPCRegistry()
+                .firstOrNull {
+                    it.name.equals(occupancy.npcName, ignoreCase = true)
+                }?.let { CitizensStoryNPC(it) }
         if (occupyingNPC?.entity == null) {
             locationOccupancy.remove(locationKey)
             return false

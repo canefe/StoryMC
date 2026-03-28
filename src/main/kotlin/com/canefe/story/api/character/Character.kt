@@ -9,7 +9,12 @@ import java.util.UUID
  * Implemented by [PlayerCharacter] and [AICharacter].
  */
 interface Character {
-    val id: UUID
+    /** Character ID from the shared characters collection (e.g. "thorne_mossveil_a3f2b1c4"). */
+    val id: String?
+
+    /** Minecraft/Citizens UUID — the actual entity ID in the game world. */
+    val entityId: UUID
+
     val name: String
     val role: String
     val appearance: String

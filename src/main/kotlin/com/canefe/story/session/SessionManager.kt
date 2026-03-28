@@ -157,13 +157,14 @@ class SessionManager(
         if (mentionedLocations.isNotEmpty()) {
             contextBuilder.append("RELEVANT LOCATIONS:\n")
             mentionedLocations.take(3).forEach { location ->
-                contextBuilder.append("- ${location.name}: ${location.context.joinToString(". ")}\n")
+                contextBuilder.append("- ${location.name}: ${location.description}\n")
             }
             contextBuilder.append("\n")
         }
 
+        val allNPCNames = plugin.characterRegistry.allNPCs().map { it.name }
         val mentionedNPCs =
-            plugin.npcDataManager.getAllNPCNames().filter { npcName ->
+            allNPCNames.filter { npcName ->
                 text.contains(npcName, ignoreCase = true) ||
                     keywords.any { keyword ->
                         keyword.equals(npcName, ignoreCase = true) || npcName.contains(keyword, ignoreCase = true)
@@ -173,13 +174,9 @@ class SessionManager(
         if (mentionedNPCs.isNotEmpty()) {
             contextBuilder.append("RELEVANT NPCS:\n")
             mentionedNPCs.take(3).forEach { npcName ->
-                val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
-                val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 3)
-                if (npcContext != null) {
-                    contextBuilder.append("- $npcName: ${npcContext.context}\n")
-                    if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-                        contextBuilder.append("  Recent memories: $lastFewMemories\n")
-                    }
+                val record = plugin.characterRegistry.getByName(npcName)
+                if (record != null) {
+                    contextBuilder.append("- $npcName: ${record.appearance}\n")
                 }
             }
             contextBuilder.append("\n")
@@ -243,15 +240,19 @@ class SessionManager(
                     if (force) {
                         addToSession()
                     } else {
-                        plugin.askForPermission(
-                            "<yellow>Following narrative response will be added to session" +
-                                " history. Do you want to proceed?</yellow> \n\n $aiResponse",
-                            onAccept = {
-                                addToSession()
-                            },
-                            onRefuse = {
-                                plugin.logger.info("Narrative response was not added to session history. Rejected.")
-                            },
+                        plugin.taskManager.createTask(
+                            description =
+                                "<yellow>Following narrative response will be added to session" +
+                                    " history. Do you want to proceed?</yellow> \n\n $aiResponse",
+                            permission = "story.task.respond",
+                            onAccept =
+                                Runnable {
+                                    addToSession()
+                                },
+                            onRefuse =
+                                Runnable {
+                                    plugin.logger.info("Narrative response was not added to session history. Rejected.")
+                                },
                         )
                     }
                 } else {

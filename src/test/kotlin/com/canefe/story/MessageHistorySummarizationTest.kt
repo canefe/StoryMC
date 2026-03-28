@@ -36,6 +36,7 @@ class MessageHistorySummarizationTest {
         every { anyConstructed<CommandManager>().registerCommands() } just Runs
 
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         val mockRegistry = mockk<NPCRegistry>()
         every { mockRegistry.isNPC(any()) } returns false
@@ -44,7 +45,6 @@ class MessageHistorySummarizationTest {
         plugin.commandManager = mockk(relaxed = true)
         plugin.npcResponseService = mockk(relaxed = true)
         plugin.worldInformationManager = mockk(relaxed = true)
-        plugin.npcContextGenerator = mockk(relaxed = true)
         plugin.sessionManager = mockk(relaxed = true)
         plugin.aiResponseService = mockk(relaxed = true)
 
@@ -55,7 +55,6 @@ class MessageHistorySummarizationTest {
         plugin.conversationManager =
             ConversationManager(
                 plugin,
-                plugin.npcContextGenerator,
                 plugin.npcResponseService,
                 plugin.worldInformationManager,
             )

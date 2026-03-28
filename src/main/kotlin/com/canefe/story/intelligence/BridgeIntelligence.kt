@@ -4,11 +4,13 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.bridge.StoryEventBus
 import com.canefe.story.conversation.Conversation
+import com.canefe.story.util.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.jsonObject
+import org.bukkit.Bukkit
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -27,59 +29,36 @@ class BridgeIntelligence(
     private val eventBus: StoryEventBus,
 ) : StoryIntelligence {
     private val pendingRequests = ConcurrentHashMap<String, CompletableFuture<JsonObject>>()
-
-    // Methods the bridge has declared support for
     private val supportedMethods = ConcurrentHashMap.newKeySet<String>()
 
     companion object {
         private const val TIMEOUT_SECONDS = 60L
+        private val json = Json { encodeDefaults = true }
     }
 
     init {
-        // Listen for responses from the Go orchestrator
-        eventBus.onType("intelligence.response") { event ->
+        eventBus.onType(EventType.INTELLIGENCE_RESPONSE) { event ->
             val data = event.toWireData() ?: return@onType
             val requestId = data["requestId"]?.toString()?.trim('"') ?: return@onType
             pendingRequests.remove(requestId)?.complete(data)
         }
 
-        // Listen for capabilities response
-        eventBus.onType("intelligence.capabilities") { event ->
+        eventBus.onType(EventType.INTELLIGENCE_CAPABILITIES) { event ->
             val data = event.toWireData() ?: return@onType
             val methods = data["methods"]
-            if (methods is kotlinx.serialization.json.JsonArray) {
+            if (methods is JsonArray) {
                 supportedMethods.clear()
                 methods.forEach { element ->
-                    val name = element.toString().trim('"')
-                    supportedMethods.add(name)
+                    supportedMethods.add(element.toString().trim('"'))
                 }
                 plugin.logger.info("Bridge intelligence capabilities: $supportedMethods")
             }
         }
     }
 
-    /**
-     * Requests the list of supported methods from the bridge.
-     * Called during event bus initialization / config reload.
-     */
     fun requestCapabilities() {
-        val request =
-            buildJsonObject {
-                put(
-                    "requestId",
-                    java.util.UUID
-                        .randomUUID()
-                        .toString(),
-                )
-                put("method", "getCapabilities")
-            }
-        eventBus.emit(
-            object : com.canefe.story.bridge.StoryEvent {
-                override val eventType: String = "intelligence.request"
-
-                override fun toWireData(): JsonObject = request
-            },
-        )
+        val dto = CapabilitiesRequest(requestId = UUID.randomUUID().toString())
+        emitDto(dto)
         plugin.logger.info("Requested intelligence capabilities from bridge")
     }
 
@@ -89,40 +68,20 @@ class BridgeIntelligence(
         npc: StoryNPC,
         conversation: Conversation,
     ): CompletableFuture<String> {
-        if (!isSupported("generateNPCResponse")) return local.generateNPCResponse(npc, conversation)
+        if (!isSupported(Method.GENERATE_NPC_RESPONSE)) return local.generateNPCResponse(npc, conversation)
 
-        val requestId =
-            java.util.UUID
-                .randomUUID()
-                .toString()
-        val request =
-            buildJsonObject {
-                put("requestId", requestId)
-                put("method", "generateNPCResponse")
-                put("npcName", npc.name)
-                put("conversationId", conversation.id)
-                putJsonArray("history") {
-                    conversation.history.takeLast(20).forEach { msg ->
-                        add(
-                            buildJsonObject {
-                                put("role", msg.role)
-                                put("content", msg.content)
-                            },
-                        )
-                    }
-                }
-                putJsonArray("npcNames") { conversation.npcNames.forEach { add(JsonPrimitive(it)) } }
-                putJsonArray("playerNames") {
-                    conversation.players
-                        .mapNotNull {
-                            org.bukkit.Bukkit
-                                .getPlayer(it)
-                                ?.name
-                        }.forEach { add(JsonPrimitive(it)) }
-                }
-            }
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GenerateNPCResponseRequest(
+                requestId = requestId,
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.name,
+                conversationId = conversation.id,
+                history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
+                characterIds = conversation.npcNames,
+                playerCharacterIds = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.characterId },
+            )
 
-        return sendRequest(requestId, "intelligence.request", request)
+        return sendRequest(requestId, json.encodeToJsonElement(GenerateNPCResponseRequest.serializer(), dto).jsonObject)
             .thenApply { response ->
                 response["result"]?.toString()?.trim('"') ?: ""
             }.exceptionally { e ->
@@ -131,32 +90,47 @@ class BridgeIntelligence(
             }
     }
 
-    override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
-        if (!isSupported("selectNextSpeaker")) return local.selectNextSpeaker(conversation)
+    override fun gmGhostwrite(
+        npc: StoryNPC,
+        conversation: Conversation,
+        draftMessage: String,
+    ): CompletableFuture<String> {
+        if (!isSupported(Method.GM_GHOSTWRITE)) return local.gmGhostwrite(npc, conversation, draftMessage)
 
-        val requestId =
-            java.util.UUID
-                .randomUUID()
-                .toString()
-        val request =
-            buildJsonObject {
-                put("requestId", requestId)
-                put("method", "selectNextSpeaker")
-                put("conversationId", conversation.id)
-                putJsonArray("npcNames") { conversation.npcNames.forEach { add(JsonPrimitive(it)) } }
-                putJsonArray("history") {
-                    conversation.history.takeLast(10).forEach { msg ->
-                        add(
-                            buildJsonObject {
-                                put("role", msg.role)
-                                put("content", msg.content)
-                            },
-                        )
-                    }
-                }
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GMGhostwriteRequest(
+                requestId = requestId,
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.name,
+                conversationId = conversation.id,
+                draftMessage = draftMessage,
+                history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
+                characterIds = conversation.npcNames,
+                playerCharacterIds = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.characterId },
+            )
+
+        return sendRequest(requestId, json.encodeToJsonElement(GMGhostwriteRequest.serializer(), dto).jsonObject)
+            .thenApply { response ->
+                response["result"]?.toString()?.trim('"') ?: ""
+            }.exceptionally { e ->
+                plugin.logger.warning("Bridge gmGhostwrite failed, falling back to local: ${e.message}")
+                local.gmGhostwrite(npc, conversation, draftMessage).get()
             }
+    }
 
-        return sendRequest(requestId, "intelligence.request", request)
+    override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
+        if (!isSupported(Method.SELECT_NEXT_SPEAKER)) return local.selectNextSpeaker(conversation)
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            SelectNextSpeakerRequest(
+                requestId = requestId,
+                conversationId = conversation.id,
+                characterIds = conversation.npcNames,
+                history = conversation.history.takeLast(10).map { MessageDTO(it.role, it.content) },
+            )
+
+        return sendRequest(requestId, json.encodeToJsonElement(SelectNextSpeakerRequest.serializer(), dto).jsonObject)
             .thenApply { response ->
                 response["result"]?.toString()?.trim('"')
             }.exceptionally { e ->
@@ -166,7 +140,7 @@ class BridgeIntelligence(
     }
 
     override fun summarizeConversation(conversation: Conversation): CompletableFuture<Void> {
-        if (!isSupported("summarizeConversation")) return local.summarizeConversation(conversation)
+        if (!isSupported(Method.SUMMARIZE_CONVERSATION)) return local.summarizeConversation(conversation)
         // For now, summarization stays local even if supported — complex side effects
         return local.summarizeConversation(conversation)
     }
@@ -176,50 +150,92 @@ class BridgeIntelligence(
         speakerName: String,
         message: String,
     ): CompletableFuture<Map<String, String>> {
-        if (!isSupported("generateNPCReactions")) return local.generateNPCReactions(conversation, speakerName, message)
+        if (!isSupported(Method.GENERATE_NPC_REACTIONS)) {
+            return local.generateNPCReactions(conversation, speakerName, message)
+        }
 
-        val requestId =
-            java.util.UUID
-                .randomUUID()
-                .toString()
-        val request =
-            buildJsonObject {
-                put("requestId", requestId)
-                put("method", "generateNPCReactions")
-                put("conversationId", conversation.id)
-                put("speakerName", speakerName)
-                put("message", message)
-                putJsonArray("npcNames") {
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GenerateNPCReactionsRequest(
+                requestId = requestId,
+                conversationId = conversation.id,
+                speakerCharacterId = speakerName,
+                message = message,
+                characterIds =
                     conversation.npcs
                         .filter { it.name != speakerName && !conversation.mutedNPCs.contains(it) }
-                        .forEach { add(JsonPrimitive(it.name)) }
-                }
-            }
+                        .map { plugin.characterRegistry.getCharacterIdForNPC(it) ?: it.name },
+            )
 
-        return sendRequest(requestId, "intelligence.request", request)
-            .thenApply<Map<String, String>> { response ->
-                val result = mutableMapOf<String, String>()
-                val reactionsObj = response["result"]
-                if (reactionsObj is JsonObject) {
-                    reactionsObj.forEach { (name, value) ->
-                        result[name] = value.toString().trim('"')
-                    }
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(GenerateNPCReactionsRequest.serializer(), dto).jsonObject,
+        ).thenApply<Map<String, String>> { response ->
+            val result = mutableMapOf<String, String>()
+            val reactionsObj = response["result"]
+            if (reactionsObj is JsonObject) {
+                reactionsObj.forEach { (name, value) ->
+                    result[name] = value.toString().trim('"')
                 }
-                result
-            }.exceptionally { e ->
-                plugin.logger.warning("Bridge generateNPCReactions failed, falling back to local: ${e.message}")
-                local.generateNPCReactions(conversation, speakerName, message).get()
             }
+            result
+        }.exceptionally { e ->
+            plugin.logger.warning("Bridge generateNPCReactions failed, falling back to local: ${e.message}")
+            local.generateNPCReactions(conversation, speakerName, message).get()
+        }
     }
 
     override fun summarizeMessageHistory(conversation: Conversation): CompletableFuture<String?> {
-        if (!isSupported("summarizeMessageHistory")) return local.summarizeMessageHistory(conversation)
+        if (!isSupported(Method.SUMMARIZE_MESSAGE_HISTORY)) return local.summarizeMessageHistory(conversation)
         return local.summarizeMessageHistory(conversation)
+    }
+
+    override fun processConversationInformation(request: ConversationInformationRequest): CompletableFuture<Void> {
+        if (!isSupported(Method.PROCESS_CONVERSATION_INFORMATION)) {
+            return local.processConversationInformation(request)
+        }
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            ProcessConversationInformationRequest(
+                requestId = requestId,
+                locationName = request.locationName,
+                characterIds = request.npcNames,
+                messages = request.messages.map { MessageDTO(it.role, it.content) },
+                relevantLocations = request.relevantLocations,
+            )
+
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(ProcessConversationInformationRequest.serializer(), dto).jsonObject,
+        ).thenApply<Void> { null }
+            .exceptionally { e ->
+                plugin.logger.warning(
+                    "Bridge processConversationInformation failed, falling back to local: ${e.message}",
+                )
+                local.processConversationInformation(request).get()
+                null
+            }
+    }
+
+    private inline fun <reified T> emitDto(dto: T) where T : Any {
+        val jsonObject =
+            json
+                .encodeToJsonElement(
+                    kotlinx.serialization.serializer<T>(),
+                    dto,
+                ).jsonObject
+        eventBus.emit(
+            object : com.canefe.story.bridge.StoryEvent {
+                override val eventType: String = EventType.INTELLIGENCE_REQUEST
+
+                override fun toWireData(): JsonObject = jsonObject
+            },
+        )
     }
 
     private fun sendRequest(
         requestId: String,
-        type: String,
         data: JsonObject,
     ): CompletableFuture<JsonObject> {
         val future = CompletableFuture<JsonObject>()
@@ -227,7 +243,7 @@ class BridgeIntelligence(
 
         eventBus.emit(
             object : com.canefe.story.bridge.StoryEvent {
-                override val eventType: String = type
+                override val eventType: String = EventType.INTELLIGENCE_REQUEST
 
                 override fun toWireData(): JsonObject = data
             },

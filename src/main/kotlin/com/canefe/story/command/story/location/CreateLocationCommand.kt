@@ -65,7 +65,13 @@ class CreateLocationCommand(
                                     )
 
                                 // Append generated context to the location and save
-                                location.context.addAll(newContextEntries)
+                                val newText = newContextEntries.joinToString("\n")
+                                location.description =
+                                    if (location.description.isBlank()) {
+                                        newText
+                                    } else {
+                                        "${location.description}\n$newText"
+                                    }
                                 commandUtils.locationManager.saveLocation(location)
 
                                 player.sendSuccess(
@@ -123,7 +129,13 @@ class CreateLocationCommand(
                                     )
 
                                 // Append generated context to the location and save
-                                location.context.addAll(newContextEntries)
+                                val newText = newContextEntries.joinToString("\n")
+                                location.description =
+                                    if (location.description.isBlank()) {
+                                        newText
+                                    } else {
+                                        "${location.description}\n$newText"
+                                    }
                                 commandUtils.locationManager.saveLocation(location)
 
                                 sender.sendSuccess(

@@ -2,16 +2,17 @@ package com.canefe.story.conversation
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.event.*
 import com.canefe.story.audio.VoiceManager
+import com.canefe.story.bridge.CharacterSpokeEvent
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
-import com.canefe.story.npc.NPCContextGenerator
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.util.NPCUtils
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendInfo
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
@@ -22,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ConversationManager(
     private val plugin: Story,
-    private val npcContextGenerator: NPCContextGenerator,
     private val npcResponseService: NPCResponseService,
     private val worldInformationManager: WorldInformationManager,
 ) {
@@ -300,7 +300,9 @@ class ConversationManager(
             val conversationLocation =
                 conversation.npcs.firstOrNull()?.let { npc ->
                     // Get the actual physical location where the NPC currently is
-                    npcContextGenerator.getOrCreateContextForNPC(npc.name)?.location?.name
+                    npc.entity?.location?.let { loc ->
+                        plugin.locationManager.getLocationByPosition2D(loc)?.name
+                    }
                 } ?: plugin.configService.defaultLocationName
 
             // Create conversation information source
@@ -321,7 +323,7 @@ class ConversationManager(
             sessionContext.append(
                 "A new conversation has ended between ${
                     conversation.players.joinToString(", ") {
-                        EssentialsUtils.getNickname(Bukkit.getPlayer(it)?.name ?: "")
+                        Bukkit.getPlayer(it)?.characterName ?: ""
                     }
                 }, ${conversation.npcNames.joinToString(", ")}.\n",
             )
@@ -335,7 +337,7 @@ class ConversationManager(
             sessionContext.append("\nLocation: ${conversationLocation}\n")
             sessionContext.append("Summarize this conversation and add it. ")
             val forceSession = !conversation.radiant && conversation.players.isNotEmpty()
-            plugin.sessionManager.feed(sessionContext.toString(), force = forceSession)
+            plugin.domainEvents.emitSessionFeed(sessionContext.toString(), force = forceSession)
 
             // Summarize conversation for NPC memory if needed
             npcResponseService
@@ -420,7 +422,7 @@ class ConversationManager(
         }
 
         conversation.addSystemMessage(
-            "${EssentialsUtils.getNickname(player.name)} has joined the conversation.",
+            "${player.characterName} has joined the conversation.",
         )
 
         result.complete(true)
@@ -678,12 +680,13 @@ class ConversationManager(
         handleHolograms(conversation, player.name)
 
         // Publish player message through event bus
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         plugin.eventBus.emit(
             com.canefe.story.bridge.PlayerMessageEvent(
+                characterId = player.characterId,
                 playerName = playerName,
                 message = message,
-                npcName = conversation.npcNames.firstOrNull(),
+                npcCharacterId = conversation.npcNames.firstOrNull(),
                 conversationId = conversation.id,
             ),
         )
@@ -764,9 +767,10 @@ class ConversationManager(
 
             // Summarise the conversation for left NPC. (Only if there is still npcs)
             if (conversation.npcs.isNotEmpty()) {
+                val aiChar = AICharacter.from(npc)
                 npcResponseService.summarizeConversationForSingleNPC(
                     conversation.history,
-                    npc.name,
+                    aiChar,
                 )
             } else {
                 // If no NPCs left, end the conversation
@@ -784,7 +788,7 @@ class ConversationManager(
     ) {
         // Remove the player from the conversation
         if (conversation.removePlayer(player)) {
-            val playerName = EssentialsUtils.getNickname(player.name)
+            val playerName = player.characterName
 
             // Notify other players in the conversation
             for (otherPlayerId in conversation.players) {
@@ -834,11 +838,9 @@ class ConversationManager(
      */
     private fun sendThinkingIndicator(npc: StoryNPC) {
         if (!npc.isSpawned || npc.entity == null) return
-        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npc)
         plugin.npcMessageService.broadcastNPCStreamMessage(
             message = "*thinking...*",
             npc = npc,
-            npcContext = npcContext,
         )
     }
 
@@ -995,6 +997,13 @@ class ConversationManager(
                         },
                         1L,
                     )
+                    plugin.eventBus.emit(
+                        CharacterSpokeEvent(
+                            characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
+                            characterName = npcName,
+                            message = message,
+                        ),
+                    )
                     return
                 }
 
@@ -1005,14 +1014,12 @@ class ConversationManager(
 
         // Add to history and broadcast
         if (addToHistory) conversation.addNPCMessage(npc, message)
-        val npcContext = npcContextGenerator.getOrCreateContextForNPC(npcName)
         val voiceWillFollow = plugin.voiceManager.willGenerateVoice(npc)
 
         // Send streaming message first (triggers bubble on client)
         plugin.npcMessageService.broadcastNPCStreamMessage(
             message = message,
             npc = npc,
-            npcContext = npcContext,
             voicePending = voiceWillFollow,
         )
         // Send the final non-streaming message after a short delay
@@ -1023,10 +1030,19 @@ class ConversationManager(
                 plugin.npcMessageService.broadcastNPCMessage(
                     message = message,
                     npc = npc,
-                    npcContext = npcContext,
                 )
             },
             1L, // 1 tick delay
+        )
+
+        // Notify orchestrator that an NPC spoke
+        plugin.eventBus.emit(
+            CharacterSpokeEvent(
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
+                characterName = npcName,
+                message = message,
+                conversationId = conversation.id,
+            ),
         )
     }
 
@@ -1491,11 +1507,9 @@ class ConversationManager(
                         player?.sendInfo("<gold>${npc.name}</gold> has joined the conversation.")
                     }
 
-                    // If a greeting message is provided, paraphrase it through intelligence
+                    // If a greeting message is provided, ghostwrite it through intelligence
                     if (message.isNotEmpty()) {
-                        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, message)
-                        conversation.addSystemMessage(talkAsNpcPrompt)
-                        plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+                        plugin.intelligence.gmGhostwrite(npc, conversation, message).thenAccept { response ->
                             Bukkit.getScheduler().runTask(
                                 plugin,
                                 Runnable {

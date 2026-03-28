@@ -33,6 +33,7 @@ class StoryTest {
 
         // Load the plugin
         plugin = MockBukkit.load(Story::class.java)
+        plugin.characterRegistry = mockk(relaxed = true)
 
         plugin.commandManager = mockk(relaxed = true)
     }

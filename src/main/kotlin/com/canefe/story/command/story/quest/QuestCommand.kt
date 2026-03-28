@@ -6,7 +6,7 @@ import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.quest.Quest
 import com.canefe.story.quest.QuestObjective
 import com.canefe.story.quest.QuestStatus
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
@@ -119,7 +119,7 @@ class QuestCommand(
                         val book = ItemStack(Material.WRITTEN_BOOK)
                         val meta = book.itemMeta as BookMeta
                         val targetName =
-                            EssentialsUtils.getNickname(target?.name ?: player.name)
+                            ((target as? Player) ?: player).characterName
                         meta.title(
                             plugin.miniMessage.deserialize("$targetName's Journal"),
                         )
@@ -564,8 +564,8 @@ class QuestCommand(
                     val player = args[0] as Player
                     val questId = args[1] as String
 
-                    val success =
-                        plugin.questManager.assignQuestToPlayer(player, questId)
+                    plugin.domainEvents.emitQuestAssign(player, questId)
+                    val success = true
                     if (success) {
                         val quest = plugin.questManager.getQuest(questId)
                         sender.sendSuccess(
@@ -696,7 +696,7 @@ class QuestCommand(
                     val questId = args[1] as String
 
                     if (player.isOnline) {
-                        plugin.questManager.completeQuest(player.player!!, questId)
+                        plugin.domainEvents.emitQuestComplete(player.player!!, questId)
                     } else {
                         plugin.questManager.completeQuest(player, questId)
                     }
@@ -729,7 +729,7 @@ class QuestCommand(
 
                     if (player.isOnline) {
                         quests.forEach { (quest, _) ->
-                            plugin.questManager.completeQuest(player.player!!, quest.id)
+                            plugin.domainEvents.emitQuestComplete(player.player!!, quest.id)
                         }
                     } else {
                         quests.forEach { (quest, _) ->
@@ -790,7 +790,7 @@ class QuestCommand(
                     val player = args[0] as Player
                     val questId = args[1] as String
 
-                    plugin.questManager.updateObjectiveProgress(player, questId)
+                    plugin.domainEvents.emitQuestProgress(player, questId)
                     sender.sendSuccess(
                         "Updated progress for quest $questId for ${player.name}",
                     )
@@ -821,7 +821,7 @@ class QuestCommand(
                         sender.sendSuccess(message)
                     }
 
-                    val playerName = EssentialsUtils.getNickname(targetPlayer.name)
+                    val playerName = targetPlayer.characterName
 
                     // Create messages for AI prompt using PromptService
                     val contextInformation = extractedContext.generatePromptContext()

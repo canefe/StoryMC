@@ -2,10 +2,12 @@ package com.canefe.story.quest
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.event.QuestCompleteEvent
 import com.canefe.story.command.story.quest.QuestCommand.ObjectiveInfo
+import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.storage.QuestStorage
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
@@ -59,22 +61,8 @@ class QuestManager(
     fun getValidLocations(): List<String> = plugin.locationManager.getAllLocations().map { it.name }
 
     fun getValidTalkTargets(npc: StoryNPC): List<String> {
-        // First get the location of npc (Get his npcData)
-        val npcData = plugin.npcDataManager.getNPCData(npc.name)
-        val location = npcData?.storyLocation
-
-        // get all npc names from that StoryLocation
-        for (npcName in plugin.npcDataManager.getAllNPCNames()) {
-            val npcFile = File(plugin.npcDataManager.npcDirectory, "$npcName.yml")
-            val npcConfig = YamlConfiguration.loadConfiguration(npcFile)
-            val npcLocation = npcConfig.getString("location") ?: continue
-
-            if (npcLocation == location?.name) {
-                return listOf(npcName)
-            }
-        }
-
-        return listOf(npc.name)
+        // Return nearby NPC names from registry
+        return plugin.characterRegistry.allNPCs().map { it.name }
     }
 
     private val questFolder: File =
@@ -397,21 +385,20 @@ class QuestManager(
 
         // Get Questgiver NPC (npc id stored in quest id) ex: npc_[npcId]_[questUniqueId]
         val parts = quest.id.split("_")
-        val npcId = if (parts.size >= 2) parts[1] else return
-        val npcName =
-            if (npcId.matches(Regex("\\d+"))) {
-                CitizensAPI.getNPCRegistry().getById(npcId.toInt())?.name
+        val npcIdStr = if (parts.size >= 2) parts[1] else return
+        val citizensNpc =
+            if (npcIdStr.matches(Regex("\\d+"))) {
+                CitizensAPI.getNPCRegistry().getById(npcIdStr.toInt())
             } else {
-                // If not numeric, we don't care and will simply return
                 null
             } ?: return
+        val storyNpc = CitizensStoryNPC(citizensNpc)
+        val character = AICharacter.from(storyNpc)
         val contextPrompt =
             """
-            You have heard that ${EssentialsUtils.getNickname(
-                player.name,
-            )} has completed the quest you gave: ${quest.title}.
+            You have heard that ${player.characterName} has completed the quest you gave: ${quest.title}.
             """.trimIndent()
-        plugin.npcResponseService.generateNPCMemory(npcName, "event", contextPrompt)
+        plugin.npcResponseService.generateNPCMemory(character, "event", contextPrompt)
     }
 
     // OfflinePlayer completeQuest

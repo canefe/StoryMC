@@ -26,13 +26,14 @@ enum class StorageBackend {
 }
 
 class StorageFactory private constructor(
-    var npcStorage: NpcStorage,
     var locationStorage: LocationStorage,
     var questStorage: QuestStorage,
     var sessionStorage: SessionStorage,
     var relationshipStorage: RelationshipStorage,
     var loreStorage: LoreStorage,
     var playerStorage: PlayerStorage,
+    var worldEventStorage: WorldEventStorage,
+    var rumorStorage: RumorStorage,
     var activeBackend: StorageBackend,
     private var mongoClientManager: MongoClientManager?,
     private var sqliteManager: SQLiteManager?,
@@ -45,6 +46,10 @@ class StorageFactory private constructor(
 ) {
     val isMongoConnected: Boolean
         get() = mongoClientManager != null
+
+    /** Exposes the MongoDB client for character registry and other cross-cutting concerns. */
+    val mongoClient: MongoClientManager?
+        get() = mongoClientManager
 
     val isSQLite: Boolean
         get() = sqliteManager != null
@@ -94,13 +99,14 @@ class StorageFactory private constructor(
                 shutdown()
                 mongoClientManager = mongo
 
-                npcStorage = MongoNpcStorage(mongo, logger)
                 locationStorage = MongoLocationStorage(mongo)
                 questStorage = MongoQuestStorage(mongo)
                 sessionStorage = MongoSessionStorage(mongo)
                 relationshipStorage = MongoRelationshipStorage(mongo)
                 loreStorage = MongoLoreStorage(mongo)
                 playerStorage = MongoPlayerStorage(mongo)
+                worldEventStorage = MongoWorldEventStorage(mongo)
+                rumorStorage = MongoRumorStorage(mongo)
                 activeBackend = StorageBackend.MONGODB
 
                 logger.info("[Storage] Switched to MongoDB.")
@@ -118,13 +124,14 @@ class StorageFactory private constructor(
                 shutdown()
                 sqliteManager = sqlite
 
-                npcStorage = SQLiteNpcStorage(sqlite, logger)
                 locationStorage = SQLiteLocationStorage(sqlite)
                 questStorage = SQLiteQuestStorage(sqlite)
                 sessionStorage = SQLiteSessionStorage(sqlite)
                 relationshipStorage = SQLiteRelationshipStorage(sqlite)
                 loreStorage = SQLiteLoreStorage(sqlite)
                 playerStorage = SQLitePlayerStorage(sqlite)
+                worldEventStorage = SQLiteWorldEventStorage()
+                rumorStorage = SQLiteRumorStorage()
                 activeBackend = StorageBackend.SQLITE
 
                 logger.info("[Storage] Switched to SQLite.")
@@ -134,13 +141,14 @@ class StorageFactory private constructor(
             StorageBackend.YAML -> {
                 shutdown()
 
-                npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
                 locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
                 questStorage = YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
                 sessionStorage = YamlSessionStorage(File(dataFolder, "sessions"), logger)
                 relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
                 loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
                 playerStorage = YamlPlayerStorage(dataFolder, logger)
+                worldEventStorage = YamlWorldEventStorage()
+                rumorStorage = YamlRumorStorage()
                 activeBackend = StorageBackend.YAML
 
                 logger.info("[Storage] Switched to YAML (deprecated).")
@@ -206,40 +214,42 @@ class StorageFactory private constructor(
                 StorageBackend.YAML -> {}
             }
 
-            val npcStorage: NpcStorage
             val locationStorage: LocationStorage
             val questStorage: QuestStorage
             val sessionStorage: SessionStorage
             val relationshipStorage: RelationshipStorage
             val loreStorage: LoreStorage
             val playerStorage: PlayerStorage
+            val worldEventStorage: WorldEventStorage
+            val rumorStorage: RumorStorage
 
             @Suppress("DEPRECATION")
             when (actualBackend) {
                 StorageBackend.MONGODB -> {
                     val mc = mongoClient!!
-                    npcStorage = MongoNpcStorage(mc, logger)
                     locationStorage = MongoLocationStorage(mc)
                     questStorage = MongoQuestStorage(mc)
                     sessionStorage = MongoSessionStorage(mc)
                     relationshipStorage = MongoRelationshipStorage(mc)
                     loreStorage = MongoLoreStorage(mc)
                     playerStorage = MongoPlayerStorage(mc)
+                    worldEventStorage = MongoWorldEventStorage(mc)
+                    rumorStorage = MongoRumorStorage(mc)
                 }
 
                 StorageBackend.SQLITE -> {
                     val sc = sqliteClient!!
-                    npcStorage = SQLiteNpcStorage(sc, logger)
                     locationStorage = SQLiteLocationStorage(sc)
                     questStorage = SQLiteQuestStorage(sc)
                     sessionStorage = SQLiteSessionStorage(sc)
                     relationshipStorage = SQLiteRelationshipStorage(sc)
                     loreStorage = SQLiteLoreStorage(sc)
                     playerStorage = SQLitePlayerStorage(sc)
+                    worldEventStorage = SQLiteWorldEventStorage()
+                    rumorStorage = SQLiteRumorStorage()
                 }
 
                 StorageBackend.YAML -> {
-                    npcStorage = YamlNpcStorage(File(dataFolder, "npcs"), logger)
                     locationStorage = YamlLocationStorage(File(dataFolder, "locations"), logger)
                     questStorage =
                         YamlQuestStorage(File(dataFolder, "quests"), File(dataFolder, "playerquests"), logger)
@@ -247,19 +257,22 @@ class StorageFactory private constructor(
                     relationshipStorage = YamlRelationshipStorage(File(dataFolder, "relationships"), logger)
                     loreStorage = YamlLoreStorage(File(dataFolder, "lore"), logger)
                     playerStorage = YamlPlayerStorage(dataFolder, logger)
+                    worldEventStorage = YamlWorldEventStorage()
+                    rumorStorage = YamlRumorStorage()
                 }
             }
 
             logger.info("Storage backend: $actualBackend")
 
             return StorageFactory(
-                npcStorage = npcStorage,
                 locationStorage = locationStorage,
                 questStorage = questStorage,
                 sessionStorage = sessionStorage,
                 relationshipStorage = relationshipStorage,
                 loreStorage = loreStorage,
                 playerStorage = playerStorage,
+                worldEventStorage = worldEventStorage,
+                rumorStorage = rumorStorage,
                 activeBackend = actualBackend,
                 mongoClientManager = mongoClient,
                 sqliteManager = sqliteClient,

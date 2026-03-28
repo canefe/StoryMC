@@ -3,7 +3,6 @@ package com.canefe.story.api
 import com.canefe.story.Story
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
-import com.canefe.story.api.character.CharacterSkills
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
@@ -105,14 +104,7 @@ interface StoryAPI {
          * Get a [PlayerCharacter] for a player.
          */
         @JvmStatic
-        fun getCharacter(player: Player): PlayerCharacter {
-            val skills =
-                CharacterSkills(
-                    provider = instance.skillManager.createProviderForCharacter(player.uniqueId, true),
-                    player = player,
-                )
-            return PlayerCharacter(player = player, skills = skills)
-        }
+        fun getCharacter(player: Player): PlayerCharacter = PlayerCharacter.from(player)
 
         /**
          * Get NPC data by name
@@ -121,14 +113,14 @@ interface StoryAPI {
          * @return The NPC data API wrapper if found, null otherwise
          */
         @JvmStatic
-        fun getNPCByName(npcName: String): APINPCData? =
-            instance.npcDataManager.getNPCData(npcName)?.let { npcData ->
-                APINPCData(
-                    name = npcData.name,
-                    context = npcData.context,
-                    appearance = npcData.appearance,
-                )
-            }
+        fun getNPCByName(npcName: String): APINPCData? {
+            val record = instance.characterRegistry.getByName(npcName) ?: return null
+            return APINPCData(
+                name = record.name,
+                context = "",
+                appearance = record.appearance,
+            )
+        }
 
         /**
          * Ask LLM to generate a response to a context (asynchronous)
@@ -270,16 +262,8 @@ interface StoryAPI {
         @JvmStatic
         fun getCharacterByNPC(npc: net.citizensnpcs.api.npc.NPC): AICharacter? {
             val storyNpc = CitizensStoryNPC(npc)
-            val npcData = instance.npcDataManager.getNPCData(npc.name) ?: return null
-            val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(npc.name))
-            return AICharacter(
-                npc = storyNpc,
-                name = npcData.name,
-                role = npcData.role,
-                appearance = npcData.appearance,
-                context = npcData.context,
-                skills = skills,
-            )
+            instance.characterRegistry.getByStoryNPC(storyNpc) ?: return null
+            return AICharacter.from(storyNpc)
         }
 
         /**
@@ -304,16 +288,7 @@ interface StoryAPI {
             try {
                 val storyNpc = instance.mythicMobConversation.getOrCreateNPCAdapter(entity)
                 if (storyNpc != null) {
-                    val npcData = instance.npcDataManager.getNPCData(storyNpc.name)
-                    val skills = CharacterSkills(provider = instance.skillManager.createProviderForNPC(storyNpc.name))
-                    return AICharacter(
-                        npc = storyNpc,
-                        name = storyNpc.name,
-                        role = npcData?.role ?: "NPC",
-                        appearance = npcData?.appearance ?: "",
-                        context = npcData?.context ?: "",
-                        skills = skills,
-                    )
+                    return AICharacter.from(storyNpc)
                 }
             } catch (_: Throwable) {
             }
@@ -406,11 +381,10 @@ interface StoryAPI {
         ): CompletableFuture<String> {
             val npc = character.npc
             val conversation = instance.conversationManager.getConversation(npc)
-            val npcContext = instance.npcContextGenerator.getOrCreateContextForNPC(npc.name)
 
             if (!llm) {
                 // Raw broadcast, no LLM
-                instance.npcMessageService.broadcastNPCMessage(message, npc, npcContext = npcContext)
+                instance.npcMessageService.broadcastNPCMessage(message, npc)
                 conversation?.addNPCMessage(npc, message)
                 return CompletableFuture.completedFuture(message)
             }
@@ -435,7 +409,7 @@ interface StoryAPI {
                     isConversation = conversation != null,
                 ).thenApply { response ->
                     val finalMessage = response?.trim() ?: message
-                    instance.npcMessageService.broadcastNPCMessage(finalMessage, npc, npcContext = npcContext)
+                    instance.npcMessageService.broadcastNPCMessage(finalMessage, npc)
                     conversation?.addNPCMessage(npc, finalMessage)
                     finalMessage
                 }

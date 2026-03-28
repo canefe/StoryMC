@@ -174,10 +174,9 @@ class ContextExtractor(
         locationKeywords.forEach { keyword ->
             plugin.locationManager.getAllLocations().forEach { location ->
                 if (location.name.equals(keyword, ignoreCase = true) &&
-                    location.context.isNotEmpty()
+                    location.description.isNotBlank()
                 ) {
-                    val contextString = location.context.joinToString(". ")
-                    locationContexts.add(LocationContextInfo(location.name, contextString))
+                    locationContexts.add(LocationContextInfo(location.name, location.description))
                 }
             }
         }
@@ -193,31 +192,17 @@ class ContextExtractor(
         val npcKeywords = extractKeywords(text, config.minKeywordLength)
         val npcContexts = mutableListOf<NPCContextInfo>()
 
+        val allNPCRecords = plugin.characterRegistry.allNPCs()
         npcKeywords.forEach { keyword ->
-            plugin.npcDataManager.getAllNPCNames().forEach { npcName ->
-                if (npcName.equals(keyword, ignoreCase = true)) {
-                    val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
-                    if (npcContext != null) {
-                        val lastFewMemories =
-                            npcContext.getMemoriesForPrompt(
-                                plugin.timeService,
-                                config.maxRecentMemories,
-                            )
-                        val recentMemoriesString =
-                            if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-                                lastFewMemories
-                            } else {
-                                ""
-                            }
-
-                        npcContexts.add(
-                            NPCContextInfo(
-                                name = npcName,
-                                context = npcContext.context,
-                                recentMemories = recentMemoriesString,
-                            ),
-                        )
-                    }
+            allNPCRecords.forEach { record ->
+                if (record.name.equals(keyword, ignoreCase = true)) {
+                    npcContexts.add(
+                        NPCContextInfo(
+                            name = record.name,
+                            context = record.appearance,
+                            recentMemories = "",
+                        ),
+                    )
                 }
             }
         }

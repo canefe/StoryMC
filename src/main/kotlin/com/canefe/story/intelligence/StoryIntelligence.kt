@@ -47,4 +47,24 @@ interface StoryIntelligence {
      * @return Summary text to replace old messages
      */
     fun summarizeMessageHistory(conversation: Conversation): CompletableFuture<String?>
+
+    /**
+     * Ghostwrite an NPC line from a GM draft. The draft is rewritten to match the character's
+     * personality and tone. The LLM layer owns the prompt — callers just send the draft.
+     * @return The fleshed-out NPC dialogue
+     */
+    fun gmGhostwrite(
+        npc: StoryNPC,
+        conversation: Conversation,
+        draftMessage: String,
+    ): CompletableFuture<String>
+
+    /**
+     * Process a completed conversation to extract world information (rumors, personal knowledge).
+     *
+     * In local mode: does LLM analysis and stores results locally.
+     * In bridge mode: sends conversation data to Go orchestrator, which routes to story-bot
+     * for extraction and persistence via story-mcp. Kotlin doesn't touch storage.
+     */
+    fun processConversationInformation(request: ConversationInformationRequest): CompletableFuture<Void>
 }

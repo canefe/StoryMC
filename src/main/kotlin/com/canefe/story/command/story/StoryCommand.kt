@@ -9,10 +9,7 @@ import com.canefe.story.command.story.quest.QuestCommand
 import com.canefe.story.command.story.session.SessionCommand
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.storage.StorageBackend
-import com.canefe.story.storage.YamlMigrator
 import com.canefe.story.util.Msg.sendError
-import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendRaw
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
@@ -155,8 +152,8 @@ class StoryCommand(
                             val pattern = "\\b${Regex.escape(simpleName)}\\b"
                             if (question.contains(Regex(pattern, RegexOption.IGNORE_CASE))) {
                                 relevantLocations.add(location.name)
-                                location.context.forEach { ctx ->
-                                    locationContexts.add("${location.name}: $ctx")
+                                if (location.description.isNotBlank()) {
+                                    locationContexts.add("${location.name}: ${location.description}")
                                 }
                             }
                         }
@@ -169,8 +166,8 @@ class StoryCommand(
                             val fullPath = pathParts.joinToString(" ")
                             if (question.contains(fullPath, ignoreCase = true)) {
                                 relevantLocations.add(location.name)
-                                location.context.forEach { ctx ->
-                                    locationContexts.add("${location.name}: $ctx")
+                                if (location.description.isNotBlank()) {
+                                    locationContexts.add("${location.name}: ${location.description}")
                                 }
                             }
                         }
@@ -252,26 +249,29 @@ class StoryCommand(
                             }
 
                             // Send the response to appropriate recipients
-                            plugin.askForPermission(
-                                "Should we broadcast the following response to all players? \n\n${
+                            plugin.taskManager.createTask(
+                                description = "Should we broadcast the following response to all players? \n\n${
                                     response
                                         .replace("\n", " ")
                                 }",
-                                onAccept = {
-                                    plugin.server.onlinePlayers.forEach { player ->
-                                        player.sendRaw(response)
-                                    }
-                                    plugin.server.consoleSender.sendRaw(response)
+                                permission = "story.task.respond",
+                                onAccept =
+                                    Runnable {
+                                        plugin.server.onlinePlayers.forEach { player ->
+                                            player.sendRaw(response)
+                                        }
+                                        plugin.server.consoleSender.sendRaw(response)
 
-                                    sender.sendSuccess(
-                                        "Response broadcast to all players.",
-                                    )
-                                },
-                                onRefuse = {
-                                    sender.sendSuccess(
-                                        "Response broadcast cancelled.",
-                                    )
-                                },
+                                        sender.sendSuccess(
+                                            "Response broadcast to all players.",
+                                        )
+                                    },
+                                onRefuse =
+                                    Runnable {
+                                        sender.sendSuccess(
+                                            "Response broadcast cancelled.",
+                                        )
+                                    },
                             )
                         }.exceptionally { e ->
                             sender.sendSuccess(
@@ -412,14 +412,8 @@ class StoryCommand(
         npcName: String,
         npcContexts: MutableList<String>,
     ) {
-        val npcContext = plugin.npcContextGenerator.getOrCreateContextForNPC(npcName)
-        val lastFewMemories = npcContext?.getMemoriesForPrompt(plugin.timeService, 5)
-        if (npcContext != null) {
-            npcContexts.add("$npcName's context: ${npcContext.context} ")
-            if (lastFewMemories != null && lastFewMemories.isNotEmpty()) {
-                npcContexts.add("$npcName's recent memories: $lastFewMemories")
-            }
-        }
+        val record = plugin.characterRegistry.getByName(npcName) ?: return
+        npcContexts.add("$npcName's appearance: ${record.appearance}")
     }
 
     // Helper function to split messages
@@ -513,75 +507,13 @@ class StoryCommand(
     private fun getMigrateCommand(): CommandAPICommand =
         CommandAPICommand("migrate")
             .withPermission("story.admin")
-            .withSubcommand(
-                CommandAPICommand("yaml-to-mongodb")
-                    .withPermission("story.admin")
-                    .executes(
-                        CommandExecutor { sender, _ ->
-                            if (plugin.storageFactory.activeBackend != StorageBackend.MONGODB) {
-                                sender.sendError(
-                                    "MongoDB is not the active storage backend. Set 'storage.backend: mongodb' in config.yml and reload.",
-                                )
-                                return@CommandExecutor
-                            }
-
-                            sender.sendInfo("Starting YAML to MongoDB migration...")
-                            val migrator = YamlMigrator(plugin.dataFolder, plugin.storageFactory, plugin.logger)
-                            val result = migrator.migrate()
-
-                            sendMigrationResult(sender, result)
-                        },
-                    ),
-            ).withSubcommand(
-                CommandAPICommand("yaml-to-sqlite")
-                    .withPermission("story.admin")
-                    .executes(
-                        CommandExecutor { sender, _ ->
-                            if (plugin.storageFactory.activeBackend != StorageBackend.SQLITE) {
-                                sender.sendError(
-                                    "SQLite is not the active storage backend. Set 'storage.backend: sqlite' in config.yml and reload.",
-                                )
-                                return@CommandExecutor
-                            }
-
-                            sender.sendInfo("Starting YAML to SQLite migration...")
-                            val migrator = YamlMigrator(plugin.dataFolder, plugin.storageFactory, plugin.logger)
-                            val result = migrator.migrate()
-
-                            sendMigrationResult(sender, result)
-                        },
-                    ),
+            .executes(
+                CommandExecutor { sender, _ ->
+                    sender.sendError(
+                        "YAML migration has been removed. Character data is now managed by CharacterRegistry.",
+                    )
+                },
             )
-
-    private fun sendMigrationResult(
-        sender: org.bukkit.command.CommandSender,
-        result: YamlMigrator.MigrationResult,
-    ) {
-        val totalMigrated =
-            result.npcs + result.locations + result.quests +
-                result.playerQuests + result.sessions + result.relationships +
-                result.loreBooks + result.teams + result.disabledPlayers
-
-        if (totalMigrated == 0 && result.errors.isNotEmpty()) {
-            sender.sendError(result.errors.first())
-            return
-        }
-
-        sender.sendSuccess("Migration complete!")
-        sender.sendInfo(
-            "NPCs: <gold>${result.npcs}</gold>, Locations: <gold>${result.locations}</gold>, Quests: <gold>${result.quests}</gold>",
-        )
-        sender.sendInfo("Player Quests: <gold>${result.playerQuests}</gold>, Sessions: <gold>${result.sessions}</gold>")
-        sender.sendInfo("Relationships: <gold>${result.relationships}</gold>, Lore: <gold>${result.loreBooks}</gold>")
-        sender.sendInfo("Teams: <gold>${result.teams}</gold>, Disabled Players: <gold>${result.disabledPlayers}</gold>")
-
-        if (result.errors.isNotEmpty()) {
-            sender.sendError("${result.errors.size} error(s): ${result.errors.first()}")
-            if (result.errors.size > 1) {
-                sender.sendError("Check console for remaining errors.")
-            }
-        }
-    }
 
     private fun getLocationCommand(): CommandAPICommand = LocationCommand(plugin).getCommand()
 

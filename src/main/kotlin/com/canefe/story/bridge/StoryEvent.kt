@@ -45,9 +45,10 @@ data class BridgeMessage(
 
 @Serializable
 data class PlayerMessageEvent(
+    val characterId: String?,
     val playerName: String,
     val message: String,
-    val npcName: String? = null,
+    val npcCharacterId: String? = null,
     val conversationId: Int? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "player.message"
@@ -55,8 +56,8 @@ data class PlayerMessageEvent(
 
 @Serializable
 data class NPCDamagedEvent(
-    val npcName: String,
-    val attackerName: String?,
+    val characterId: String,
+    val attackerCharacterId: String?,
     val damage: Double,
     val cause: String,
 ) : SerializableStoryEvent {
@@ -65,7 +66,8 @@ data class NPCDamagedEvent(
 
 @Serializable
 data class NPCInteractionEvent(
-    val npcName: String,
+    val characterId: String,
+    val playerCharacterId: String?,
     val playerName: String,
     val type: String,
 ) : SerializableStoryEvent {
@@ -76,7 +78,7 @@ data class NPCInteractionEvent(
 
 @Serializable
 data class NPCSpeakIntent(
-    val npcName: String,
+    val characterId: String,
     val message: String,
     val target: String? = null,
     val conversationId: Int? = null,
@@ -86,7 +88,7 @@ data class NPCSpeakIntent(
 
 @Serializable
 data class NPCMoveIntent(
-    val npcName: String,
+    val characterId: String,
     val x: Double,
     val y: Double,
     val z: Double,
@@ -97,7 +99,7 @@ data class NPCMoveIntent(
 
 @Serializable
 data class NPCEmoteIntent(
-    val npcName: String,
+    val characterId: String,
     val action: String,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.emote"
@@ -105,12 +107,13 @@ data class NPCEmoteIntent(
 
 /**
  * Emitted periodically with the list of NPCs near each player.
- * Used by Go's [AgentManager] to preemptively research NPC context.
+ * Used by Go's AgentManager to preemptively research NPC context.
  */
 @Serializable
 data class PlayerProximityEvent(
+    val playerCharacterId: String?,
     val playerName: String,
-    val nearbyNPCs: List<String>,
+    val nearbyCharacterIds: List<String>,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "player.proximity"
 }
@@ -120,8 +123,38 @@ data class PlayerProximityEvent(
  */
 @Serializable
 data class CharacterStatsUpdate(
-    val characterName: String,
+    val characterId: String,
     val perceptionRadius: Double? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "character.stats_update"
+}
+
+/**
+ * Emitted when a GM uses /g to speak as an NPC.
+ * Lets the orchestrator log and optionally enrich GM narration.
+ */
+@Serializable
+data class GMSpeakEvent(
+    val playerCharacterId: String?,
+    val gmName: String,
+    val npcCharacterId: String?,
+    val npcName: String,
+    val message: String,
+    val conversationId: Int? = null,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "gm.speak"
+}
+
+/**
+ * Emitted after an NPC message has been broadcast to nearby players.
+ * Covers all NPC speech (GM-directed, LLM-generated, intent-driven).
+ */
+@Serializable
+data class CharacterSpokeEvent(
+    val characterId: String?,
+    val characterName: String,
+    val message: String,
+    val conversationId: Int? = null,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "character.spoke"
 }

@@ -26,12 +26,42 @@ class NPCCommand(
         CommandAPICommand("npc")
             .withPermission("story.npc")
             .withUsage(
-                "/story npc <schedule|toggle|disguise|scale>",
+                "/story npc <schedule|toggle|disguise|scale|nearby>",
             ).withSubcommand(getScheduleCommand())
             .withSubcommand(getToggleCommand())
             .withSubcommand(getDisguiseCommand())
             .withSubcommand(getScaleCommand())
             .withSubcommand(getDebugCommand())
+            .withSubcommand(getNearbyCommand())
+
+    private fun getNearbyCommand(): CommandAPICommand =
+        CommandAPICommand("nearby")
+            .withPermission("story.npc")
+            .withOptionalArguments(DoubleArgument("radius"))
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val radius = (args.getOptional("radius").orElse(null) as? Double) ?: 20.0
+                    val nearbyNPCs = NPCUtils.getNearbyNPCs(player, radius)
+
+                    if (nearbyNPCs.isEmpty()) {
+                        player.sendError("No NPCs within $radius blocks.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    player.sendSuccess("Nearby NPCs (${nearbyNPCs.size}) within $radius blocks:")
+                    for (npc in nearbyNPCs) {
+                        val record = plugin.characterRegistry.getByStoryNPC(npc)
+                        val characterId = record?.id ?: "<unregistered>"
+                        val distance = player.location.distance(npc.location ?: player.location)
+                        val distStr = String.format("%.1f", distance)
+                        player.sendMessage(
+                            plugin.miniMessage.deserialize(
+                                "  <yellow>${npc.name}</yellow> <gray>[$characterId]</gray> <dark_gray>(${distStr}m)</dark_gray>",
+                            ),
+                        )
+                    }
+                },
+            )
 
     private fun getScheduleCommand(): CommandAPICommand = ScheduleCommand(commandUtils).getCommand()
 

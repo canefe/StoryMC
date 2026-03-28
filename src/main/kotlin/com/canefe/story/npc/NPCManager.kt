@@ -8,7 +8,6 @@ import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendInfo
 import com.canefe.story.util.Msg.sendSuccess
 import net.citizensnpcs.api.CitizensAPI
-import net.citizensnpcs.api.ai.event.NavigationCompleteEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.attribute.Attribute
@@ -18,7 +17,6 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
-import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import java.io.File
 import java.util.*
@@ -368,14 +366,6 @@ class NPCManager(
         val npcLocation = npc.entity!!.location
         val distance = npcLocation.distance(targetLocation)
         return distance < 3.0 // Consider "near" if within 3 blocks
-    }
-
-    /**
-     * Handle navigation complete events
-     */
-    @EventHandler
-    fun onNavigationComplete(event: NavigationCompleteEvent) {
-        // Can be implemented to handle post-navigation actions
     }
 
     /**

@@ -1,7 +1,8 @@
 package com.canefe.story.conversation
 
+import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.util.EssentialsUtils
+import com.canefe.story.util.*
 import org.bukkit.entity.Player
 import java.util.*
 
@@ -11,6 +12,7 @@ class Conversation(
     initialNPCs: List<StoryNPC>,
 ) {
     private val _npcNames: MutableList<String> = ArrayList()
+    private val _npcCharacterIds: MutableList<String> = ArrayList()
     private val _npcs: MutableSet<StoryNPC> = HashSet(initialNPCs)
     private val _history: MutableList<ConversationMessage> = ArrayList()
 
@@ -24,8 +26,9 @@ class Conversation(
     var radiant: Boolean = false
     val mutedNPCs: MutableList<StoryNPC> = ArrayList()
 
-    // Read-only property exposing internal list as immutable
+    // Read-only properties
     val npcNames: List<String> get() = _npcNames.toList()
+    val npcCharacterIds: List<String> get() = _npcCharacterIds.toList()
     val npcs: List<StoryNPC> get() = _npcs.toList()
     val history: List<ConversationMessage> get() = _history.toList()
     val players: List<UUID> get() = _players.toList()
@@ -36,14 +39,27 @@ class Conversation(
     init {
         for (npc in initialNPCs) {
             _npcNames.add(npc.name)
+            resolveCharacterId(npc)?.let { _npcCharacterIds.add(it) }
         }
     }
 
     fun getNPCByName(name: String): StoryNPC? = _npcs.find { it.name.equals(name, ignoreCase = true) }
 
+    fun getNPCByCharacterId(characterId: String): StoryNPC? {
+        val record =
+            try {
+                Story.instance.characterRegistry.getById(characterId)
+            } catch (_: UninitializedPropertyAccessException) {
+                null
+            } ?: return null
+        return _npcs.find { it.name.equals(record.name, ignoreCase = true) }
+    }
+
     fun hasPlayer(playerUUID: UUID): Boolean = _players.contains(playerUUID)
 
     fun hasNPC(name: String): Boolean = _npcNames.contains(name)
+
+    fun hasNPCByCharacterId(characterId: String): Boolean = _npcCharacterIds.contains(characterId)
 
     fun hasNPC(npc: StoryNPC): Boolean = _npcs.contains(npc)
 
@@ -55,6 +71,7 @@ class Conversation(
 
         if (!_npcNames.contains(npcName)) {
             _npcNames.add(npcName)
+            resolveCharacterId(npc)?.let { _npcCharacterIds.add(it) }
             return true
         }
         return false
@@ -74,6 +91,7 @@ class Conversation(
 
         if (_npcNames.contains(npcName)) {
             _npcNames.remove(npcName)
+            resolveCharacterId(npc)?.let { _npcCharacterIds.remove(it) }
             return true
         }
         return false
@@ -118,8 +136,7 @@ class Conversation(
         player: Player,
         message: String,
     ) {
-        // Get nickname
-        val playerName = EssentialsUtils.getNickname(player.name)
+        val playerName = player.characterName
         addUserMessage("$playerName: $message")
     }
 
@@ -127,7 +144,6 @@ class Conversation(
         npc: StoryNPC,
         message: String,
     ) {
-        // Get nickname
         val npcName = npc.name
         addAssistantMessage("$npcName: $message")
         addUserMessage("...")
@@ -184,15 +200,9 @@ class Conversation(
         if (summarizedMessagesCount <= 0 || _history.size < summarizedMessagesCount) {
             return
         }
-        // Remove only the messages that were actually summarized
         _history.subList(0, summarizedMessagesCount).clear()
-        // Prepend the new summary
         _history.add(0, ConversationMessage("system", "Summary of conversation so far: $summary"))
 
-        // Decrement only by the number of messages that were actually counted
-        // toward the summarization threshold (excludes system messages and "..."
-        // placeholders). Messages added during the async window will have
-        // incremented the counter and must be preserved.
         messagesSinceLastSummary -= countedMessages
         if (messagesSinceLastSummary < 0) {
             messagesSinceLastSummary = 0
@@ -202,4 +212,11 @@ class Conversation(
     fun clearHistory() {
         _history.clear()
     }
+
+    private fun resolveCharacterId(npc: StoryNPC): String? =
+        try {
+            Story.instance.characterRegistry.getCharacterIdForNPC(npc)
+        } catch (_: UninitializedPropertyAccessException) {
+            null
+        }
 }
