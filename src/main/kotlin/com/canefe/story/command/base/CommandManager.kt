@@ -8,6 +8,7 @@ import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
+import com.canefe.story.bridge.GMSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
@@ -755,6 +756,18 @@ class CommandManager(
 
             // Reset auto mode timer to prevent double responses
             plugin.conversationManager.resetAutoTimer(conversation)
+
+            // Notify orchestrator that the GM is directing this NPC
+            plugin.eventBus.emit(
+                GMSpeakEvent(
+                    playerCharacterId = player.characterId,
+                    gmName = player.characterName,
+                    npcCharacterId = plugin.characterRegistry.getCharacterIdForNPC(resolvedNpc),
+                    npcName = npcName,
+                    message = message,
+                    conversationId = conversation.id,
+                ),
+            )
 
             plugin.intelligence.generateNPCResponse(resolvedNpc, conversation).thenApply { response ->
                 conversation.addNPCMessage(resolvedNpc, response)

@@ -4,6 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.event.*
+import com.canefe.story.bridge.CharacterSpokeEvent
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
@@ -996,6 +997,13 @@ class ConversationManager(
                         },
                         1L,
                     )
+                    plugin.eventBus.emit(
+                        CharacterSpokeEvent(
+                            characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
+                            characterName = npcName,
+                            message = message,
+                        ),
+                    )
                     return
                 }
 
@@ -1025,6 +1033,16 @@ class ConversationManager(
                 )
             },
             1L, // 1 tick delay
+        )
+
+        // Notify orchestrator that an NPC spoke
+        plugin.eventBus.emit(
+            CharacterSpokeEvent(
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
+                characterName = npcName,
+                message = message,
+                conversationId = conversation.id,
+            ),
         )
     }
 
