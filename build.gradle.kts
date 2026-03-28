@@ -116,7 +116,6 @@ dependencies {
     // HTTP Client
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

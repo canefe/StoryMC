@@ -1,6 +1,5 @@
 package com.canefe.story.bridge
 
-import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.quest.Quest

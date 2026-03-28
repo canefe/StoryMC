@@ -68,7 +68,8 @@ object IntentExecutor {
         val type =
             intent.objectiveType?.let {
                 try {
-                    com.canefe.story.quest.ObjectiveType.valueOf(it)
+                    com.canefe.story.quest.ObjectiveType
+                        .valueOf(it)
                 } catch (_: Exception) {
                     null
                 }
