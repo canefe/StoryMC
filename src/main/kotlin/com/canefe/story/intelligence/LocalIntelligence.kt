@@ -66,6 +66,16 @@ class LocalIntelligence(
         return plugin.npcResponseService.generateNPCResponse(npc, responseContext, broadcast = false)
     }
 
+    override fun gmGhostwrite(
+        npc: StoryNPC,
+        conversation: Conversation,
+        draftMessage: String,
+    ): CompletableFuture<String> {
+        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, draftMessage)
+        conversation.addSystemMessage(talkAsNpcPrompt)
+        return generateNPCResponse(npc, conversation)
+    }
+
     override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> =
         plugin.npcResponseService.determineNextSpeaker(conversation)
 

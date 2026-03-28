@@ -90,6 +90,34 @@ class BridgeIntelligence(
             }
     }
 
+    override fun gmGhostwrite(
+        npc: StoryNPC,
+        conversation: Conversation,
+        draftMessage: String,
+    ): CompletableFuture<String> {
+        if (!isSupported(Method.GM_GHOSTWRITE)) return local.gmGhostwrite(npc, conversation, draftMessage)
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GMGhostwriteRequest(
+                requestId = requestId,
+                characterId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.name,
+                conversationId = conversation.id,
+                draftMessage = draftMessage,
+                history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
+                characterIds = conversation.npcNames,
+                playerCharacterIds = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.characterId },
+            )
+
+        return sendRequest(requestId, json.encodeToJsonElement(GMGhostwriteRequest.serializer(), dto).jsonObject)
+            .thenApply { response ->
+                response["result"]?.toString()?.trim('"') ?: ""
+            }.exceptionally { e ->
+                plugin.logger.warning("Bridge gmGhostwrite failed, falling back to local: ${e.message}")
+                local.gmGhostwrite(npc, conversation, draftMessage).get()
+            }
+    }
+
     override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> {
         if (!isSupported(Method.SELECT_NEXT_SPEAKER)) return local.selectNextSpeaker(conversation)
 

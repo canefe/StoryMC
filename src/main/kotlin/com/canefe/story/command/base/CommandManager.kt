@@ -8,7 +8,6 @@ import com.canefe.story.api.character.CharacterDTO
 import com.canefe.story.command.conversation.ConvCommand
 import com.canefe.story.command.player.PlayerConfigCommand
 import com.canefe.story.command.story.StoryCommand
-import com.canefe.story.bridge.GMSpeakEvent
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.location.data.StoryLocation
 import com.canefe.story.npc.CitizensStoryNPC
@@ -693,83 +692,16 @@ class CommandManager(
 
             // Show holograms for the NPCs
             plugin.conversationManager.handleHolograms(conversation, resolvedNpc.name)
-            val shouldStream = plugin.config.streamMessages
             if (plugin.characterRegistry.getByStoryNPC(resolvedNpc) == null) {
                 player.sendError("NPC not found in character registry.")
                 return
             }
 
-            // Get only the messages from the conversation for context
-            val recentMessages =
-                conversation.history
-                    .map { it.content }
-
-            // Prepare response context with limited messages
-            var responseContext =
-                listOf(
-                    "====CURRENT CONVERSATION====\n" +
-                        recentMessages.joinToString("\n") +
-                        "\n=========================\n" +
-                        "This is an active conversation and you are talking to multiple characters: ${
-                            conversation.players?.joinToString(
-                                ", ",
-                            ) { Bukkit.getPlayer(it)?.characterName ?: "" }
-                        }. " +
-                        conversation.npcNames.joinToString("\n") +
-                        "\n===APPEARANCES===\n" +
-                        conversation.npcs.joinToString("\n") { npc ->
-                            val npcRecord = plugin.characterRegistry.getByStoryNPC(npc)
-                            "${npc.name}: ${npcRecord?.appearance ?: "No appearance information available."}"
-                        } +
-                        // We treat players as NPCs for this purpose
-                        conversation.players?.joinToString("\n") { playerId ->
-                            val player = Bukkit.getPlayer(playerId)
-                            if (player == null) {
-                                // skip this player
-                                return@joinToString ""
-                            }
-                            val playerName = player.name
-                            val nickname = Bukkit.getPlayer(playerName)?.characterName ?: playerName
-                            val playerRecord = plugin.characterRegistry.getByPlayer(player)
-                            "$nickname: ${playerRecord?.appearance ?: "No appearance information available."}"
-                        } +
-                        "\n=========================",
-                )
-
-            // Add relationship context with clear section header
-            val relationships = plugin.relationshipManager.getAllRelationships(resolvedNpc.name)
-            if (relationships.isNotEmpty()) {
-                val relationshipContext =
-                    plugin.relationshipManager.buildRelationshipContext(
-                        resolvedNpc.name,
-                        relationships,
-                        conversation,
-                    )
-                if (relationshipContext.isNotEmpty()) {
-                    responseContext = responseContext + "===RELATIONSHIPS===\n$relationshipContext"
-                }
-            }
-
-            // Use PromptService to get the talk as NPC prompt, then generate via intelligence
-            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npcName, message)
-            conversation.addSystemMessage(talkAsNpcPrompt)
-
             // Reset auto mode timer to prevent double responses
             plugin.conversationManager.resetAutoTimer(conversation)
 
-            // Notify orchestrator that the GM is directing this NPC
-            plugin.eventBus.emit(
-                GMSpeakEvent(
-                    playerCharacterId = player.characterId,
-                    gmName = player.characterName,
-                    npcCharacterId = plugin.characterRegistry.getCharacterIdForNPC(resolvedNpc),
-                    npcName = npcName,
-                    message = message,
-                    conversationId = conversation.id,
-                ),
-            )
-
-            plugin.intelligence.generateNPCResponse(resolvedNpc, conversation).thenApply { response ->
+            // Delegate ghostwriting to the intelligence layer (Go orchestrator or local fallback)
+            plugin.intelligence.gmGhostwrite(resolvedNpc, conversation, message).thenApply { response ->
                 conversation.addNPCMessage(resolvedNpc, response)
                 plugin.conversationManager.speakAsNPC(resolvedNpc, response, addToHistory = false)
             }
@@ -859,7 +791,8 @@ class CommandManager(
                     val target = player.getTargetEntity(15) // Get entity player is looking at within 15 blocks
                     if (target != null && CitizensAPI.getNPCRegistry().isNPC(target)) {
                         val npc: StoryNPC = CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(target))
-                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                        val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                         player.sendSuccess("Current NPC set to ${npc.name}")
                         return@PlayerCommandExecutor
                     }
@@ -877,7 +810,8 @@ class CommandManager(
                             player.sendError("NPC with ID $npcId not found.")
                             return@PlayerCommandExecutor
                         }
-                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                        val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                         player.sendSuccess("Current NPC set to ${npc.name}")
                         return@PlayerCommandExecutor
                     }
@@ -892,7 +826,8 @@ class CommandManager(
                             val npcLocation = npc.location!!
                             val playerLocation = player.location
                             if (playerLocation.distance(npcLocation) <= 15) {
-                                plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId)
+                                val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
+                                plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
                                 player.sendSuccess("Current NPC set to $npc")
                                 return@PlayerCommandExecutor
                             } else {
@@ -992,9 +927,7 @@ class CommandManager(
         // Get or create conversation for context
         val conversation = plugin.conversationManager.getConversation(npc)
         if (conversation != null) {
-            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
-            conversation.addSystemMessage(talkAsNpcPrompt)
-            plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+            plugin.intelligence.gmGhostwrite(npc, conversation, prompt).thenAccept { response ->
                 Bukkit.getScheduler().runTask(
                     plugin,
                     Runnable {
@@ -1003,7 +936,7 @@ class CommandManager(
                 )
             }
         } else {
-            // No conversation — fall back to direct generation
+            // No conversation — fall back to direct local generation
             val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
             plugin.npcResponseService.generateNPCResponse(npc, listOf(talkAsNpcPrompt), false).thenAccept { response ->
                 Bukkit.getScheduler().runTask(

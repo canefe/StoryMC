@@ -4,8 +4,8 @@ import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.event.*
-import com.canefe.story.bridge.CharacterSpokeEvent
 import com.canefe.story.audio.VoiceManager
+import com.canefe.story.bridge.CharacterSpokeEvent
 import com.canefe.story.information.ConversationInformationSource
 import com.canefe.story.information.WorldInformationManager
 import com.canefe.story.lore.LoreBookManager.LoreContext
@@ -1507,11 +1507,9 @@ class ConversationManager(
                         player?.sendInfo("<gold>${npc.name}</gold> has joined the conversation.")
                     }
 
-                    // If a greeting message is provided, paraphrase it through intelligence
+                    // If a greeting message is provided, ghostwrite it through intelligence
                     if (message.isNotEmpty()) {
-                        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, message)
-                        conversation.addSystemMessage(talkAsNpcPrompt)
-                        plugin.intelligence.generateNPCResponse(npc, conversation).thenAccept { response ->
+                        plugin.intelligence.gmGhostwrite(npc, conversation, message).thenAccept { response ->
                             Bukkit.getScheduler().runTask(
                                 plugin,
                                 Runnable {

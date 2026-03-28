@@ -54,6 +54,18 @@ data class ProcessConversationInformationRequest(
 )
 
 @Serializable
+data class GMGhostwriteRequest(
+    val requestId: String,
+    val method: String = Method.GM_GHOSTWRITE,
+    val characterId: String,
+    val conversationId: Int,
+    val draftMessage: String,
+    val history: List<MessageDTO>,
+    val characterIds: List<String>,
+    val playerCharacterIds: List<String>,
+)
+
+@Serializable
 data class CapabilitiesRequest(
     val requestId: String,
     val method: String = Method.GET_CAPABILITIES,
@@ -74,6 +86,7 @@ object EventType {
 object Method {
     const val GET_CAPABILITIES = "getCapabilities"
     const val GENERATE_NPC_RESPONSE = "generateNPCResponse"
+    const val GM_GHOSTWRITE = "gmGhostwrite"
     const val SELECT_NEXT_SPEAKER = "selectNextSpeaker"
     const val SUMMARIZE_CONVERSATION = "summarizeConversation"
     const val GENERATE_NPC_REACTIONS = "generateNPCReactions"
