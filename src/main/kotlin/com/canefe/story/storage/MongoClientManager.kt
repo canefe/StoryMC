@@ -134,6 +134,16 @@ class MongoClientManager(
         rumors.createIndex(Document("id", 1), IndexOptions().unique(true))
         rumors.createIndex(Document("location", 1).append("gameCreatedAt", -1))
 
+        // Players
+        val players = getCollection("players")
+        players.createIndex(Document("frontends.minecraft.identifier", 1), IndexOptions().sparse(true))
+        players.createIndex(Document("frontends.discord.identifier", 1), IndexOptions().sparse(true))
+
+        // Claim codes
+        val claimCodes = getCollection("claim_codes")
+        claimCodes.createIndex(Document("code", 1), IndexOptions().unique(true))
+        claimCodes.createIndex(Document("expiresAt", 1), IndexOptions().expireAfter(0, TimeUnit.SECONDS))
+
         logger.info("[MongoDB] Indexes created successfully")
     }
 }

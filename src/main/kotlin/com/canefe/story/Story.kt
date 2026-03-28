@@ -268,7 +268,7 @@ open class Story :
         if (mongoClient != null) {
             val charStorage = MongoCharacterStorage(mongoClient, logger)
             val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)
-            characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger)
+            characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger, mongoClient)
         }
 
         timeService = TimeService(this)
@@ -339,6 +339,7 @@ open class Story :
                         MongoCharacterStorage(mongoClient, logger),
                         MongoFrontendConfigStorage(mongoClient, logger),
                         logger,
+                        mongoClient,
                     )
                 characterRegistry.loadAll()
             }

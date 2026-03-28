@@ -17,6 +17,7 @@ class CharacterRegistry(
     private val characterStorage: MongoCharacterStorage,
     private val frontendConfigStorage: MongoFrontendConfigStorage,
     private val logger: Logger,
+    private val mongoManager: com.canefe.story.storage.MongoClientManager? = null,
 ) {
     // Primary cache
     private val byId = ConcurrentHashMap<String, CharacterRecord>()
@@ -80,6 +81,37 @@ class CharacterRegistry(
     fun getDisplayName(characterId: String): String = byId[characterId]?.name ?: characterId
 
     fun isRegistered(player: Player): Boolean = byMinecraftUuid.containsKey(player.uniqueId)
+
+    /**
+     * Get the active character ID for a player on a specific frontend,
+     * by looking up the players collection in MongoDB.
+     * Falls back to FrontendConfig mapping if no player doc exists.
+     */
+    fun getActiveCharacterForPlayer(
+        player: Player,
+        frontend: String = "minecraft",
+    ): String? {
+        // Try players collection first (new unified identity)
+        if (mongoManager != null) {
+            try {
+                val playerDoc =
+                    mongoManager
+                        .getCollection("players")
+                        .find(org.bson.Document("frontends.$frontend.identifier", player.uniqueId.toString()))
+                        .first()
+                if (playerDoc != null) {
+                    val activeChars = playerDoc.get("activeCharacters") as? org.bson.Document
+                    val activeId = activeChars?.getString(frontend)
+                    if (activeId != null) return activeId
+                }
+            } catch (_: Exception) {
+                // Fall through to legacy lookup
+            }
+        }
+
+        // Fallback: existing FrontendConfig mapping
+        return getCharacterIdForPlayer(player)
+    }
 
     // ── Frontend config ─────────────────────────────────────────────────
 

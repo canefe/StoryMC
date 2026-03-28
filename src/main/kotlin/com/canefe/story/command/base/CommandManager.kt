@@ -880,6 +880,54 @@ class CommandManager(
                 },
             ).register()
 
+        // claim <code> — link frontend account to player via claim code
+        CommandAPICommand("claim")
+            .withArguments(StringArgument("code"))
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val code = args["code"] as String
+                    val mongoClient = plugin.storageFactory.mongoClient
+                    if (mongoClient == null) {
+                        player.sendError("MongoDB not available.")
+                        return@PlayerCommandExecutor
+                    }
+                    val claimDoc =
+                        mongoClient
+                            .getCollection("claim_codes")
+                            .find(org.bson.Document("code", code.uppercase()))
+                            .first()
+
+                    if (claimDoc == null) {
+                        player.sendError("Invalid or expired claim code.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    val playerId = claimDoc["playerId"] as? String
+                    val frontend = claimDoc["frontend"] as? String
+
+                    if (frontend != "minecraft") {
+                        player.sendError("This claim code is not for Minecraft.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    // Link the player's UUID to the player doc
+                    val linkDoc =
+                        org.bson
+                            .Document("identifier", player.uniqueId.toString())
+                            .append("linkedAt", java.util.Date())
+                    mongoClient.getCollection("players").updateOne(
+                        org.bson.Document("_id", playerId),
+                        org.bson.Document("\$set", org.bson.Document("frontends.minecraft", linkDoc)),
+                    )
+
+                    // Delete the used code
+                    mongoClient.getCollection("claim_codes").deleteOne(org.bson.Document("code", code.uppercase()))
+
+                    player.sendSuccess("Account linked to player '$playerId'!")
+                    plugin.logger.info("Player ${player.name} claimed code $code -> $playerId")
+                },
+            ).register()
+
         registerSafeStopCommand()
     }
 
