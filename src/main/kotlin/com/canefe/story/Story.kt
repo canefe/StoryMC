@@ -399,6 +399,9 @@ open class Story :
         eventBus.on<QuestCompleteIntent> { IntentExecutor.executeQuestCompleteIntent(this, it) }
         eventBus.on<CharacterUpdateIntent> { IntentExecutor.executeCharacterUpdateIntent(this, it) }
 
+        // Initialize query handler for MCP/orchestrator queries
+        QueryHandler(this).initialize()
+
         // Initialize intelligence provider
         val local = LocalIntelligence(this)
         intelligence =
