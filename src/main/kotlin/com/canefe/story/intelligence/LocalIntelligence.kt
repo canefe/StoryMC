@@ -18,6 +18,12 @@ class LocalIntelligence(
     override fun generateNPCResponse(
         npc: StoryNPC,
         conversation: Conversation,
+    ): CompletableFuture<String> = generateNPCResponse(npc, conversation, extraContext = emptyList())
+
+    private fun generateNPCResponse(
+        npc: StoryNPC,
+        conversation: Conversation,
+        extraContext: List<String>,
     ): CompletableFuture<String> {
         // Get only the messages from the conversation for context
         val recentMessages = conversation.history.map { it.content }
@@ -63,6 +69,8 @@ class LocalIntelligence(
             }
         }
 
+        extraContext.forEach { responseContext.addFirst(it) }
+
         return plugin.npcResponseService.generateNPCResponse(npc, responseContext, broadcast = false)
     }
 
@@ -72,8 +80,7 @@ class LocalIntelligence(
         draftMessage: String,
     ): CompletableFuture<String> {
         val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, draftMessage)
-        conversation.addSystemMessage(talkAsNpcPrompt)
-        return generateNPCResponse(npc, conversation)
+        return generateNPCResponse(npc, conversation, extraContext = listOf(talkAsNpcPrompt))
     }
 
     override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> =

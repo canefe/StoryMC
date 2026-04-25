@@ -1266,26 +1266,6 @@ class ConversationManager(
                             // Broadcast without adding to history again
                             speakAsNPC(npcEntity, npcResponse, addToHistory = false)
 
-                            // Analyze for action intents
-                            val targetPlayer = conversation.players.firstOrNull()?.let { Bukkit.getPlayer(it) }
-                            if (targetPlayer != null) {
-                                val lastTwoMessages =
-                                    conversation.history
-                                        .filter { it.role != "system" && it.content != "..." }
-                                        .takeLast(2)
-                                        .map { it.content }
-                                plugin.npcActionIntentRecognizer.recognizeQuestGivingIntent(
-                                    npcEntity,
-                                    lastTwoMessages,
-                                    targetPlayer,
-                                )
-                                plugin.npcActionIntentRecognizer.recognizeActionIntents(
-                                    npcEntity,
-                                    lastTwoMessages,
-                                    targetPlayer,
-                                )
-                            }
-
                             // Generate reactions, then complete
                             generateNPCReactions(conversation, npcEntity.name, npcResponse)
                                 .thenRun {

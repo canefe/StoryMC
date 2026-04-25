@@ -27,7 +27,6 @@ import com.canefe.story.npc.behavior.NPCBehaviorManager
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.npc.schedule.ScheduleManager
-import com.canefe.story.npc.service.NPCActionIntentRecognizer
 import com.canefe.story.npc.service.NPCMessageService
 import com.canefe.story.npc.service.NPCResponseService
 import com.canefe.story.npc.service.TypingSessionManager
@@ -111,8 +110,6 @@ open class Story :
     lateinit var worldEventManager: WorldEventManager
     lateinit var rumorManager: RumorManager
 
-    lateinit var npcActionIntentRecognizer: NPCActionIntentRecognizer
-
     lateinit var scheduleManager: ScheduleManager
     lateinit var lorebookManager: LoreBookManager
     lateinit var sessionManager: SessionManager
@@ -150,6 +147,10 @@ open class Story :
 
     // Intelligence — abstraction for all LLM/thinking operations
     lateinit var intelligence: StoryIntelligence
+        private set
+
+    // WebSocket transport to Go orchestrator (null when bridge.enabled=false)
+    var wsTransport: WebSocketTransport? = null
         private set
 
     // Domain events — emits intents to Go orchestrator instead of direct storage writes
@@ -294,7 +295,6 @@ open class Story :
         worldEventManager = WorldEventManager(this, storageFactory.worldEventStorage)
         rumorManager = RumorManager(this, storageFactory.rumorStorage)
         worldInformationManager = WorldInformationManager(this)
-        npcActionIntentRecognizer = NPCActionIntentRecognizer(this)
         lorebookManager = LoreBookManager(this, storageFactory.loreStorage)
         taskManager = TaskManager(this)
         npcBehaviorManager = NPCBehaviorManager(this)
@@ -386,9 +386,10 @@ open class Story :
 
         // Register WebSocket transport if enabled
         if (configService.bridgeEnabled) {
-            val wsTransport = WebSocketTransport(plugin = this, serverUri = configService.bridgeUri)
-            wsTransport.connect()
-            eventBus.registerTransport(wsTransport)
+            val transport = WebSocketTransport(plugin = this, serverUri = configService.bridgeUri)
+            transport.connect()
+            eventBus.registerTransport(transport)
+            wsTransport = transport
         }
 
         // Register intent handlers
