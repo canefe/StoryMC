@@ -339,12 +339,13 @@ class ConversationManager(
             val forceSession = !conversation.radiant && conversation.players.isNotEmpty()
             plugin.domainEvents.emitSessionFeed(sessionContext.toString(), force = forceSession)
 
-            // Summarize conversation for NPC memory if needed
-            npcResponseService
-                .summarizeConversation(
-                    conversation,
-                ).thenAccept {
-                    // Complete remaining steps after summarization is done
+            // Summarize conversation for NPC memory if needed.
+            // Goes through StoryIntelligence so the bridge can take over when supported;
+            // BridgeIntelligence delegates to Go (which writes memories directly to
+            // Mongo + Qdrant), otherwise falls back to LocalIntelligence.
+            plugin.intelligence
+                .summarizeConversation(conversation)
+                .thenAccept {
                     completeEndConversation(conversation)
                     future.complete(null)
                 }

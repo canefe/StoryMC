@@ -54,6 +54,16 @@ data class ProcessConversationInformationRequest(
 )
 
 @Serializable
+data class SummarizeConversationRequest(
+    val requestId: String,
+    val method: String = Method.SUMMARIZE_CONVERSATION,
+    val conversationId: Int,
+    val characterIds: List<String>,
+    val history: List<MessageDTO>,
+    val gameCreatedAt: Long,
+)
+
+@Serializable
 data class GMGhostwriteRequest(
     val requestId: String,
     val method: String = Method.GM_GHOSTWRITE,

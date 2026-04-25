@@ -141,8 +141,36 @@ class BridgeIntelligence(
 
     override fun summarizeConversation(conversation: Conversation): CompletableFuture<Void> {
         if (!isSupported(Method.SUMMARIZE_CONVERSATION)) return local.summarizeConversation(conversation)
-        // For now, summarization stays local even if supported — complex side effects
-        return local.summarizeConversation(conversation)
+
+        val history = conversation.history
+        if (history.size < 3 || conversation.npcs.isEmpty()) {
+            return CompletableFuture.completedFuture(null)
+        }
+
+        val characterIds =
+            conversation.npcs.mapNotNull { plugin.characterRegistry.getCharacterIdForNPC(it) }
+        if (characterIds.isEmpty()) {
+            return CompletableFuture.completedFuture(null)
+        }
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            SummarizeConversationRequest(
+                requestId = requestId,
+                conversationId = conversation.id,
+                characterIds = characterIds,
+                history = history.map { MessageDTO(it.role, it.content) },
+                gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+            )
+
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(SummarizeConversationRequest.serializer(), dto).jsonObject,
+        ).thenApply<Void> { null }
+            .exceptionally { e ->
+                plugin.logger.warning("Bridge summarizeConversation failed, falling back to local: ${e.message}")
+                local.summarizeConversation(conversation).get()
+            }
     }
 
     override fun generateNPCReactions(
