@@ -47,6 +47,7 @@ class StoryCommand(
             .withSubcommand(getSessionCommand())
             .withSubcommand(getTaskCommand())
             .withSubcommand(getMigrateCommand())
+            .withSubcommand(getStatusCommand())
             .register()
     }
 
@@ -480,6 +481,7 @@ class StoryCommand(
         <gold>/story</gold> npc <gray><italic>- Manage NPCs</italic></gray>
         <gold>/conv</gold> list <gray><italic>- List all conversations and control panel</italic></gray>
         <gold>/story</gold> gm <question> [broadcast] <gray><italic>- Ask the Game Master a question about the world</italic></gray>
+        <gold>/story</gold> status <gray><italic>- Show WebSocket and MongoDB connection status</italic></gray>
         <gold>/story</gold> task <gray><italic>- Manage AI permission requests</italic></gray>
         <gold>/story</gold> migrate yaml-to-mongodb <gray><italic>- Migrate YAML data to MongoDB</italic></gray>
         <gold>/story</gold> migrate yaml-to-sqlite <gray><italic>- Migrate YAML data to SQLite</italic></gray>
@@ -512,6 +514,43 @@ class StoryCommand(
                     sender.sendError(
                         "YAML migration has been removed. Character data is now managed by CharacterRegistry.",
                     )
+                },
+            )
+
+    private fun getStatusCommand(): CommandAPICommand =
+        CommandAPICommand("status")
+            .withPermission("story.command.status")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    val lines = mutableListOf("<yellow>=== Story Status ===</yellow>")
+
+                    if (plugin.configService.bridgeEnabled) {
+                        val ws = plugin.wsTransport
+                        val (color, label) =
+                            when {
+                                ws == null -> "gray" to "not initialized"
+                                ws.isConnected -> "green" to "connected"
+                                else -> "red" to "disconnected"
+                            }
+                        lines +=
+                            "<gold>WebSocket:</gold> <$color>$label</$color> <gray>(${plugin.configService.bridgeUri})</gray>"
+                    }
+
+                    val backend =
+                        com.canefe.story.storage.StorageBackend
+                            .fromString(plugin.configService.storageBackend)
+                    if (backend == com.canefe.story.storage.StorageBackend.MONGODB) {
+                        val mongoOk = plugin.storageFactory.isMongoConnected
+                        val (color, label) = if (mongoOk) "green" to "connected" else "red" to "disconnected"
+                        lines +=
+                            "<gold>MongoDB:</gold> <$color>$label</$color> <gray>(${plugin.configService.mongoDatabase})</gray>"
+                    }
+
+                    if (lines.size == 1) {
+                        lines += "<gray>No bridge or MongoDB services enabled.</gray>"
+                    }
+
+                    sender.sendRaw(lines.joinToString("\n"))
                 },
             )
 
