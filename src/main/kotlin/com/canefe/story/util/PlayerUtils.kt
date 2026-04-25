@@ -9,20 +9,12 @@ import org.bukkit.entity.Player
  * Falls back to Minecraft username for unregistered (guest) players.
  */
 
-val Player.characterName: String
-    get() {
-        try {
-            val record = Story.instance.characterRegistry.getByPlayer(this)
-            if (record != null && record.name.isNotEmpty()) return record.name
-        } catch (_: Exception) {
-        }
-        return this.getName()
-    }
-
 val Player.characterId: String?
     get() =
         try {
-            Story.instance.characterRegistry.getCharacterIdForPlayer(this)
+            // Prefer the unified players-collection mapping (activeCharacters.minecraft).
+            // Falls back to the legacy frontend_config lookup when no player doc exists.
+            Story.instance.characterRegistry.getActiveCharacterForPlayer(this)
         } catch (_: Exception) {
             null
         }
@@ -30,15 +22,21 @@ val Player.characterId: String?
 val Player.character: CharacterRecord?
     get() =
         try {
-            Story.instance.characterRegistry.getByPlayer(this)
+            characterId?.let { Story.instance.characterRegistry.getById(it) }
+                ?: Story.instance.characterRegistry.getByPlayer(this)
         } catch (_: Exception) {
             null
         }
 
-val Player.isRegisteredCharacter: Boolean
-    get() =
+val Player.characterName: String
+    get() {
         try {
-            Story.instance.characterRegistry.isRegistered(this)
+            val record = character
+            if (record != null && record.name.isNotEmpty()) return record.name
         } catch (_: Exception) {
-            false
         }
+        return this.name
+    }
+
+val Player.isRegisteredCharacter: Boolean
+    get() = characterId != null
