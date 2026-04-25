@@ -181,7 +181,15 @@ class RelationshipManager(
 
                         // Create memory about ambient interaction (session-gated, chains relationship update)
                         val memoryContent = "I spent some time near ${npc2.name} today."
-                        plugin.domainEvents.emitMemoryObserved(npc1.name, memoryContent, 1.5)
+                        val characterId = plugin.characterRegistry.getCharacterIdForNPC(npc1)
+                        if (!characterId.isNullOrBlank()) {
+                            plugin.domainEvents.emitMemoryObserved(
+                                characterId,
+                                memoryContent,
+                                significance = 1.5,
+                                gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+                            )
+                        }
                     }
                 }
             }

@@ -408,6 +408,21 @@ Generate brief physical reactions for each NPC listed above.""",
         npcName: String,
         information: String,
     ) {
-        plugin.domainEvents.emitMemoryObserved(npcName, information)
+        val name = npcName.trim()
+        if (name.isEmpty() || information.isBlank()) {
+            return
+        }
+        val characterId = plugin.characterRegistry.getByName(name)?.id
+        if (characterId.isNullOrBlank()) {
+            plugin.logger.warning(
+                "Skipping memory: no character registry entry for '$name' (content: ${information.take(60)})",
+            )
+            return
+        }
+        plugin.domainEvents.emitMemoryObserved(
+            characterId,
+            information,
+            gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+        )
     }
 }

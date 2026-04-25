@@ -32,6 +32,7 @@ data class MemoryObservedEvent(
     val characterId: String,
     val content: String,
     val significance: Double = 1.0,
+    val gameCreatedAt: Long = 0,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "domain.memory.observed"
 }

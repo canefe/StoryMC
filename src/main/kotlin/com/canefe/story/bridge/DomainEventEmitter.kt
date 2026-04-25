@@ -56,12 +56,14 @@ class DomainEventEmitter(
         characterId: String,
         content: String,
         significance: Double = 1.0,
+        gameCreatedAt: Long = 0L,
     ) {
         emit(
             MemoryObservedEvent(
                 characterId = characterId,
                 content = content,
                 significance = significance,
+                gameCreatedAt = gameCreatedAt,
             ),
         )
     }

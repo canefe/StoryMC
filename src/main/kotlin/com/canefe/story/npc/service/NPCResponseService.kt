@@ -748,7 +748,19 @@ class NPCResponseService(
                 )
             }
 
-            plugin.domainEvents.emitMemoryObserved(character.id ?: characterName, memoryContent, significance)
+            val characterId = character.id
+            if (characterId.isNullOrBlank()) {
+                plugin.logger.warning(
+                    "Skipping memory: no character id for '$characterName' (content: ${memoryContent.take(60)})",
+                )
+            } else {
+                plugin.domainEvents.emitMemoryObserved(
+                    characterId,
+                    memoryContent,
+                    significance,
+                    gameCreatedAt = plugin.timeService.getCurrentGameTime(),
+                )
+            }
 
             val endTime = System.currentTimeMillis()
             if (plugin.config.debugMessages) {
