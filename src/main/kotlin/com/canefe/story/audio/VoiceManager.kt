@@ -259,9 +259,10 @@ class VoiceManager(
             return playerVoice
         }
 
-        // Check if the player has a custom voice set in character registry
+        // Check if the player has a custom voice set in character registry —
+        // use the unified resolver (players.activeCharacters.minecraft + legacy fallback).
         try {
-            val record = plugin.characterRegistry.getByPlayer(player)
+            val record = player.character
             if (record?.customVoice != null) {
                 plugin.logger.info(
                     "Using custom voice '${record.customVoice}' for player ${player.name}",

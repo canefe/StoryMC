@@ -345,8 +345,9 @@ class NPCMessageService(
 
         val playerName = player.characterName
 
-        // Get player avatar from character registry
-        val playerRecord = plugin.characterRegistry.getByPlayer(player)
+        // Get player avatar from character registry — use unified resolver so
+        // /claim + switch_character mappings (players collection) are honoured.
+        val playerRecord = player.character
         val playerAvatar = playerRecord?.let { plugin.characterRegistry.getMinecraftConfig(it.id)?.avatar ?: "" } ?: ""
 
         // Normal chat format

@@ -162,9 +162,9 @@ class NPCInteractionListener(
     ) {
         val playerCharacterName = player.characterName
 
-        // Get player record from character registry
+        // Get player record via the unified resolver (players.activeCharacters.minecraft + legacy fallback)
         val playerRecord =
-            plugin.characterRegistry.getByPlayer(player)
+            player.character
                 ?: run {
                     player.sendError(
                         "Could not find character data for $playerCharacterName.",
@@ -199,7 +199,7 @@ class NPCInteractionListener(
                     conversation.players.joinToString("\n") { playerId ->
                         val p = Bukkit.getPlayer(playerId)
                         if (p == null) return@joinToString ""
-                        val pRecord = plugin.characterRegistry.getByPlayer(p)
+                        val pRecord = p.character
                         val nickname = p.characterName
                         "$nickname: ${pRecord?.appearance ?: "No appearance information available."}"
                     } +

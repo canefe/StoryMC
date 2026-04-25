@@ -39,7 +39,7 @@ class LocalIntelligence(
                     conversation.players.joinToString("\n") { playerId ->
                         val player = Bukkit.getPlayer(playerId) ?: return@joinToString ""
                         val nickname = player.characterName
-                        val record = plugin.characterRegistry.getByPlayer(player)
+                        val record = player.character
                         "$nickname: ${record?.appearance ?: "No appearance information available."}"
                     } +
                     "\n=========================",

@@ -3,6 +3,7 @@ package com.canefe.story.bridge
 import com.canefe.story.Story
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.util.NPCUtils
+import com.canefe.story.util.characterId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -130,7 +131,7 @@ class QueryHandler(
 
         val player =
             Bukkit.getOnlinePlayers().find { p ->
-                plugin.characterRegistry.getCharacterIdForPlayer(p) == characterId ||
+                p.characterId == characterId ||
                     p.uniqueId.toString() == characterId ||
                     p.name.equals(characterId, ignoreCase = true)
             }

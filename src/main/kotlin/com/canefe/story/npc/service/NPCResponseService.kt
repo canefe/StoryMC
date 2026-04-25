@@ -41,10 +41,10 @@ class NPCResponseService(
                 npc?.name ?: "Unknown"
             }
 
-        // Get character record from registry
+        // Get character record from registry (unified resolver for player path)
         val record: CharacterRecord? =
             if (isPlayerCharacter && player != null) {
-                plugin.characterRegistry.getByPlayer(player)
+                player.character
             } else if (npc != null) {
                 plugin.characterRegistry.getByStoryNPC(npc)
             } else {
