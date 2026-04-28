@@ -5,6 +5,7 @@ import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
+import org.bukkit.entity.Projectile
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -25,34 +26,59 @@ class PerceptionListener(
         val victim = event.entity
         if (victim !is LivingEntity) return
 
-        val attackerName = getEntityName(event.damager)
+        val attacker = (event.damager as? Projectile)?.shooter as? org.bukkit.entity.Entity ?: event.damager
+        val attackerName = getEntityName(attacker)
         val victimName = getEntityName(victim)
+        val attackerCharId = getCharacterId(attacker)
+        val victimCharId = getCharacterId(victim)
 
-        perceptionService.observe(
-            details =
-                PerceptionDetails.Combat(
-                    attacker = attackerName,
-                    victim = victimName,
-                    damage = event.finalDamage,
-                ),
+        val combatDetails = PerceptionDetails.Combat(
+            attacker = attackerName,
+            victim = victimName,
+            damage = event.finalDamage,
+        )
+        val participants = buildMap {
+            attackerCharId?.let { put(attackerName, it) }
+            victimCharId?.let { put(victimName, it) }
+        }
+
+        // Emit directly to the attacker — they always know who they hit.
+        perceptionService.observeOne(
+            characterName = attackerName,
+            perceiverCharId = attackerCharId ?: attacker.uniqueId.toString(),
+            entity = attacker,
+            details = combatDetails,
             epicenter = victim.location,
             source = "combat",
+            participants = participants,
+        )
+
+        // Everyone else nearby (victim included) perceives the combat.
+        perceptionService.observe(
+            details = combatDetails,
+            epicenter = victim.location,
+            source = "combat",
+            exclude = attackerName,
+            participants = participants,
         )
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onEntityDeath(event: EntityDeathEvent) {
         val entity = event.entity
-        val killerName = entity.killer?.let { getEntityName(it) }
+        val killer = entity.killer
+        val deceasedName = getEntityName(entity)
+        val killerName = killer?.let { getEntityName(it) }
+        val participants = buildMap {
+            getCharacterId(entity)?.let { put(deceasedName, it) }
+            if (killer != null) getCharacterId(killer)?.let { put(killerName!!, it) }
+        }
 
         perceptionService.observe(
-            details =
-                PerceptionDetails.Death(
-                    deceased = getEntityName(entity),
-                    killer = killerName,
-                ),
+            details = PerceptionDetails.Death(deceased = deceasedName, killer = killerName),
             epicenter = entity.location,
             source = "death",
+            participants = participants,
         )
     }
 
@@ -70,6 +96,24 @@ class PerceptionListener(
         )
     }
 
+    private fun getCharacterId(entity: org.bukkit.entity.Entity): String? {
+        try {
+            if (CitizensAPI.getNPCRegistry().isNPC(entity)) {
+                val npc = CitizensAPI.getNPCRegistry().getNPC(entity)
+                val storyNpc = plugin.npcRegistry.getByEntity(entity)
+                    ?: return null
+                return plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+            }
+        } catch (_: Exception) {
+        }
+        if (plugin.isNpcRegistryReady) {
+            val storyNpc = plugin.npcRegistry.getByEntity(entity)
+            if (storyNpc != null) return plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+        }
+        if (entity is Player) return entity.characterId
+        return null
+    }
+
     private fun getEntityName(entity: org.bukkit.entity.Entity): String {
         // Check Citizens NPC first — they implement Player but aren't real players
         try {
@@ -81,10 +125,16 @@ class PerceptionListener(
 
         if (entity is Player) {
             return try {
-                if (entity is Player) entity.characterName else entity.name
+                entity.characterName
             } catch (_: Exception) {
                 entity.name
             }
+        }
+
+        // MythicMob-backed StoryNPCs — use the clean display name from the registry
+        if (plugin.isNpcRegistryReady) {
+            val storyNpc = plugin.npcRegistry.getByEntity(entity)
+            if (storyNpc != null) return storyNpc.name
         }
 
         return entity.name

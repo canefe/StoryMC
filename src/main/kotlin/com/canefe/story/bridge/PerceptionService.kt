@@ -96,85 +96,118 @@ class PerceptionService(
     fun getPerceptionRadius(characterName: String): Double = characterRadii[characterName] ?: defaultPerceptionRadius
 
     /**
+     * Emit a perception directly to a single named character regardless of distance.
+     * Used when the character is the direct participant (e.g. the attacker in combat).
+     *
+     * [participants] maps real name → characterId for every named entity in [details].
+     * Go resolves recognition labels from these IDs; Kotlin sends the raw names + IDs only.
+     */
+    fun observeOne(
+        characterName: String,
+        perceiverCharId: String,
+        entity: org.bukkit.entity.Entity,
+        details: PerceptionDetails,
+        epicenter: Location,
+        source: String,
+        participants: Map<String, String> = emptyMap(),
+    ) {
+        val world = epicenter.world ?: return
+        val pos = Position(epicenter.x, epicenter.y, epicenter.z, world.name)
+        val gameTime = plugin.timeService.getCurrentGameTime()
+        val distance = entity.location.distance(epicenter)
+        val perception =
+            PerceptionEvent(
+                characterId = perceiverCharId,
+                characterName = characterName,
+                source = source,
+                details = details,
+                position = pos,
+                gameTimestamp = gameTime,
+                distance = distance,
+                participantIds = participants,
+            )
+        Bukkit.getPluginManager().callEvent(perception)
+        plugin.eventBus.emit(perception)
+    }
+
+    /**
      * Observe an event at a location. Every character (NPC or player) within
      * perception radius gets a [PerceptionEvent] emitted to both Bukkit and the [StoryEventBus].
      *
-     * @param details Structured details of what happened
-     * @param epicenter Where it happened
-     * @param source Category of the event (combat, death, weather, movement, etc.)
-     * @param exclude Optional character name to exclude (e.g. the one who caused the event)
+     * [participants] maps real name → characterId for every named entity in [details].
+     * Names in [details] are always raw; Go resolves what each perceiver calls them via
+     * the recognition system using the IDs in [participantIds].
      */
     fun observe(
         details: PerceptionDetails,
         epicenter: Location,
         source: String,
         exclude: String? = null,
+        participants: Map<String, String> = emptyMap(),
     ) {
         val world = epicenter.world ?: return
         val pos = Position(epicenter.x, epicenter.y, epicenter.z, world.name)
         val gameTime = plugin.timeService.getCurrentGameTime()
 
-        // Find nearby NPCs
-        try {
-            for (citizenNpc in CitizensAPI.getNPCRegistry()) {
-                if (!citizenNpc.isSpawned) continue
-                val entity = citizenNpc.entity ?: continue
-                if (entity.world != world) continue
-
-                val npc: StoryNPC = CitizensStoryNPC(citizenNpc)
-                val name = npc.name
-                if (name == exclude) continue
-
-                val distance = entity.location.distance(epicenter)
-                if (distance > getPerceptionRadius(name)) continue
-
-                val perception =
-                    PerceptionEvent(
-                        characterId = npc.uniqueId.toString(),
-                        characterName = name,
-                        source = source,
-                        details = details,
-                        position = pos,
-                        gameTimestamp = gameTime,
-                        distance = distance,
-                    )
-                Bukkit.getPluginManager().callEvent(perception)
-                plugin.eventBus.emit(perception)
-            }
-        } catch (_: Exception) {
-        }
-
-        // Find nearby players
-        for (player in world.players) {
-            // Skip Citizens NPC players
-            try {
-                if (CitizensAPI.getNPCRegistry().isNPC(player)) continue
-            } catch (_: Exception) {
-            }
-
-            val name =
-                try {
-                    player.characterName
-                } catch (_: Exception) {
-                    player.name
-                }
-            if (name == exclude) continue
-
-            val distance = player.location.distance(epicenter)
-            if (distance > getPerceptionRadius(name)) continue
-
+        fun emitFor(perceiverCharId: String, perceiverName: String, distance: Double) {
             val perception =
                 PerceptionEvent(
-                    characterId = player.uniqueId.toString(),
-                    characterName = name,
+                    characterId = perceiverCharId,
+                    characterName = perceiverName,
                     source = source,
                     details = details,
                     position = pos,
                     gameTimestamp = gameTime,
                     distance = distance,
+                    participantIds = participants,
                 )
             Bukkit.getPluginManager().callEvent(perception)
             plugin.eventBus.emit(perception)
+        }
+
+        // Find nearby NPCs — Citizens registry
+        try {
+            for (citizenNpc in CitizensAPI.getNPCRegistry()) {
+                if (!citizenNpc.isSpawned) continue
+                val entity = citizenNpc.entity ?: continue
+                if (entity.world != world) continue
+                val npc: StoryNPC = CitizensStoryNPC(citizenNpc)
+                val name = npc.name
+                if (name == exclude) continue
+                val distance = entity.location.distance(epicenter)
+                if (distance > getPerceptionRadius(name)) continue
+                val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.uniqueId.toString()
+                emitFor(charId, name, distance)
+            }
+        } catch (_: Exception) {
+        }
+
+        // Find nearby NPCs — StoryNPCRegistry (e.g. MythicMob-backed NPCs)
+        if (plugin.isNpcRegistryReady) {
+            for (npc in plugin.npcRegistry.all()) {
+                val entity = npc.entity ?: continue
+                if (entity.world != world) continue
+                val name = npc.name
+                if (name == exclude) continue
+                val distance = entity.location.distance(epicenter)
+                if (distance > getPerceptionRadius(name)) continue
+                val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.uniqueId.toString()
+                emitFor(charId, name, distance)
+            }
+        }
+
+        // Find nearby players
+        for (player in world.players) {
+            try {
+                if (CitizensAPI.getNPCRegistry().isNPC(player)) continue
+            } catch (_: Exception) {
+            }
+            val name = try { player.characterName } catch (_: Exception) { player.name }
+            if (name == exclude) continue
+            val distance = player.location.distance(epicenter)
+            if (distance > getPerceptionRadius(name)) continue
+            val charId = player.characterId ?: player.uniqueId.toString()
+            emitFor(charId, name, distance)
         }
     }
 }

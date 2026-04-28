@@ -2,6 +2,8 @@ package com.canefe.story.bridge
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.bukkit.event.Event
@@ -18,6 +20,7 @@ data class Position(
 /**
  * Typed perception details. Each source type defines its own data class.
  * Serializes to a [JsonObject] with a `type` discriminator.
+ * Names in details are always raw; Go resolves per-perceiver labels via participantIds.
  */
 sealed interface PerceptionDetails {
     val type: String
@@ -82,6 +85,31 @@ sealed interface PerceptionDetails {
             }
     }
 
+    data class Speech(
+        val speakerId: String,
+        val speakerName: String,
+        val message: String,
+        val addressedIds: List<String> = emptyList(),
+    ) : PerceptionDetails {
+        override val type: String = "speech"
+
+        override fun toJson(): JsonObject =
+            buildJsonObject {
+                put("type", type)
+                put("speakerId", speakerId)
+                put("speakerName", speakerName)
+                put("message", message)
+                if (addressedIds.isNotEmpty()) {
+                    put(
+                        "addressedIds",
+                        buildJsonArray {
+                            addressedIds.forEach { add(JsonPrimitive(it)) }
+                        },
+                    )
+                }
+            }
+    }
+
     data class Generic(
         val description: String,
     ) : PerceptionDetails {
@@ -100,6 +128,10 @@ sealed interface PerceptionDetails {
  * Characters = NPCs + Players. Story is the eyes, external systems are the brain.
  *
  * Emitted by [PerceptionService] for each character within perception range of a world event.
+ *
+ * [participantIds] maps each real name that appears in [details] to its stable character ID,
+ * so the Go side can target the actual in-world entities regardless of what label the perceiver
+ * knows them by.
  */
 class PerceptionEvent(
     val characterId: String,
@@ -109,6 +141,8 @@ class PerceptionEvent(
     val position: Position,
     val gameTimestamp: Long,
     val distance: Double,
+    /** realName → characterId for every named participant in [details]. */
+    val participantIds: Map<String, String> = emptyMap(),
 ) : Event(),
     StoryEvent {
     override val eventType: String get() = "character.perceived"
@@ -130,6 +164,12 @@ class PerceptionEvent(
             )
             put("timestamp", gameTimestamp)
             put("distance", distance)
+            if (participantIds.isNotEmpty()) {
+                put(
+                    "participantIds",
+                    buildJsonObject { participantIds.forEach { (name, id) -> put(name, id) } },
+                )
+            }
         }
 
     companion object {
