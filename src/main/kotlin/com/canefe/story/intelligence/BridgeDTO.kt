@@ -81,6 +81,150 @@ data class CapabilitiesRequest(
     val method: String = Method.GET_CAPABILITIES,
 )
 
+@Serializable
+data class GenerateCharactersRequest(
+    val requestId: String,
+    val method: String = Method.GENERATE_CHARACTERS,
+    val template: String,
+    val count: Int,
+    val locationOverride: String? = null,
+)
+
+/** One generated character returned from chargen. */
+@Serializable
+data class GeneratedCharacterDTO(
+    val template: String,
+    val name: String,
+    val race: String,
+    val gender: String = "unknown",
+    val appearance: Map<String, String> = emptyMap(),
+    val location: String? = null,
+    /** Stranger-label built by chargen ("Pale-skinned Nord Guard with red hair"). */
+    val descriptor: String = "",
+)
+
+// --- Recognition (story-recognition via story-go) ---
+
+@Serializable
+data class RecognizeRequest(
+    val requestId: String,
+    val method: String = Method.RECOGNIZE,
+    val perceiverId: String,
+    val targetId: String,
+    val realName: String,
+    val source: String = "gm",
+)
+
+@Serializable
+data class ForgetRecognitionRequest(
+    val requestId: String,
+    val method: String = Method.FORGET_RECOGNITION,
+    val perceiverId: String,
+    val targetId: String,
+)
+
+@Serializable
+data class KnowsCharacterRequest(
+    val requestId: String,
+    val method: String = Method.KNOWS_CHARACTER,
+    val perceiverId: String,
+    val targetId: String,
+)
+
+@Serializable
+data class KnownOfRequest(
+    val requestId: String,
+    val method: String = Method.KNOWN_OF,
+    val perceiverId: String,
+)
+
+@Serializable
+data class ResolveNamesRequest(
+    val requestId: String,
+    val method: String = Method.RESOLVE_NAMES,
+    val perceiverId: String,
+    val targetIds: List<String>,
+)
+
+@Serializable
+data class GetDescriptorRequest(
+    val requestId: String,
+    val method: String = Method.GET_DESCRIPTOR,
+    val characterId: String,
+)
+
+@Serializable
+data class SetDescriptorRequest(
+    val requestId: String,
+    val method: String = Method.SET_DESCRIPTOR,
+    val characterId: String,
+    val descriptor: String,
+)
+
+@Serializable
+data class SetAppearanceRequest(
+    val requestId: String,
+    val method: String = Method.SET_APPEARANCE,
+    val characterId: String,
+    val gender: String = "unknown",
+    val traits: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class GetAppearanceRequest(
+    val requestId: String,
+    val method: String = Method.GET_APPEARANCE,
+    val characterId: String,
+)
+
+@Serializable
+data class GetAppearanceTemplatesRequest(
+    val requestId: String,
+    val method: String = Method.GET_APPEARANCE_TEMPLATES,
+)
+
+@Serializable
+data class AppearanceTemplatesDTO(
+    val pronouns: Map<String, Map<String, String>> = emptyMap(),
+    val slots: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class DescribeRequest(
+    val requestId: String,
+    val method: String = Method.DESCRIBE,
+    val perceiverId: String,
+    val targetId: String,
+)
+
+@Serializable
+data class AppearanceDocDTO(
+    val characterId: String,
+    val gender: String = "unknown",
+    val traits: Map<String, String> = emptyMap(),
+    val prose: String = "",
+)
+
+/** Per-perceiver render of a target. `name` is real name when known, else null. */
+@Serializable
+data class DescribeResultDTO(
+    val perceiverId: String,
+    val targetId: String,
+    val known: Boolean,
+    val name: String? = null,
+    val prose: String,
+)
+
+/** One row of a /resolve batch response. */
+@Serializable
+data class ResolvedTargetDTO(
+    val targetId: String,
+    val known: Boolean,
+    val realName: String? = null,
+    val descriptor: String,
+    val shortLabel: String = "",
+)
+
 /**
  * Constants for intelligence wire protocol.
  */
@@ -102,4 +246,16 @@ object Method {
     const val GENERATE_NPC_REACTIONS = "generateNPCReactions"
     const val SUMMARIZE_MESSAGE_HISTORY = "summarizeMessageHistory"
     const val PROCESS_CONVERSATION_INFORMATION = "processConversationInformation"
+    const val GENERATE_CHARACTERS = "generateCharacters"
+    const val RECOGNIZE = "recognize"
+    const val FORGET_RECOGNITION = "forgetRecognition"
+    const val KNOWS_CHARACTER = "knowsCharacter"
+    const val KNOWN_OF = "knownOf"
+    const val RESOLVE_NAMES = "resolveNames"
+    const val GET_DESCRIPTOR = "getDescriptor"
+    const val SET_DESCRIPTOR = "setDescriptor"
+    const val SET_APPEARANCE = "setAppearance"
+    const val GET_APPEARANCE = "getAppearance"
+    const val DESCRIBE = "describe"
+    const val GET_APPEARANCE_TEMPLATES = "getAppearanceTemplates"
 }

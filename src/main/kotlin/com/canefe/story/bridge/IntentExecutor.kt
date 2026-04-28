@@ -3,6 +3,7 @@ package com.canefe.story.bridge
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.npc.CitizensStoryNPC
+import com.canefe.story.util.characterId
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -18,7 +19,15 @@ object IntentExecutor {
     ) {
         val npc = resolveNPC(plugin, intent.characterId)
         if (npc == null) {
-            plugin.logger.warning("Speak intent: character '${intent.characterId}' not found")
+            // Fall back: check if it's a player-character
+            val player = plugin.server.onlinePlayers.firstOrNull {
+                it.characterId == intent.characterId
+            }
+            if (player != null) {
+                player.chat(intent.message)
+            } else {
+                plugin.logger.warning("Speak intent: character '${intent.characterId}' not found")
+            }
             return
         }
 
@@ -151,12 +160,32 @@ object IntentExecutor {
                 if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
             }
 
-            // Fall back to name match
+            // Try unified StoryNPC registry (covers MythicMob-backed NPCs) by name
+            if (plugin.isNpcRegistryReady) {
+                plugin.npcRegistry.getByName(record.name)?.let { return it }
+            }
+
+            // Fall back to name match in Citizens
             val citizenNpc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == record.name }
             if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
         }
 
-        // Legacy fallback: treat characterId as a name
+        // Unified registry: scan for any StoryNPC whose characterId matches
+        if (plugin.isNpcRegistryReady) {
+            for (storyNpc in plugin.npcRegistry.all()) {
+                val id =
+                    try {
+                        plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+                    } catch (_: UninitializedPropertyAccessException) {
+                        null
+                    }
+                if (id == characterId) return storyNpc
+            }
+            // Last resort: treat characterId as a name in the unified registry
+            plugin.npcRegistry.getByName(characterId)?.let { return it }
+        }
+
+        // Legacy fallback: treat characterId as a name in Citizens
         val citizenNpc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == characterId }
         if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
 

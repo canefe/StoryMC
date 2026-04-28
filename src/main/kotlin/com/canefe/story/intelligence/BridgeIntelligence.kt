@@ -52,6 +52,14 @@ class BridgeIntelligence(
                     supportedMethods.add(element.toString().trim('"'))
                 }
                 plugin.logger.info("Bridge intelligence capabilities: $supportedMethods")
+
+                // Refresh recognition-owned templates whenever caps land. This
+                // covers startup and /story reload (which re-requests caps).
+                if (isSupported(Method.GET_APPEARANCE_TEMPLATES) &&
+                    plugin.isAppearanceTemplateCacheReady
+                ) {
+                    plugin.appearanceTemplateCache.refresh(this)
+                }
             }
         }
     }
@@ -244,6 +252,278 @@ class BridgeIntelligence(
                 local.processConversationInformation(request).get()
                 null
             }
+    }
+
+    /**
+     * Ask the bridge (story-go → story-chargen) to procedurally generate `count`
+     * characters from `template`. Returns a list of [GeneratedCharacterDTO], or an
+     * empty list if the bridge does not support chargen.
+     */
+    fun requestCharacters(
+        template: String,
+        count: Int,
+        locationOverride: String? = null,
+    ): CompletableFuture<List<GeneratedCharacterDTO>> {
+        if (!isSupported(Method.GENERATE_CHARACTERS)) {
+            val f = CompletableFuture<List<GeneratedCharacterDTO>>()
+            f.completeExceptionally(IllegalStateException("Bridge does not support generateCharacters"))
+            return f
+        }
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GenerateCharactersRequest(
+                requestId = requestId,
+                template = template,
+                count = count,
+                locationOverride = locationOverride,
+            )
+
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(GenerateCharactersRequest.serializer(), dto).jsonObject,
+        ).thenApply<List<GeneratedCharacterDTO>> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val result = response["result"] as? JsonObject
+                ?: return@thenApply emptyList()
+            val arr = result["characters"] as? JsonArray ?: return@thenApply emptyList()
+            arr.map { json.decodeFromJsonElement(GeneratedCharacterDTO.serializer(), it) }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Recognition (story-go → story-recognition)
+    // -----------------------------------------------------------------------
+
+    /** Returns true when the bridge advertises recognition capabilities. */
+    fun isRecognitionSupported(): Boolean = isSupported(Method.RESOLVE_NAMES)
+
+    /** Record that perceiver now knows target by realName. */
+    fun recognize(
+        perceiverId: String,
+        targetId: String,
+        realName: String,
+        source: String = "gm",
+    ): CompletableFuture<Unit> {
+        if (!isSupported(Method.RECOGNIZE)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support recognize"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = RecognizeRequest(requestId, perceiverId = perceiverId, targetId = targetId, realName = realName, source = source)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(RecognizeRequest.serializer(), dto).jsonObject,
+        ).thenApply<Unit> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+        }
+    }
+
+    /** Drop a single recognition. */
+    fun forgetRecognition(perceiverId: String, targetId: String): CompletableFuture<Unit> {
+        if (!isSupported(Method.FORGET_RECOGNITION)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support forgetRecognition"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = ForgetRecognitionRequest(requestId, perceiverId = perceiverId, targetId = targetId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(ForgetRecognitionRequest.serializer(), dto).jsonObject,
+        ).thenApply<Unit> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+        }
+    }
+
+    /** Returns (known, realName?). */
+    fun knowsCharacter(
+        perceiverId: String,
+        targetId: String,
+    ): CompletableFuture<Pair<Boolean, String?>> {
+        if (!isSupported(Method.KNOWS_CHARACTER)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support knowsCharacter"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = KnowsCharacterRequest(requestId, perceiverId = perceiverId, targetId = targetId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(KnowsCharacterRequest.serializer(), dto).jsonObject,
+        ).thenApply { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject ?: return@thenApply false to null
+            val known = (res["known"]?.toString() ?: "false").trim('"').toBoolean()
+            val realName = res["realName"]?.toString()?.trim('"')?.takeIf { it != "null" }
+            known to realName
+        }
+    }
+
+    /**
+     * Returns the perceiver's full known-of map (targetId → realName).
+     * Used to seed the StoryClient recognition cache on player join.
+     */
+    fun knownOf(perceiverId: String): CompletableFuture<Map<String, String>> {
+        if (!isSupported(Method.KNOWN_OF)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support knownOf"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = KnownOfRequest(requestId, perceiverId = perceiverId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(KnownOfRequest.serializer(), dto).jsonObject,
+        ).thenApply<Map<String, String>> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject ?: return@thenApply emptyMap()
+            val known = res["known"] as? JsonObject ?: return@thenApply emptyMap()
+            known.mapValues { (_, v) ->
+                val obj = v as? JsonObject ?: return@mapValues ""
+                obj["realName"]?.toString()?.trim('"') ?: ""
+            }.filterValues { it.isNotEmpty() }
+        }
+    }
+
+    /**
+     * Batch-resolve a set of target IDs against the perceiver's recognition set.
+     * The choke-point used by render-time code paths (NearbyNPCBroadcaster,
+     * prompt rendering) so we hit the bridge once per perceiver per render.
+     */
+    fun resolveNames(
+        perceiverId: String,
+        targetIds: List<String>,
+    ): CompletableFuture<List<ResolvedTargetDTO>> {
+        if (targetIds.isEmpty()) return CompletableFuture.completedFuture(emptyList())
+        if (!isSupported(Method.RESOLVE_NAMES)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support resolveNames"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = ResolveNamesRequest(requestId, perceiverId = perceiverId, targetIds = targetIds)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(ResolveNamesRequest.serializer(), dto).jsonObject,
+        ).thenApply<List<ResolvedTargetDTO>> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject ?: return@thenApply emptyList()
+            val arr = res["targets"] as? JsonArray ?: return@thenApply emptyList()
+            arr.map { json.decodeFromJsonElement(ResolvedTargetDTO.serializer(), it) }
+        }
+    }
+
+    /** Returns the fallback descriptor for a character. */
+    fun getDescriptor(characterId: String): CompletableFuture<String> {
+        if (!isSupported(Method.GET_DESCRIPTOR)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support getDescriptor"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = GetDescriptorRequest(requestId, characterId = characterId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(GetDescriptorRequest.serializer(), dto).jsonObject,
+        ).thenApply { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject
+                ?: return@thenApply ""
+            res["descriptor"]?.toString()?.trim('"') ?: ""
+        }
+    }
+
+    /** Sets the fallback descriptor for a character. */
+    fun setDescriptor(characterId: String, descriptor: String): CompletableFuture<Unit> {
+        if (!isSupported(Method.SET_DESCRIPTOR)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support setDescriptor"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = SetDescriptorRequest(requestId, characterId = characterId, descriptor = descriptor)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(SetDescriptorRequest.serializer(), dto).jsonObject,
+        ).thenApply<Unit> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+        }
+    }
+
+    /** True when the bridge advertises the `describe` method (per-perceiver render). */
+    fun isDescribeSupported(): Boolean = isSupported(Method.DESCRIBE)
+
+    /** Push the structured appearance trait map for a character. */
+    fun setAppearance(
+        characterId: String,
+        gender: String,
+        traits: Map<String, String>,
+    ): CompletableFuture<Unit> {
+        if (!isSupported(Method.SET_APPEARANCE)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support setAppearance"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = SetAppearanceRequest(requestId, characterId = characterId, gender = gender, traits = traits)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(SetAppearanceRequest.serializer(), dto).jsonObject,
+        ).thenApply<Unit> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+        }
+    }
+
+    /**
+     * Per-perceiver render. Returns real name when perceiver knows target, plus
+     * appearance prose (or descriptor fallback). Used by render-time code paths
+     * to replace local `toProse()` rendering.
+     */
+    fun describe(
+        perceiverId: String,
+        targetId: String,
+    ): CompletableFuture<DescribeResultDTO> {
+        if (!isSupported(Method.DESCRIBE)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support describe"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = DescribeRequest(requestId, perceiverId = perceiverId, targetId = targetId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(DescribeRequest.serializer(), dto).jsonObject,
+        ).thenApply { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject
+                ?: throw RuntimeException("describe: missing result")
+            json.decodeFromJsonElement(DescribeResultDTO.serializer(), res)
+        }
+    }
+
+    /**
+     * Fetch the pronoun + slot templates from story-recognition. Cached by
+     * [AppearanceTemplateCache]; called at startup and on /story reload.
+     */
+    fun getAppearanceTemplates(): CompletableFuture<AppearanceTemplatesDTO> {
+        if (!isSupported(Method.GET_APPEARANCE_TEMPLATES)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support getAppearanceTemplates"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = GetAppearanceTemplatesRequest(requestId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(GetAppearanceTemplatesRequest.serializer(), dto).jsonObject,
+        ).thenApply { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject
+                ?: throw RuntimeException("getAppearanceTemplates: missing result")
+            json.decodeFromJsonElement(AppearanceTemplatesDTO.serializer(), res)
+        }
     }
 
     private inline fun <reified T> emitDto(dto: T) where T : Any {

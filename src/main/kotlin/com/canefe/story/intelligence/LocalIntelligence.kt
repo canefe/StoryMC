@@ -2,6 +2,7 @@ package com.canefe.story.intelligence
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.api.character.toProse
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.util.*
@@ -103,7 +104,9 @@ class LocalIntelligence(
         val npcDescriptions =
             reactingNPCs.joinToString("\n") { npc ->
                 val record = plugin.characterRegistry.getByStoryNPC(npc)
-                val personality = record?.appearance?.take(150) ?: "no details"
+                val personality = record?.appearance?.toProse(
+                    record.gender, plugin.appearanceTemplateCache
+                ) ?: "no details"
                 "- ${npc.name}: $personality"
             }
 
