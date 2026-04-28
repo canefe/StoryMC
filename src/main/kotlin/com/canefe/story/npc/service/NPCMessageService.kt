@@ -3,9 +3,11 @@ package com.canefe.story.npc.service
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
+import com.canefe.story.api.character.CharacterRecord
+import com.canefe.story.api.character.Gender
 import com.canefe.story.api.character.PlayerCharacter
 import com.canefe.story.api.event.CharacterSpeakEvent
-import com.canefe.story.conversation.ConversationMessage
+import com.canefe.story.intelligence.BridgeIntelligence
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.*
 import dev.lone.itemsadder.api.FontImages.FontImageWrapper
@@ -16,8 +18,8 @@ import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import java.util.*
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
-import kotlin.text.append
 
 class NPCMessageService(
     private val plugin: Story,
@@ -66,19 +68,19 @@ class NPCMessageService(
             if (trimmedLine.isEmpty()) continue // Skip empty lines
 
             // Regex to capture name and dialogue/emote
-            val pattern = Pattern.compile("^([A-Za-z0-9_\\s]+):\\s*(.*)$")
+            val pattern = Pattern.compile("^([A-Za-z0-9_\\s'\\-.]+):\\s*(.*)$")
             val matcher = pattern.matcher(trimmedLine)
 
-            var sender = name
+            val sender = name
             var cleanedMessage = trimmedLine // Default to the full line if no match
 
             if (matcher.find()) {
-                sender = matcher.group(1).trim() // Extract name
+                val extracted = matcher.group(1).trim() // Discard — perceiver-perspective name wins
                 cleanedMessage = matcher.group(2).trim() // Extract message content
 
                 // Remove all duplicate sender name prefixes (e.g., "Name: Name: Name:")
-                while (cleanedMessage.startsWith("$sender:")) {
-                    cleanedMessage = cleanedMessage.substring(sender.length + 1).trim()
+                while (cleanedMessage.startsWith("$extracted:")) {
+                    cleanedMessage = cleanedMessage.substring(extracted.length + 1).trim()
                 }
             }
 
@@ -185,17 +187,8 @@ class NPCMessageService(
         // Get character record and avatar
         val record = plugin.characterRegistry.getByStoryNPC(npc)
         val avatar = record?.let { plugin.characterRegistry.getMinecraftConfig(it.id)?.avatar ?: "" } ?: ""
-
-        // Format the message
-        val parsedMessages =
-            formatMessage(
-                message = message,
-                name = record?.name ?: npc.name,
-                color = color,
-                avatar = avatar,
-                characterId = if (streaming && npc.entity != null) npc.entity!!.uniqueId else null,
-                voicePending = voicePending,
-            )
+        val realName = record?.name ?: npc.name
+        val speakerCharId = record?.id
 
         Bukkit.getScheduler().runTask(
             plugin,
@@ -247,14 +240,41 @@ class NPCMessageService(
                         shouldSee = false
                     }
 
-                    // Send messages to players who should see them
                     if (shouldSee) {
                         players.add(p)
-                        parsedMessages.forEach { component ->
-                            p.sendMessage(component)
-                        }
                     }
                 }
+
+                // Resolve per-perceiver display name (real name when known, else
+                // descriptor) and dispatch a tailored message to each viewer.
+                // DM-permissioned viewers always see the real name.
+                resolvePerceiverNames(speakerCharId, realName, players).thenAccept { nameByPlayer ->
+                    Bukkit.getScheduler().runTask(plugin, Runnable {
+                        for (p in players) {
+                            val perceivedName = nameByPlayer[p.uniqueId] ?: realName
+                            val perPlayer = formatMessage(
+                                message = message,
+                                name = perceivedName,
+                                color = color,
+                                avatar = avatar,
+                                characterId = if (streaming) npc.clientFacingUuid else null,
+                                voicePending = voicePending,
+                            )
+                            perPlayer.forEach { component -> p.sendMessage(component) }
+                        }
+                    })
+                }
+
+                // Console / parsed-once copy used for non-streaming console echo below.
+                val parsedMessages =
+                    formatMessage(
+                        message = message,
+                        name = realName,
+                        color = color,
+                        avatar = avatar,
+                        characterId = if (streaming) npc.clientFacingUuid else null,
+                        voicePending = voicePending,
+                    )
 
                 var conversation = plugin.conversationManager.getConversation(npc)
 
@@ -439,6 +459,57 @@ class NPCMessageService(
     }
 
     /**
+     * Per-perceiver name resolution for bubble/chat broadcasts. DMs always see
+     * the real name. Non-DM perceivers with a bound character see either the
+     * real name (if recognised) or the descriptor (if not). Players without a
+     * bound character or with no bridge support fall through to [realName].
+     */
+    private fun resolvePerceiverNames(
+        speakerCharId: String?,
+        realName: String,
+        viewers: Collection<Player>,
+    ): CompletableFuture<Map<UUID, String>> {
+        if (viewers.isEmpty()) return CompletableFuture.completedFuture(emptyMap())
+        val bridge = plugin.intelligence as? BridgeIntelligence
+        if (speakerCharId.isNullOrEmpty() || bridge == null || !bridge.isRecognitionSupported()) {
+            return CompletableFuture.completedFuture(viewers.associate { it.uniqueId to realName })
+        }
+
+        val out = ConcurrentHashMap<UUID, String>()
+        val futures = viewers.map { p ->
+            // DMs always see the real name (matches NearbyNPCBroadcaster).
+            if (p.hasPermission("story.dm")) {
+                out[p.uniqueId] = realName
+                CompletableFuture.completedFuture<Unit>(Unit)
+            } else {
+                val perceiverId = p.characterId
+                if (perceiverId.isNullOrEmpty()) {
+                    out[p.uniqueId] = realName
+                    CompletableFuture.completedFuture<Unit>(Unit)
+                } else {
+                    bridge.resolveNames(perceiverId, listOf(speakerCharId))
+                        .thenAccept { resolved ->
+                            val r = resolved.firstOrNull { it.targetId == speakerCharId }
+                            val label = when {
+                                r == null -> realName
+                                r.known && !r.realName.isNullOrBlank() -> r.realName
+                                r.shortLabel.isNotBlank() -> r.shortLabel
+                                r.descriptor.isNotBlank() -> r.descriptor
+                                else -> realName
+                            }
+                            out[p.uniqueId] = label
+                        }
+                        .exceptionally {
+                            out[p.uniqueId] = realName
+                            null
+                        }
+                }
+            }
+        }
+        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { out.toMap() }
+    }
+
+    /**
      * Asynchronously determines an NPC's gender
      * Returns a CompletableFuture that will be completed with the gender
      */
@@ -457,88 +528,19 @@ class NPCMessageService(
         val record = plugin.characterRegistry.getByStoryNPC(npc)
         val contextStr = record?.appearance ?: ""
 
-        // Check for explicit gender tag
-        val genderTagRegex = Regex("GENDER:\\s*(\\w+)", RegexOption.IGNORE_CASE)
-        val genderTagMatch = genderTagRegex.find(contextStr)
+        val genderTagMatch = record?.gender
 
-        // If we have an explicit tag, use it immediately without AI
         if (genderTagMatch != null) {
-            val explicitGender = genderTagMatch.groupValues[1].lowercase()
             val result =
-                when (explicitGender) {
-                    "female" -> "girl"
-                    "male" -> "man"
-                    else -> explicitGender
+                when (genderTagMatch) {
+                    Gender.FEMALE -> "girl"
+                    Gender.MALE -> "man"
+                    else -> "man"
                 }
             // Cache the result
             genderCache[npcName] = result
             resultFuture.complete(result)
             return resultFuture
-        }
-
-        // If we get here, we need to use AI
-        // Run AI determination in another thread
-        CompletableFuture.runAsync {
-            try {
-                val memoriesContext = "" // Memories are stored externally
-
-                val prompt = mutableListOf<ConversationMessage>()
-                prompt.add(
-                    ConversationMessage(
-                        "system",
-                        """
-                    Based on the character name, context, and memories provided, determine the character's gender.
-                    Consider name conventions, pronouns used, and any context clues in memories or descriptions.
-                    Respond ONLY with one of these words: "girl", "man", or "unknown".
-                    """,
-                    ),
-                )
-
-                prompt.add(
-                    ConversationMessage(
-                        "user",
-                        """
-                    Character Name: $npcName
-
-                    Character Context:
-                    $contextStr
-
-                    Character Memories:
-                    $memoriesContext
-                    """,
-                    ),
-                )
-
-                // Get AI response - wait as long as needed
-                val response =
-                    plugin
-                        .getAIResponse(prompt, lowCost = true)
-                        .get()
-                        ?.trim()
-                        ?.lowercase()
-
-                // Determine gender from response
-                val aiGender =
-                    when {
-                        response?.contains("girl") == true ||
-                            response?.contains("female") == true ||
-                            response?.contains("woman") == true -> "girl"
-                        response?.contains("man") == true ||
-                            response?.contains("male") == true -> "man"
-                        else -> "man" // Default fallback
-                    }
-
-                // Cache the result
-                genderCache[npcName] = aiGender
-
-                // Complete the future
-                resultFuture.complete(aiGender)
-            } catch (e: Exception) {
-                plugin.logger.warning("AI gender determination failed for NPC $npcName: ${e.message}")
-                // Default fallback on error
-                genderCache[npcName] = "man"
-                resultFuture.complete("man")
-            }
         }
 
         return resultFuture

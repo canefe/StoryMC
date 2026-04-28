@@ -22,6 +22,16 @@ interface StoryNPC {
     /** The underlying Bukkit entity, or null if not spawned. */
     val entity: Entity?
 
+    /**
+     * UUID the client should use to find this NPC's visible entity for bubbles,
+     * actions, and positional audio.
+     *
+     * Defaults to [entity]'s uniqueId. Override when the NPC is rendered as a
+     * different entity client-side (e.g. a MythicMob disguised as a player via
+     * LibsDisguises spawns a fake player packet entity with its own UUID).
+     */
+    val clientFacingUuid: UUID? get() = entity?.uniqueId
+
     /** Whether this NPC is currently spawned in the world. */
     val isSpawned: Boolean
 
@@ -127,6 +137,20 @@ interface StoryNPC {
         signature: String,
         texture: String,
     )
+
+    // -- Signal --
+
+    /**
+     * Send a Mythic-style signal to this NPC (no-op for backends without one).
+     *
+     * The MythicMobs adapter dispatches to `ActiveMob.signalMob(source, name)`,
+     * which lets the mob's template react via `~onSignal:<name>` skill triggers
+     * with [source] available as `@trigger`.
+     *
+     * For Citizens: no-op (Citizens has no equivalent of skill triggers driven
+     * by external signals — the AI is goal-based, not event-based).
+     */
+    fun signal(name: String, source: Entity? = null) {}
 
     // -- Source access --
 

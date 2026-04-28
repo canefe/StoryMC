@@ -6,6 +6,7 @@ import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.CharacterRecord
 import com.canefe.story.api.character.PlayerCharacter
+import com.canefe.story.api.character.toProse
 import com.canefe.story.conversation.Conversation
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.memory.Memory
@@ -859,7 +860,9 @@ class NPCResponseService(
         // Second message: NPC context from data
         val characterRecord = plugin.characterRegistry.getByName(characterName)
         if (characterRecord != null) {
-            syntheticConversation.add(ConversationMessage("system", characterRecord.appearance))
+            syntheticConversation.add(ConversationMessage("system", characterRecord.appearance.toProse(
+                characterRecord.gender, plugin.appearanceTemplateCache
+            )))
         }
 
         // Use PromptService to get the NPC memory generation prompt

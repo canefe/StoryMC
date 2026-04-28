@@ -4,6 +4,7 @@ import com.canefe.story.Story
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.character.Character
 import com.canefe.story.api.character.PlayerCharacter
+import com.canefe.story.api.character.toProse
 import com.canefe.story.conversation.ConversationMessage
 import com.canefe.story.npc.CitizensStoryNPC
 import org.bukkit.entity.Entity
@@ -118,7 +119,7 @@ interface StoryAPI {
             return APINPCData(
                 name = record.name,
                 context = "",
-                appearance = record.appearance,
+                appearance = record.appearance.toProse(record.gender, instance.appearanceTemplateCache),
             )
         }
 

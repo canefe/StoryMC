@@ -89,7 +89,7 @@ class VoiceManager(
                     var successCount = 0
                     for (player in players) {
                         try {
-                            audioManager.sendAudioToPlayer(player, audioData, npc.entity?.uniqueId)
+                            audioManager.sendAudioToPlayer(player, audioData, npc.clientFacingUuid)
                             successCount++
                         } catch (e: Exception) {
                             plugin.logger.warning(

@@ -691,6 +691,7 @@ class ConversationManager(
                 conversationId = conversation.id,
             ),
         )
+        emitPlayerSpeechPerception(player, message)
 
         // Generate physical reactions from NPCs
         generateNPCReactions(conversation, playerName, message)
@@ -850,7 +851,7 @@ class ConversationManager(
      */
     private fun clearThinkingIndicator(npc: StoryNPC) {
         if (!npc.isSpawned || npc.entity == null) return
-        val npcUuid = npc.entity!!.uniqueId
+        val npcUuid = npc.clientFacingUuid ?: return
         val endMessage = "<npc_typing_end>id:$npcUuid"
         val mm =
             net.kyori.adventure.text.minimessage.MiniMessage
@@ -1005,6 +1006,7 @@ class ConversationManager(
                             message = message,
                         ),
                     )
+                    emitSpeechPerception(npc, message)
                     return
                 }
 
@@ -1044,6 +1046,54 @@ class ConversationManager(
                 message = message,
                 conversationId = conversation.id,
             ),
+        )
+        emitSpeechPerception(npc, message)
+    }
+
+    private fun emitSpeechPerception(
+        npc: StoryNPC,
+        message: String,
+    ) {
+        val entity = npc.entity ?: return
+        val speakerId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.uniqueId.toString()
+        val participants = mapOf(npc.name to speakerId)
+        plugin.perceptionService.observe(
+            details =
+                com.canefe.story.bridge.PerceptionDetails.Speech(
+                    speakerId = speakerId,
+                    speakerName = npc.name,
+                    message = message,
+                ),
+            epicenter = entity.location,
+            source = "npc_speech",
+            exclude = npc.name,
+            participants = participants,
+        )
+    }
+
+    private fun emitPlayerSpeechPerception(
+        player: Player,
+        message: String,
+    ) {
+        val speakerName =
+            try {
+                player.characterName
+            } catch (_: Exception) {
+                player.name
+            }
+        val speakerId = player.characterId ?: player.uniqueId.toString()
+        val participants = mapOf(speakerName to speakerId)
+        plugin.perceptionService.observe(
+            details =
+                com.canefe.story.bridge.PerceptionDetails.Speech(
+                    speakerId = speakerId,
+                    speakerName = speakerName,
+                    message = message,
+                ),
+            epicenter = player.location,
+            source = "player_speech",
+            exclude = speakerName,
+            participants = participants,
         )
     }
 

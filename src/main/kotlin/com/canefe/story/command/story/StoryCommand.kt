@@ -3,6 +3,8 @@ package com.canefe.story.command.story
 import com.canefe.story.Story
 import com.canefe.story.command.base.BaseCommand
 import com.canefe.story.command.base.CommandComponentUtils
+import com.canefe.story.command.story.character.CharCommand
+import com.canefe.story.command.story.character.RecognizeCommand
 import com.canefe.story.command.story.location.LocationCommand
 import com.canefe.story.command.story.npc.NPCCommand
 import com.canefe.story.command.story.quest.QuestCommand
@@ -42,12 +44,16 @@ class StoryCommand(
             .withSubcommand(getHelpCommand())
             .withSubcommand(getReloadCommand())
             .withSubcommand(getNPCCommand())
+            .withSubcommand(getCharCommand())
             .withSubcommand(getMessageCommand())
             .withSubcommand(getGMCommand())
             .withSubcommand(getSessionCommand())
             .withSubcommand(getTaskCommand())
             .withSubcommand(getMigrateCommand())
             .withSubcommand(getStatusCommand())
+            .withSubcommand(RecognizeCommand(plugin).getRecognizeCommand())
+            .withSubcommand(RecognizeCommand(plugin).getForgetCommand())
+            .withSubcommand(RecognizeCommand(plugin).getDescriptorCommand())
             .register()
     }
 
@@ -479,6 +485,7 @@ class StoryCommand(
         <gold>/story</gold> reload <gray><italic>- Reload the plugin configuration</italic></gray>
         <gold>/story</gold> location <gray><italic>- Manage locations</italic></gray>
         <gold>/story</gold> npc <gray><italic>- Manage NPCs</italic></gray>
+        <gold>/story</gold> char spawn <Template> [count] <gray><italic>- Spawn procedurally-generated NPCs from a chargen template</italic></gray>
         <gold>/conv</gold> list <gray><italic>- List all conversations and control panel</italic></gray>
         <gold>/story</gold> gm <question> [broadcast] <gray><italic>- Ask the Game Master a question about the world</italic></gray>
         <gold>/story</gold> status <gray><italic>- Show WebSocket and MongoDB connection status</italic></gray>
@@ -502,6 +509,8 @@ class StoryCommand(
                     plugin.reloadConfig()
                     plugin.configService.reload()
                     plugin.tryReconnectStorage(sender)
+                    plugin.npcRegistry.clear()
+                    plugin.npcRegistry.loadExistingCitizens()
                     sender.sendSuccess("Plugin reloaded successfully.")
                 },
             )
@@ -559,6 +568,8 @@ class StoryCommand(
     private fun getQuestCommand(): CommandAPICommand = QuestCommand(plugin).getCommand()
 
     private fun getNPCCommand(): CommandAPICommand = NPCCommand(plugin).getCommand()
+
+    private fun getCharCommand(): CommandAPICommand = CharCommand(plugin).getCommand()
 
     private fun getSessionCommand(): CommandAPICommand = SessionCommand(plugin).getCommand()
 }

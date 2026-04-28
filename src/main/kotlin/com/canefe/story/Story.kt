@@ -1,7 +1,10 @@
 package com.canefe.story
 
 import com.canefe.story.api.StoryAPI
+import com.canefe.story.api.character.AppearanceTemplateCache
 import com.canefe.story.api.character.CharacterRegistry
+import com.canefe.story.api.squad.SquadRegistry
+import com.canefe.story.storage.mongo.MongoSquadStorage
 import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.bridge.*
@@ -22,9 +25,20 @@ import com.canefe.story.intelligence.LocalIntelligence
 import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
+import com.canefe.story.npc.NPCFollowTracker
 import com.canefe.story.npc.NPCManager
+import com.canefe.story.npc.NearbyNPCBroadcaster
+import com.canefe.story.npc.RecognitionBroadcaster
+import com.canefe.story.npc.PuppetCommandListener
+import com.canefe.story.npc.PuppetGroupBroadcaster
+import com.canefe.story.npc.PuppetManager
+import com.canefe.story.npc.squad.SquadListBroadcaster
+import com.canefe.story.npc.squad.SquadOrderListener
+import com.canefe.story.npc.squad.SquadOrderTracker
 import com.canefe.story.npc.behavior.NPCBehaviorManager
+import com.canefe.story.npc.registry.StoryNPCRegistry
 import com.canefe.story.npc.mythicmobs.MythicMobConversationIntegration
+import com.canefe.story.npc.mythicmobs.MythicMobNPCFactory
 import com.canefe.story.npc.relationship.RelationshipManager
 import com.canefe.story.npc.schedule.ScheduleManager
 import com.canefe.story.npc.service.NPCMessageService
@@ -75,6 +89,8 @@ open class Story :
     // Plugin configuration
     val configService = ConfigService(this)
     lateinit var promptService: PromptService
+    lateinit var appearanceTemplateCache: AppearanceTemplateCache
+    val isAppearanceTemplateCacheReady: Boolean get() = ::appearanceTemplateCache.isInitialized
 
     // gson
     val gson = com.google.gson.Gson()
@@ -159,6 +175,42 @@ open class Story :
 
     // Character registry — central lookup for character identity
     lateinit var characterRegistry: CharacterRegistry
+
+    /** True if [characterRegistry] has been initialized (MongoDB available). */
+    val isCharacterRegistryReady: Boolean get() = ::characterRegistry.isInitialized
+
+    /** Squad registry — in-memory cache backed by Mongo. */
+    lateinit var squadRegistry: SquadRegistry
+
+    val isSquadRegistryReady: Boolean get() = ::squadRegistry.isInitialized
+
+    // StoryNPC registry — single source of truth for in-world NPCs (Citizens + MythicMobs)
+    lateinit var npcRegistry: StoryNPCRegistry
+
+    /** True if [npcRegistry] has been initialized. */
+    val isNpcRegistryReady: Boolean get() = ::npcRegistry.isInitialized
+
+    // Factory for spawning MythicMob-backed StoryNPCs
+    lateinit var mythicMobNpcFactory: MythicMobNPCFactory
+
+    /** Null-safe accessor — returns null if MythicMobs plugin is disabled and the factory was never initialized. */
+    val mythicMobNpcFactoryOrNull: MythicMobNPCFactory?
+        get() = if (::mythicMobNpcFactory.isInitialized) mythicMobNpcFactory else null
+
+    // Pushes nearby-NPC info bundles to clients for the action wheel
+    lateinit var nearbyNpcBroadcaster: NearbyNPCBroadcaster
+    lateinit var recognitionBroadcaster: RecognitionBroadcaster
+
+    // Per-NPC follow loop for entity targets (NPCs / players)
+    lateinit var npcFollowTracker: NPCFollowTracker
+
+    // Puppet mode: per-player NPC group, commands via right-click in StoryClient
+    lateinit var puppetManager: PuppetManager
+    lateinit var puppetGroupBroadcaster: PuppetGroupBroadcaster
+
+    // Squad command system — per-squad order state + broadcast to commanders
+    lateinit var squadOrderTracker: SquadOrderTracker
+    lateinit var squadListBroadcaster: SquadListBroadcaster
 
     // Configuration and state
     val miniMessage = MiniMessage.miniMessage()
@@ -270,6 +322,9 @@ open class Story :
             val charStorage = MongoCharacterStorage(mongoClient, logger)
             val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)
             characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger, mongoClient)
+
+            val squadStorage = MongoSquadStorage(mongoClient, logger)
+            squadRegistry = SquadRegistry(squadStorage, logger)
         }
 
         timeService = TimeService(this)
@@ -282,11 +337,55 @@ open class Story :
         if (::characterRegistry.isInitialized) {
             characterRegistry.loadAll()
         }
+        if (::squadRegistry.isInitialized) {
+            squadRegistry.loadAll()
+        }
 
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
         npcManager = NPCManager(this)
         Bukkit.getPluginManager().registerEvents(npcManager, this)
+        npcRegistry = StoryNPCRegistry(this)
+        Bukkit.getPluginManager().registerEvents(npcRegistry, this)
+        // Citizens NPCs aren't fully registered until after all plugins enable —
+        // load on next tick so the scan sees them.
+        Bukkit.getScheduler().runTaskLater(this, Runnable { npcRegistry.loadExistingCitizens() }, 1L)
+
+        if (Bukkit.getPluginManager().isPluginEnabled("MythicMobs")) {
+            mythicMobNpcFactory = MythicMobNPCFactory(this)
+            // Rehydrate any tagged MythicMob StoryNPCs in loaded chunks once
+            // MythicMobs has finished its own boot. Tick +1 is enough since
+            // plugin enable order resolves before the first tick.
+            Bukkit.getScheduler().runTaskLater(
+                this,
+                Runnable { mythicMobNpcFactory.rehydrateAllLoaded() },
+                1L,
+            )
+            mythicMobNpcFactory.startPeriodicRehydrate()
+        }
+
+        nearbyNpcBroadcaster = NearbyNPCBroadcaster(this)
+        nearbyNpcBroadcaster.start()
+
+        recognitionBroadcaster = RecognitionBroadcaster(this)
+
+        npcFollowTracker = NPCFollowTracker(this)
+
+        puppetGroupBroadcaster = PuppetGroupBroadcaster(this)
+        puppetManager = PuppetManager(this)
+        // Register the c2s puppet command packet listener
+        PacketEvents.getAPI().eventManager.registerListener(
+            PuppetCommandListener(this),
+            PacketListenerPriority.NORMAL,
+        )
+
+        squadOrderTracker = SquadOrderTracker(this)
+        squadListBroadcaster = SquadListBroadcaster(this)
+        squadListBroadcaster.start()
+        PacketEvents.getAPI().eventManager.registerListener(
+            SquadOrderListener(this),
+            PacketListenerPriority.NORMAL,
+        )
         scheduleManager = ScheduleManager(this)
         playerManager = PlayerManager(this, storageFactory.playerStorage)
         npcMessageService = NPCMessageService(this)
@@ -342,6 +441,14 @@ open class Story :
                         mongoClient,
                     )
                 characterRegistry.loadAll()
+            }
+        }
+        // Same for squad registry
+        if (!::squadRegistry.isInitialized) {
+            val mongoClient = storageFactory.mongoClient
+            if (mongoClient != null) {
+                squadRegistry = SquadRegistry(MongoSquadStorage(mongoClient, logger), logger)
+                squadRegistry.loadAll()
             }
         }
 
@@ -406,6 +513,7 @@ open class Story :
 
         // Initialize intelligence provider
         val local = LocalIntelligence(this)
+        appearanceTemplateCache = AppearanceTemplateCache(logger)
         intelligence =
             if (configService.bridgeEnabled) {
                 val bridge = BridgeIntelligence(this, local, eventBus)

@@ -1,6 +1,7 @@
 package com.canefe.story.context
 
 import com.canefe.story.Story
+import com.canefe.story.api.character.toProse
 import com.canefe.story.lore.LoreBookManager.LoreContext
 import org.bukkit.entity.Player
 
@@ -199,7 +200,7 @@ class ContextExtractor(
                     npcContexts.add(
                         NPCContextInfo(
                             name = record.name,
-                            context = record.appearance,
+                            context = record.appearance.toProse(record.gender, plugin.appearanceTemplateCache),
                             recentMemories = "",
                         ),
                     )

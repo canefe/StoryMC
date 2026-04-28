@@ -68,6 +68,7 @@ class CommandManager(
         ConvCommand(plugin).register()
         StoryCommand(plugin).register()
         PlayerConfigCommand(plugin).register()
+        com.canefe.story.command.squad.SquadCommand(plugin).register()
 
         // Register simpler commands
         registerSimpleCommands()
@@ -551,24 +552,35 @@ class CommandManager(
             npcUniqueId: UUID,
             message: String,
         ) {
-            // Check if NPC exists
-            var npc: StoryNPC? = CitizensAPI.getNPCRegistry().getByUniqueId(npcUniqueId)?.let { CitizensStoryNPC(it) }
+            // Prefer the unified StoryNPC registry — covers Citizens AND
+            // MythicMob NPCs spawned through our factory (keyed by stableUniqueId).
+            var npc: StoryNPC? = plugin.npcRegistry.get(npcUniqueId)
 
-            // Only check MythicMobs if the plugin is available
-            val isMythicMob =
-                try {
-                    if (Bukkit.getPluginManager().getPlugin("MythicMobs") != null) {
-                        MythicBukkit
-                            .inst()
-                            .mobManager.mobRegistry
-                            .get(npcUniqueId) != null
-                    } else {
+            // Fall back to direct Citizens lookup (for any pre-registry callers)
+            if (npc == null) {
+                npc = CitizensAPI.getNPCRegistry().getByUniqueId(npcUniqueId)?.let { CitizensStoryNPC(it) }
+            }
+
+            // Last resort: ad-hoc MythicMob lookup by the mob's own UUID (rare
+            // path for Mythic mobs not spawned via MythicMobNPCFactory).
+            val isAdHocMythicMob =
+                npc == null &&
+                    try {
+                        if (Bukkit.getPluginManager().getPlugin("MythicMobs") != null) {
+                            MythicBukkit
+                                .inst()
+                                .mobManager.mobRegistry
+                                .get(npcUniqueId) != null
+                        } else {
+                            false
+                        }
+                    } catch (e: NoClassDefFoundError) {
                         false
                     }
-                } catch (e: NoClassDefFoundError) {
-                    // MythicMobs classes not available
-                    false
-                }
+
+            // Existing Mythic-specific name/data branch below uses [isMythicMob] —
+            // keep the variable name for the rest of the function.
+            val isMythicMob = isAdHocMythicMob
 
             if (npc == null && !isMythicMob) {
                 player.sendError("NPC not found.")
@@ -786,20 +798,43 @@ class CommandManager(
                     // integer
                     val npcId = args.getOptional("npc_id").orElse(null) as? Int
 
-                    // Check if NPC is in front of us first.
+                    // Check if NPC is in front of us first — try the unified registry
+                    // (covers Citizens AND MythicMobs), then fall back to legacy Citizens-only.
                     val player = player as Player
-                    val target = player.getTargetEntity(15) // Get entity player is looking at within 15 blocks
-                    if (target != null && CitizensAPI.getNPCRegistry().isNPC(target)) {
-                        val npc: StoryNPC = CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(target))
-                        val charId = plugin.characterRegistry.getCharacterIdForNPC(npc)
-                        plugin.playerManager.setCurrentNPC(player.uniqueId, npc.uniqueId, charId)
-                        player.sendSuccess("Current NPC set to ${npc.name}")
-                        return@PlayerCommandExecutor
+                    val target = player.getTargetEntity(15)
+                    if (target != null) {
+                        val storyNpc: StoryNPC? =
+                            plugin.npcRegistry.getByEntity(target)
+                                ?: if (CitizensAPI.getNPCRegistry().isNPC(target)) {
+                                    CitizensStoryNPC(CitizensAPI.getNPCRegistry().getNPC(target))
+                                } else {
+                                    null
+                                }
+                        if (storyNpc != null) {
+                            val charId = plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+                            plugin.playerManager.setCurrentNPC(player.uniqueId, storyNpc.uniqueId, charId)
+                            player.sendSuccess("Current NPC set to ${storyNpc.name}")
+                            return@PlayerCommandExecutor
+                        }
                     }
 
                     // If no target, check if the player provided an NPC name
                     if (npc == null) {
                         player.sendError("Please provide an NPC name.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    // Lookup — accept either a bare characterId UUID (sent by
+                    // clients that only know stable IDs, e.g. recognition-aware
+                    // wheel) or a plain display name. CommandAPI's TextArgument
+                    // rejects colons, so we detect IDs by UUID shape.
+                    val asUuid = runCatching { java.util.UUID.fromString(npc) }.getOrNull()
+                    val resolved = asUuid?.let { plugin.npcRegistry.get(it) }
+                        ?: plugin.npcRegistry.getByName(npc)
+                    resolved?.let { storyNpc ->
+                        val charId = plugin.characterRegistry.getCharacterIdForNPC(storyNpc)
+                        plugin.playerManager.setCurrentNPC(player.uniqueId, storyNpc.uniqueId, charId)
+                        player.sendSuccess("Current NPC set to ${storyNpc.name}")
                         return@PlayerCommandExecutor
                     }
 

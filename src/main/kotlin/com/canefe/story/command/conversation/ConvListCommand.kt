@@ -109,9 +109,12 @@ class ConvListCommand(
 
         for (npcName in npcNames) {
             val escapedName = commandUtils.escapeForCommand(npcName)
+            // setcurnpc uses TextArgument, which requires quoting for names with spaces.
+            val quotedName =
+                if (npcName.contains(' ')) "\"${npcName.replace("\"", "\\\"")}\"" else escapedName
             val npcComponent =
                 miniMessage.deserialize(
-                    "<click:run_command:'/setcurnpc $escapedName'>" +
+                    "<click:run_command:'/setcurnpc $quotedName'>" +
                         "<hover:show_text:'Control $escapedName'>" +
                         "<aqua>$npcName</aqua></hover></click>",
                 )
