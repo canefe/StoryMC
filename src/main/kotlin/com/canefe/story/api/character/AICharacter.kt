@@ -26,12 +26,13 @@ class AICharacter(
         fun from(npc: StoryNPC): AICharacter {
             val plugin = Story.instance
             val record = plugin.characterRegistry.getByStoryNPC(npc)
+            val proseAppearance = record?.appearance?.toProse(record.gender, plugin.appearanceTemplateCache) ?: ""
             return AICharacter(
                 npc = npc,
                 id = record?.id,
                 name = npc.name,
                 role = "",
-                appearance = record?.appearance ?: "",
+                appearance = proseAppearance,
                 context = "",
                 skills = CharacterSkills(plugin.skillManager.createProviderForNPC(npc)),
             )

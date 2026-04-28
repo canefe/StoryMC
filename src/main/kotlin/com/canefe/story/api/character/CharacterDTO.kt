@@ -34,11 +34,11 @@ data class CharacterDTO(
                 locationName = locationName ?: character.location?.name,
             )
 
-        fun from(record: CharacterRecord): CharacterDTO =
+        fun from(record: CharacterRecord, cache: AppearanceTemplateCache): CharacterDTO =
             CharacterDTO(
                 id = record.id,
                 name = record.name,
-                appearance = record.appearance,
+                appearance = record.appearance.toProse(record.gender, cache),
                 traits = record.traits,
                 race = record.race,
             )
