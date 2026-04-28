@@ -48,20 +48,22 @@ class MythicMobConversationIntegration(
      * This converts a MythicMob into a form that works with your conversation system
      */
     fun getOrCreateNPCAdapter(entity: Entity): StoryNPC? {
-        // Check cache first
+        // Prefer the central registry — covers MythicMob NPCs spawned via the
+        // factory with their real character names (e.g. "Zayanna" not "Character").
+        plugin.npcRegistry.getByEntity(entity)?.let { return it }
+
+        // Check local cache (for ad-hoc Mythic mobs not spawned via the factory)
         if (adapterRegistry.containsKey(entity.uniqueId)) {
             return adapterRegistry[entity.uniqueId]
         }
 
-        // Not found, create new if it's a MythicMob
+        // Not in registry or cache — create one from the mob's own metadata.
         if (!mythicMobsHandler.isMythicMob(entity)) return null
 
         val mobData = mythicMobsHandler.getMythicMobData(entity) ?: return null
         val cleanName = MythicMobFormatHelper.extractCleanName(mobData.displayName)
 
         val adapter = MythicMobNPCAdapter(entity, cleanName, mobData.internalName)
-
-        // Cache for future use
         adapterRegistry[entity.uniqueId] = adapter
         return adapter
     }
@@ -268,150 +270,22 @@ class MythicMobConversationIntegration(
      * Adapter class that wraps a MythicMob entity to behave like a StoryNPC
      * Implements StoryNPC interface to work with the conversation system
      */
+    /**
+     * Backwards-compatible alias for the conversation system's existing checks
+     * (`is MythicMobNPCAdapter`). The real implementation lives in [MythicMobStoryNPC].
+     *
+     * Holds an optional conversation reference for the conversation flow.
+     */
     inner class MythicMobNPCAdapter(
-        private val backingEntity: Entity,
-        private val displayName: String,
-        private val internalName: String,
-    ) : StoryNPC {
-        private val _uniqueId = backingEntity.uniqueId
-        private val _id = backingEntity.entityId
-
-        // Track conversations this MythicMob is part of
+        backingEntity: Entity,
+        displayName: String,
+        internalName: String,
+    ) : MythicMobStoryNPC(backingEntity, displayName, internalName, backingEntity.uniqueId) {
         private var currentConversation: Conversation? = null
 
-        override val name: String get() = displayName
-        override val id: Int get() = _id
-        override val uniqueId: UUID get() = _uniqueId
-        override val entity: Entity? get() = backingEntity
-        override val isSpawned: Boolean get() = !backingEntity.isDead
-        override val location: Location? get() = backingEntity.location
-
-        // -- Navigation --
-
-        override fun navigateTo(location: Location) {
-            // MythicMobs don't use Citizens navigation
-        }
-
-        override fun navigateTo(
-            location: Location,
-            speedModifier: Float,
-            range: Float,
-            distanceMargin: Double,
-        ) {
-            // MythicMobs don't use Citizens navigation
-        }
-
-        override fun navigateTo(entity: Entity) {
-            // MythicMobs don't use Citizens navigation
-        }
-
-        override fun navigateTo(
-            entity: Entity,
-            speedModifier: Float,
-            range: Float,
-            distanceMargin: Double,
-        ) {
-            // MythicMobs don't use Citizens navigation
-        }
-
-        override fun cancelNavigation() {
-            // MythicMobs don't use Citizens navigation
-        }
-
-        override val isNavigating: Boolean get() = false
-
-        // -- Lifecycle --
-
-        override fun spawn(location: Location): Boolean = true // Already spawned
-
-        override fun despawn(): Boolean = true // We don't control MythicMob despawn
-
-        override fun teleport(location: Location) {
-            backingEntity.teleport(location)
-        }
-
-        override fun clone(): StoryNPC = this
-
-        // -- Combat --
-
-        override fun attack(target: Player) {
-            // MythicMobs handle combat through their own skill system
-        }
-
-        override fun stopAttacking(target: Player) {
-            // MythicMobs handle combat through their own skill system
-        }
-
-        // -- Following --
-
-        override fun follow(target: Player) {
-            // MythicMobs handle following through their own AI system
-        }
-
-        override fun stopFollowing() {
-            // MythicMobs handle following through their own AI system
-        }
-
-        override val isFollowing: Boolean get() = false
-
-        // -- Rotation --
-
-        override fun lookAt(target: Entity) {
-            mythicMobsHandler.lookAtTarget(backingEntity, target)
-        }
-
-        override fun rotateTo(
-            yaw: Float,
-            pitch: Float,
-        ) {
-            if (backingEntity is org.bukkit.entity.LivingEntity) {
-                val loc = backingEntity.location.clone()
-                loc.yaw = yaw
-                loc.pitch = pitch
-                backingEntity.teleport(loc)
-            }
-        }
-
-        // -- Pose --
-
-        override fun sit(location: Location?) {
-            // MythicMobs don't support Citizens pose traits
-        }
-
-        override fun stand() {
-            // MythicMobs don't support Citizens pose traits
-        }
-
-        override val isSitting: Boolean get() = false
-
-        // -- Skin --
-
-        override val skinTexture: String? get() = null
-        override val skinSignature: String? get() = null
-
-        override fun setSkin(
-            name: String,
-            signature: String,
-            texture: String,
-        ) {
-            // MythicMobs don't support Citizens skin traits
-        }
-
-        // -- Source access --
-
-        @Suppress("UNCHECKED_CAST")
-        override fun <T> unwrap(type: Class<T>): T? = if (type.isInstance(backingEntity)) backingEntity as T else null
-
-        // Set conversation for tracking
         fun setConversation(conversation: Conversation?) {
             currentConversation = conversation
         }
-
-        override fun equals(other: Any?): Boolean = other is MythicMobNPCAdapter && _uniqueId == other._uniqueId
-
-        override fun hashCode(): Int = _uniqueId.hashCode()
-
-        override fun toString(): String = "MythicMobNPCAdapter(name=$displayName, id=$_id)"
     }
 
     /**
