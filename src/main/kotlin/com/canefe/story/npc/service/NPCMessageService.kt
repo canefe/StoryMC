@@ -477,10 +477,29 @@ class NPCMessageService(
 
         val out = ConcurrentHashMap<UUID, String>()
         val futures = viewers.map { p ->
-            // DMs always see the real name (matches NearbyNPCBroadcaster).
             if (p.hasPermission("story.dm")) {
-                out[p.uniqueId] = realName
-                CompletableFuture.completedFuture<Unit>(Unit)
+                val perceiverId = p.characterId
+                if (perceiverId.isNullOrEmpty()) {
+                    out[p.uniqueId] = realName
+                    CompletableFuture.completedFuture<Unit>(Unit)
+                } else {
+                    bridge.resolveNames(perceiverId, listOf(speakerCharId))
+                        .thenAccept { resolved ->
+                            val r = resolved.firstOrNull { it.targetId == speakerCharId }
+                            val descriptive = when {
+                                r == null -> null
+                                r.known && !r.realName.isNullOrBlank() -> null // already knows real name
+                                r.shortLabel.isNotBlank() -> r.shortLabel
+                                r.descriptor.isNotBlank() -> r.descriptor
+                                else -> null
+                            }
+                            out[p.uniqueId] = if (descriptive != null) "$descriptive ($realName)" else realName
+                        }
+                        .exceptionally {
+                            out[p.uniqueId] = realName
+                            null
+                        }
+                }
             } else {
                 val perceiverId = p.characterId
                 if (perceiverId.isNullOrEmpty()) {

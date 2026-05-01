@@ -3,6 +3,7 @@ package com.canefe.story.bridge
 import com.canefe.story.Story
 import com.canefe.story.util.*
 import net.citizensnpcs.api.CitizensAPI
+import org.bukkit.Bukkit
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
@@ -10,7 +11,9 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent
 import org.bukkit.event.weather.WeatherChangeEvent
 
 /**
@@ -21,6 +24,40 @@ class PerceptionListener(
     private val plugin: Story,
     private val perceptionService: PerceptionService,
 ) : Listener {
+    /** Throttle combat_enter percepts — key is "npcId:targetName", cleared after 5s. */
+    private val recentCombatEnter = mutableSetOf<String>()
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    fun onEntityDamage(event: EntityDamageEvent) {
+        val victim = event.entity
+        if (victim !is LivingEntity) return
+        
+        // Add logging to verify triggering
+        plugin.logger.info("Entity damaged: ${event.entity.name}, damage: ${event.finalDamage}")
+
+        val victimCharId = getCharacterId(victim) ?: return
+        if (!plugin.isNpcRegistryReady || plugin.npcRegistry.getByEntity(victim) == null) return
+
+        val attacker = if (event is EntityDamageByEntityEvent) {
+            (event.damager as? Projectile)?.shooter as? org.bukkit.entity.Entity ?: event.damager
+        } else null
+
+        val attackerCharId = attacker?.let { getCharacterId(it) }
+        val victimName = getEntityName(victim)
+        val attackerName = attacker?.let { getEntityName(it) }
+
+        // Emit NPCDamagedEvent for health reflection to sim
+        plugin.logger.info("Emitting NPCDamagedEvent for ${victimName} (cid: ${victimCharId})")
+        plugin.eventBus.emit(NPCDamagedEvent(
+            characterId = victimCharId,
+            name = victimName,
+            attackerCharacterId = attackerCharId,
+            attackerName = attackerName,
+            damage = event.finalDamage,
+            cause = event.cause.name
+        ))
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onEntityDamageByEntity(event: EntityDamageByEntityEvent) {
         val victim = event.entity
@@ -80,6 +117,26 @@ class PerceptionListener(
             source = "death",
             participants = participants,
         )
+    }
+
+    /** Fired when a MythicMob NPC acquires a target — maps to combat_enter percept. Throttled to once per 5s per pair. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onEntityTarget(event: EntityTargetLivingEntityEvent) {
+        val npcEntity = event.entity
+        val target = event.target ?: return
+        if (!plugin.isNpcRegistryReady) return
+        val storyNpc = plugin.npcRegistry.getByEntity(npcEntity) ?: return
+        val charId = plugin.characterRegistry.getCharacterIdForNPC(storyNpc) ?: return
+        val targetName = getEntityName(target)
+        val key = "$charId:$targetName"
+        if (!recentCombatEnter.add(key)) return
+        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, Runnable { recentCombatEnter.remove(key) }, 100L)
+        plugin.eventBus.emit(NPCPerceptEvent(
+            characterId = charId,
+            characterName = storyNpc.name,
+            perceptType = "combat_enter",
+            triggerName = targetName,
+        ))
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

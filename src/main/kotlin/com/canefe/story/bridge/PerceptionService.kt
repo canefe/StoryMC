@@ -47,6 +47,8 @@ class PerceptionService(
     }
 
     private fun publishProximity() {
+        // Sim owns spatial awareness when active — suppress plugin-side proximity spam
+        if (plugin.simActive) return
         for (player in Bukkit.getOnlinePlayers()) {
             if (plugin.playerManager.isPlayerDisabled(player)) continue
 

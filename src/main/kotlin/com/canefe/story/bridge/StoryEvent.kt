@@ -57,7 +57,9 @@ data class PlayerMessageEvent(
 @Serializable
 data class NPCDamagedEvent(
     val characterId: String,
+    val name: String,
     val attackerCharacterId: String?,
+    val attackerName: String?,
     val damage: Double,
     val cause: String,
 ) : SerializableStoryEvent {
@@ -119,11 +121,17 @@ data class PlayerProximityEvent(
 }
 
 /**
- * Updates a character's perception radius. Sent by the sim when character stats change.
+ * Updates a character's perception-relevant stats. Sent by story-go when story-sim stats change.
  */
 @Serializable
 data class CharacterStatsUpdate(
     val characterId: String,
+    val sightRange: Double = 0.0,
+    val visionRange: Double = 0.0,
+    val consciousness: Double = 1.0,
+    val fov: Double = 0.0,
+    val hearingRadius: Double = 0.0,
+    // legacy field kept for backwards compat
     val perceptionRadius: Double? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "character.stats_update"

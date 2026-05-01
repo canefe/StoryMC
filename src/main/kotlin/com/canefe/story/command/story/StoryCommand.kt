@@ -3,6 +3,7 @@ package com.canefe.story.command.story
 import com.canefe.story.Story
 import com.canefe.story.command.base.BaseCommand
 import com.canefe.story.command.base.CommandComponentUtils
+import com.canefe.story.command.story.affordance.AffordanceCommand
 import com.canefe.story.command.story.character.CharCommand
 import com.canefe.story.command.story.character.RecognizeCommand
 import com.canefe.story.command.story.location.LocationCommand
@@ -49,11 +50,14 @@ class StoryCommand(
             .withSubcommand(getGMCommand())
             .withSubcommand(getSessionCommand())
             .withSubcommand(getTaskCommand())
+            .withSubcommand(AffordanceCommand(plugin).getCommand())
             .withSubcommand(getMigrateCommand())
             .withSubcommand(getStatusCommand())
             .withSubcommand(RecognizeCommand(plugin).getRecognizeCommand())
             .withSubcommand(RecognizeCommand(plugin).getForgetCommand())
             .withSubcommand(RecognizeCommand(plugin).getDescriptorCommand())
+            .withSubcommand(getVersionCommand())
+            .withSubcommand(DebugCommand(plugin).getCommand())
             .register()
     }
 
@@ -518,10 +522,70 @@ class StoryCommand(
     private fun getMigrateCommand(): CommandAPICommand =
         CommandAPICommand("migrate")
             .withPermission("story.admin")
+            .withSubcommand(getMigratePositionsCommand())
+            .withSubcommand(getMigrateAppearanceCommand())
             .executes(
                 CommandExecutor { sender, _ ->
-                    sender.sendError(
-                        "YAML migration has been removed. Character data is now managed by CharacterRegistry.",
+                    sender.sendRaw(
+                        "<yellow>Usage:</yellow> /story migrate <positions|appearance>",
+                    )
+                },
+            )
+
+    private fun getMigrateAppearanceCommand(): CommandAPICommand =
+        CommandAPICommand("appearance")
+            .withPermission("story.admin")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    val mongo = plugin.storageFactory.mongoClient
+                    if (mongo == null) {
+                        sender.sendError("MongoDB is not connected — cannot run migration.")
+                        return@CommandExecutor
+                    }
+                    val result =
+                        com.canefe.story.storage.migration.AppearanceFieldMigration(
+                            mongo,
+                            plugin.logger,
+                        ).run()
+                    if (plugin.isCharacterRegistryReady) plugin.characterRegistry.reload()
+                    sender.sendSuccess(
+                        "Appearance migration complete: scanned=${result.scanned} rewritten=${result.rewritten}",
+                    )
+                },
+            )
+
+    private fun getMigratePositionsCommand(): CommandAPICommand =
+        CommandAPICommand("positions")
+            .withPermission("story.admin")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    val mongo = plugin.storageFactory.mongoClient
+                    if (mongo == null) {
+                        sender.sendError("MongoDB is not connected — cannot run position migration.")
+                        return@CommandExecutor
+                    }
+                    if (!plugin.isCharacterRegistryReady) {
+                        sender.sendError("CharacterRegistry not initialized.")
+                        return@CommandExecutor
+                    }
+                    val migration =
+                        com.canefe.story.storage.migration.CharacterPositionMigration(
+                            mongo,
+                            plugin.characterRegistry,
+                            plugin.logger,
+                        )
+                    val result = migration.run()
+                    // Refresh in-memory cache so spawn-time skin lookups see new data.
+                    plugin.characterRegistry.reload()
+                    sender.sendSuccess(
+                        "Migration complete: scanned=${result.scanned} | " +
+                            "positions: inserted=${result.positionsInserted} " +
+                            "skippedExisting=${result.positionsSkippedExisting} " +
+                            "skippedNotSpawned=${result.positionsSkippedNotSpawned} | " +
+                            "skins: written=${result.skinsWritten} " +
+                            "skippedNoData=${result.skinsSkippedNoData} " +
+                            "skippedNoConfig=${result.skinsSkippedNoConfig} | " +
+                            "skippedNoCharacter=${result.skippedNoCharacter}",
                     )
                 },
             )
@@ -555,11 +619,26 @@ class StoryCommand(
                             "<gold>MongoDB:</gold> <$color>$label</$color> <gray>(${plugin.configService.mongoDatabase})</gray>"
                     }
 
+                    val (simColor, simLabel) =
+                        if (plugin.simActive) "green" to "online" else "gray" to "offline"
+                    lines += "<gold>Sim:</gold> <$simColor>$simLabel</$simColor>"
+
                     if (lines.size == 1) {
                         lines += "<gray>No bridge or MongoDB services enabled.</gray>"
                     }
 
                     sender.sendRaw(lines.joinToString("\n"))
+                },
+            )
+
+    private fun getVersionCommand(): CommandAPICommand =
+        CommandAPICommand("version")
+            .withPermission("story.command")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    val version = plugin.pluginMeta.version
+                    val name = plugin.pluginMeta.name
+                    sender.sendRaw("<yellow>$name</yellow> <gray>v$version</gray>")
                 },
             )
 

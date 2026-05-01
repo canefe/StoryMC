@@ -28,6 +28,7 @@ import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.NPCFollowTracker
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.NearbyNPCBroadcaster
+import com.canefe.story.npc.PositionBroadcaster
 import com.canefe.story.npc.RecognitionBroadcaster
 import com.canefe.story.npc.PuppetCommandListener
 import com.canefe.story.npc.PuppetGroupBroadcaster
@@ -173,6 +174,61 @@ open class Story :
     lateinit var domainEvents: DomainEventEmitter
         private set
 
+    /**
+     * True while the Bevy sim is active and owning NPC simulation.
+     * When true, the plugin suppresses its own autonomous NPC behaviours
+     * (proximity percepts, NPC behavior ticks, etc.) to avoid double-driving.
+     * Becomes false automatically 12 seconds after the last sim.status heartbeat.
+     */
+    @Volatile
+    var simActive: Boolean = false
+        private set
+
+    private var simWatchdogTaskId: Int = -1
+
+    /** Called on each sim.status heartbeat — refreshes the watchdog. */
+    internal fun resendAffordances() {
+        val mongo = storageFactory.mongoClient
+        if (mongo == null) {
+            logger.warning("[Affordances] skipping resend — mongoClient is null")
+            return
+        }
+        val storage = com.canefe.story.affordance.AffordanceStorage(mongo)
+        val records = try { storage.findAll() } catch (e: Exception) {
+            logger.warning("[Affordances] findAll failed: ${e.message}")
+            return
+        }
+        if (records.isEmpty()) {
+            logger.info("[Affordances] no registered affordances to reseed")
+            return
+        }
+        logger.info("[Affordances] reseeding ${records.size} registered affordances to sim")
+        for (record in records) {
+            val typeDef = affordanceTypeRegistry.getById(record.affordanceTypeId)
+            eventBus.emit(com.canefe.story.bridge.SpawnAffordanceEvent(
+                affordanceId = record.id,
+                affordanceTypeId = record.affordanceTypeId,
+                name = record.name,
+                x = record.x,
+                y = record.y,
+                z = record.z,
+                world = record.world,
+                capacity = typeDef?.capacity ?: 0,
+            ))
+        }
+    }
+
+    internal fun onSimHeartbeat() {
+        simActive = true
+        if (simWatchdogTaskId != -1) Bukkit.getScheduler().cancelTask(simWatchdogTaskId)
+        // 12 s timeout — the sim heartbeats every 5 s, so two missed beats = inactive
+        simWatchdogTaskId = Bukkit.getScheduler().runTaskLater(this, Runnable {
+            simActive = false
+            simWatchdogTaskId = -1
+            logger.info("[Story] Sim went offline — resuming autonomous NPC simulation")
+        }, 240L).taskId
+    }
+
     // Character registry — central lookup for character identity
     lateinit var characterRegistry: CharacterRegistry
 
@@ -199,7 +255,12 @@ open class Story :
 
     // Pushes nearby-NPC info bundles to clients for the action wheel
     lateinit var nearbyNpcBroadcaster: NearbyNPCBroadcaster
+    lateinit var positionBroadcaster: PositionBroadcaster
     lateinit var recognitionBroadcaster: RecognitionBroadcaster
+    lateinit var perceptionBroadcaster: com.canefe.story.perception.PerceptionBroadcaster
+
+    val affordanceTypeRegistry = com.canefe.story.affordance.AffordanceTypeRegistry()
+    val characterStatsCache = com.canefe.story.perception.CharacterStatsCache()
 
     // Per-NPC follow loop for entity targets (NPCs / players)
     lateinit var npcFollowTracker: NPCFollowTracker
@@ -367,7 +428,13 @@ open class Story :
         nearbyNpcBroadcaster = NearbyNPCBroadcaster(this)
         nearbyNpcBroadcaster.start()
 
+        positionBroadcaster = PositionBroadcaster(this)
+        positionBroadcaster.start()
+
         recognitionBroadcaster = RecognitionBroadcaster(this)
+
+        perceptionBroadcaster = com.canefe.story.perception.PerceptionBroadcaster(this)
+        perceptionBroadcaster.start()
 
         npcFollowTracker = NPCFollowTracker(this)
 
@@ -503,10 +570,23 @@ open class Story :
         eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
         eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
         eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+        eventBus.on<NPCSignalIntent> { IntentExecutor.executeSignalIntent(this, it) }
         eventBus.on<QuestAssignIntent> { IntentExecutor.executeQuestAssignIntent(this, it) }
         eventBus.on<QuestUpdateIntent> { IntentExecutor.executeQuestUpdateIntent(this, it) }
         eventBus.on<QuestCompleteIntent> { IntentExecutor.executeQuestCompleteIntent(this, it) }
         eventBus.on<CharacterUpdateIntent> { IntentExecutor.executeCharacterUpdateIntent(this, it) }
+        eventBus.on<SimStatusEvent> { if (it.running) onSimHeartbeat() }
+        eventBus.on<SimAffordanceRegistryEvent> {
+            affordanceTypeRegistry.update(it.types)
+            logger.info("[AffordanceRegistry] received ${it.types.size} affordance types from sim")
+            resendAffordances()
+        }
+        eventBus.on<NpcSpawnIntent> { IntentExecutor.executeNpcSpawnIntent(this, it) }
+        eventBus.on<NpcStateIntent> {
+            positionBroadcaster.updateFromSim(it.characterId, it.name, it.x, it.y, it.z, it.world)
+            IntentExecutor.executeNpcStateIntent(this, it)
+        }
+        eventBus.on<FrontendIntentEvent> { IntentExecutor.executeFrontendIntent(this, it) }
 
         // Initialize query handler for MCP/orchestrator queries
         QueryHandler(this).initialize()

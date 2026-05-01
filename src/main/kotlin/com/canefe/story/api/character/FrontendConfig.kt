@@ -39,6 +39,11 @@ data class FrontendConfig(
     val displayHandle: String? get() = properties["displayHandle"] as? String
     val randomPathing: Boolean get() = properties["randomPathing"] as? Boolean ?: true
 
+    @Suppress("UNCHECKED_CAST")
+    private val skin: Map<String, Any?>? get() = properties["skin"] as? Map<String, Any?>
+    val skinTextureRaw: String? get() = skin?.get("textureRaw") as? String
+    val skinSignature: String? get() = skin?.get("signature") as? String
+
     companion object {
         const val MINECRAFT = "minecraft"
         const val DISCORD = "discord"

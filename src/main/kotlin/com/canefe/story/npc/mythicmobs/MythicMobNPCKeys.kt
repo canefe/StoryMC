@@ -14,6 +14,7 @@ object MythicMobNPCKeys {
     val STABLE_UUID: NamespacedKey by lazy { NamespacedKey(Story.instance, "npc_uuid") }
     val DISPLAY_NAME: NamespacedKey by lazy { NamespacedKey(Story.instance, "npc_name") }
     val INTERNAL_NAME: NamespacedKey by lazy { NamespacedKey(Story.instance, "npc_template") }
+    val CHARACTER_ID: NamespacedKey by lazy { NamespacedKey(Story.instance, "npc_character_id") }
 
     val STRING: PersistentDataType<String, String> = PersistentDataType.STRING
 }

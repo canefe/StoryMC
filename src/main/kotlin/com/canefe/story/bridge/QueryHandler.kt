@@ -96,6 +96,7 @@ class QueryHandler(
                         when (method) {
                             "character_state" -> handleCharacterState(data)
                             "world_state" -> toJsonObject(handleWorldState())
+                            "location_by_name" -> handleLocationByName(data)
                             else -> toJsonObject(QueryErrorDTO("Unknown query method: $method"))
                         }
 
@@ -257,6 +258,25 @@ class QueryHandler(
             z = loc.z,
             world = loc.world?.name ?: "unknown",
         )
+    }
+
+    private fun handleLocationByName(data: kotlinx.serialization.json.JsonObject): JsonObject {
+        val name = data["name"]?.toString()?.trim('"')
+            ?: return toJsonObject(QueryErrorDTO("Missing name"))
+
+        val loc = plugin.locationManager.loadLocationData(name)?.bukkitLocation
+            ?: plugin.locationManager.getAllLocations()
+                .firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?.bukkitLocation
+            ?: return toJsonObject(QueryErrorDTO("Location '$name' not found"))
+
+        return toJsonObject(StoryLocationDTO(
+            name = name,
+            x = loc.x,
+            y = loc.y,
+            z = loc.z,
+            world = loc.world?.name ?: "world",
+        ))
     }
 
     private fun findNearbyLocations(

@@ -37,7 +37,15 @@ class NPCCommand(
         if (asUuid != null) {
             plugin.npcRegistry.get(asUuid)?.let { return it }
         }
-        return plugin.npcRegistry.getByName(arg)
+        plugin.npcRegistry.getByName(arg)?.let { return it }
+        // characterId path (e.g. "sophia_34abbf7b") — find the registered StoryNPC
+        // whose character resolves to this id.
+        if (plugin.isCharacterRegistryReady) {
+            return plugin.npcRegistry.all().firstOrNull { npc ->
+                plugin.characterRegistry.getCharacterIdForNPC(npc) == arg
+            }
+        }
+        return null
     }
 
     /** If [arg] looks like a UUID, return the resolved NPC's display name; else return [arg] verbatim. */

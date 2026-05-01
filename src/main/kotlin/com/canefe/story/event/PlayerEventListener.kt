@@ -2,6 +2,8 @@ package com.canefe.story.event
 
 import com.canefe.story.Story
 import com.canefe.story.api.event.PlayerLocationChangeEvent
+import com.canefe.story.bridge.NpcSpawnIntent
+import com.canefe.story.bridge.IntentExecutor
 import com.canefe.story.util.*
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.title.Title
@@ -84,18 +86,36 @@ class PlayerEventListener(
         val player = event.player
         val playerUUID = player.uniqueId
 
-        // Show current quest to the player
-        val currentQuest = plugin.questManager.getCurrentQuest(player) ?: return
-        // wait a few seconds before showing the quest, waiting for the player to load
+        // Replace the offline NPC stand-in with the real player
         Bukkit.getScheduler().runTaskLater(
             plugin,
             Runnable {
-                // Check if the player is still online
+                if (!player.isOnline) return@Runnable
+                val charId = try { player.characterId } catch (_: Exception) { null }
+                if (charId != null && plugin.isNpcRegistryReady) {
+                    val npc = plugin.npcRegistry.all().firstOrNull { storyNpc ->
+                        storyNpc.entity?.persistentDataContainer?.get(
+                            com.canefe.story.npc.mythicmobs.MythicMobNPCKeys.CHARACTER_ID,
+                            com.canefe.story.npc.mythicmobs.MythicMobNPCKeys.STRING,
+                        ) == charId
+                    }
+                    if (npc != null) {
+                        val npcLoc = npc.entity?.location
+                        npc.despawn()
+                        plugin.logger.info("[PlayerJoin] Removed offline NPC stand-in for ${player.name} ($charId), teleporting to $npcLoc")
+                        if (npcLoc != null) player.teleport(npcLoc)
+                    } else {
+                        plugin.logger.info("[PlayerJoin] No stand-in NPC found for ${player.name} ($charId)")
+                    }
+                }
+
+                // Show current quest
+                val currentQuest = plugin.questManager.getCurrentQuest(player) ?: return@Runnable
                 if (plugin.server.getPlayer(playerUUID) != null) {
                     plugin.questManager.printQuest(currentQuest, player)
                 }
             },
-            20L * 5, // 5 seconds delay
+            20L * 5, // 5 seconds — wait for NPC registry to settle
         )
     }
 
@@ -111,8 +131,23 @@ class PlayerEventListener(
         plugin.playerManager.playerCurrentNPC.remove(playerUUID)
 
         // Remove the player from any active conversations
-        val conversation = plugin.conversationManager.getConversation(player) ?: return
-        plugin.conversationManager.endConversation(conversation)
+        val conversation = plugin.conversationManager.getConversation(player)
+        if (conversation != null) plugin.conversationManager.endConversation(conversation)
+
+        // Spawn an offline stand-in NPC at the player's last position
+        val charId = try { player.characterId } catch (_: Exception) { null } ?: return
+        val charName = try { player.characterName } catch (_: Exception) { player.name }
+        IntentExecutor.executeNpcSpawnIntent(
+            plugin,
+            NpcSpawnIntent(
+                characterId = charId,
+                name = charName,
+                x = player.location.x,
+                y = player.location.y,
+                z = player.location.z,
+            ),
+        )
+        plugin.logger.info("[PlayerQuit] Spawned offline NPC for $charName ($charId)")
     }
 
     @EventHandler

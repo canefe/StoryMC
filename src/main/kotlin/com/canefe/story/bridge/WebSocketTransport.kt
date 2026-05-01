@@ -93,7 +93,6 @@ class WebSocketTransport(
 
         try {
             socket.sendText(serialized, true)
-            plugin.logger.info("WS published: ${event.eventType}")
         } catch (e: Exception) {
             plugin.logger.warning("WS send failed: ${e.message}")
         }
@@ -164,6 +163,13 @@ class WebSocketTransport(
             is PlayerProximityEvent -> json.encodeToJsonElement(event)
             is GMSpeakEvent -> json.encodeToJsonElement(event)
             is CharacterSpokeEvent -> json.encodeToJsonElement(event)
+            is NPCPerceptEvent -> json.encodeToJsonElement(event)
+            is CharacterPositionEvent -> json.encodeToJsonElement(event)
+            is SpawnAffordanceEvent -> json.encodeToJsonElement(event)
+            is PerceptionStimulusEvent -> json.encodeToJsonElement(event)
+            is SimStatusEvent -> json.encodeToJsonElement(event)
+            is NpcSpawnIntent -> json.encodeToJsonElement(event)
+            is NpcStateIntent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
@@ -174,10 +180,16 @@ class WebSocketTransport(
                 "npc.speak" -> json.decodeFromString<NPCSpeakIntent>(data)
                 "npc.move" -> json.decodeFromString<NPCMoveIntent>(data)
                 "npc.emote" -> json.decodeFromString<NPCEmoteIntent>(data)
+                "npc.signal" -> json.decodeFromString<NPCSignalIntent>(data)
                 "player.message" -> json.decodeFromString<PlayerMessageEvent>(data)
                 "npc.damaged" -> json.decodeFromString<NPCDamagedEvent>(data)
                 "npc.interaction" -> json.decodeFromString<NPCInteractionEvent>(data)
                 "character.stats_update" -> json.decodeFromString<CharacterStatsUpdate>(data)
+                "sim.status" -> json.decodeFromString<SimStatusEvent>(data)
+                "sim.affordance_registry" -> json.decodeFromString<SimAffordanceRegistryEvent>(data)
+                "npc.spawn" -> json.decodeFromString<NpcSpawnIntent>(data)
+                "npc.state" -> json.decodeFromString<NpcStateIntent>(data)
+                "frontend.intent" -> json.decodeFromString<FrontendIntentEvent>(data)
                 // Pass through unknown event types as generic StoryEvents
                 // so listeners registered by eventType string (e.g. intelligence.response) still receive them
                 else ->

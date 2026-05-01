@@ -51,6 +51,7 @@ class MythicMobNPCFactory(
         location: Location,
         displayName: String,
         stableUniqueId: UUID = UUID.randomUUID(),
+        characterId: String? = null,
     ): MythicMobStoryNPC? {
         val mm = MythicBukkit.inst()
         val mobType = mm.mobManager.getMythicMob(mobTemplate).orElse(null) ?: run {
@@ -61,7 +62,7 @@ class MythicMobNPCFactory(
         val active = mobType.spawn(BukkitAdapter.adapt(location), 1.0)
         active.displayName = displayName
 
-        applyDisguise(active, displayName)
+        applyDisguise(active, displayName, lookupSkin(characterId))
 
         val bukkitEntity = active.entity.bukkitEntity
 
@@ -81,6 +82,13 @@ class MythicMobNPCFactory(
             MythicMobNPCKeys.STRING,
             mobTemplate,
         )
+        if (characterId != null) {
+            bukkitEntity.persistentDataContainer.set(
+                MythicMobNPCKeys.CHARACTER_ID,
+                MythicMobNPCKeys.STRING,
+                characterId,
+            )
+        }
 
         val npc =
             MythicMobStoryNPC(
@@ -106,6 +114,7 @@ class MythicMobNPCFactory(
     private fun applyDisguise(
         active: io.lumine.mythic.core.mobs.ActiveMob,
         skinName: String,
+        skin: SkinData? = null,
     ) {
         val mm = MythicBukkit.inst()
         val executor = mm.skillManager as SkillExecutor
@@ -134,7 +143,33 @@ class MythicMobNPCFactory(
             )
         metadata.setMetadata("disguise_name", skinName)
         mechanic.execute(metadata)
+
+        // Override the freshly-applied disguise's skin with our stored
+        // texture/signature so the visual identity matches the migrated
+        // Citizens skin instead of the live Mojang lookup of `skinName`.
+        if (skin != null && Bukkit.getPluginManager().isPluginEnabled("LibsDisguises")) {
+            val disguise = DisguiseAPI.getDisguise(active.entity.bukkitEntity)
+            if (disguise is PlayerDisguise) {
+                disguise.skin = skinJson(skin.textureRaw, skin.signature)
+            }
+        }
     }
+
+    private data class SkinData(val textureRaw: String, val signature: String)
+
+    private fun lookupSkin(characterId: String?): SkinData? {
+        if (characterId == null) return null
+        if (!plugin.isCharacterRegistryReady) return null
+        val cfg = plugin.characterRegistry.getMinecraftConfig(characterId) ?: return null
+        val tex = cfg.skinTextureRaw ?: return null
+        val sig = cfg.skinSignature ?: return null
+        return SkinData(tex, sig)
+    }
+
+    private fun skinJson(textureRaw: String, signature: String): String =
+        "{\"uuid\":\"9bd053db-62fe-4bd9-a563-b36d9f0de7c9\",\"name\":\"Unknown\"," +
+            "\"textureProperties\":[{\"name\":\"textures\"," +
+            "\"value\":\"$textureRaw\",\"signature\":\"$signature\"}]}"
 
     /**
      * Re-register an existing tagged Bukkit entity as a MythicMobStoryNPC.
@@ -186,7 +221,8 @@ class MythicMobNPCFactory(
         }
 
         // Re-apply disguise (LibsDisguises does not persist by default).
-        applyDisguise(active, displayName)
+        val charId = pdc.get(MythicMobNPCKeys.CHARACTER_ID, MythicMobNPCKeys.STRING)
+        applyDisguise(active, displayName, lookupSkin(charId))
 
         val npc =
             MythicMobStoryNPC(
@@ -279,7 +315,9 @@ class MythicMobNPCFactory(
         val displayName = entity.persistentDataContainer
             .get(MythicMobNPCKeys.DISPLAY_NAME, MythicMobNPCKeys.STRING) ?: return
         val active = MythicBukkit.inst().mobManager.getActiveMob(entity.uniqueId).orElse(null) ?: return
-        applyDisguise(active, displayName)
+        val charId = entity.persistentDataContainer
+            .get(MythicMobNPCKeys.CHARACTER_ID, MythicMobNPCKeys.STRING)
+        applyDisguise(active, displayName, lookupSkin(charId))
         if (Bukkit.getPluginManager().isPluginEnabled("LibsDisguises")) {
             val disguise = DisguiseAPI.getDisguise(entity)
             if (disguise is PlayerDisguise) {

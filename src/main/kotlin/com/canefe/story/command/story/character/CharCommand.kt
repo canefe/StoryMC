@@ -3,6 +3,7 @@ package com.canefe.story.command.story.character
 import com.canefe.story.Story
 import com.canefe.story.api.character.CharacterRecord
 import com.canefe.story.api.character.Gender
+import com.canefe.story.bridge.NpcSpawnIntent
 import com.canefe.story.intelligence.BridgeIntelligence
 import com.canefe.story.intelligence.GeneratedCharacterDTO
 import com.canefe.story.util.Msg.sendError
@@ -145,6 +146,16 @@ class CharCommand(
                     null
                 }
             }
+            // Notify story-go so the sim can create an entity at these coordinates.
+            plugin.eventBus.emit(NpcSpawnIntent(
+                characterId = stableUuid.toString(),
+                name = gen.name,
+                race = gen.race ?: "human",
+                x = player.location.x,
+                y = player.location.y,
+                z = player.location.z,
+            ))
+
             spawned++
         }
 

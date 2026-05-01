@@ -1,6 +1,7 @@
 package com.canefe.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.bridge.NPCPerceptEvent
 import com.canefe.story.intelligence.BridgeIntelligence
 import com.canefe.story.util.characterId
 import com.canefe.story.util.characterName
@@ -55,6 +56,9 @@ class NearbyNPCBroadcaster(
     /** Cache of last-sent bundle hash per player to avoid resending unchanged data. */
     private val lastSentHash = mutableMapOf<UUID, Int>()
 
+    /** Per-NPC: set of player characterIds currently in proximity. Used to fire percepts only on enter/leave. */
+    private val npcProximityState = mutableMapOf<UUID, Set<String>>()
+
     private var taskId: Int = -1
 
     fun start() {
@@ -75,6 +79,7 @@ class NearbyNPCBroadcaster(
             taskId = -1
         }
         lastSentHash.clear()
+        npcProximityState.clear()
     }
 
     /** Drop the cached hash for [player] so the next tick forces a resend. */
@@ -86,6 +91,63 @@ class NearbyNPCBroadcaster(
         if (!plugin.isNpcRegistryReady) return
         for (player in Bukkit.getOnlinePlayers()) {
             broadcastTo(player)
+        }
+        // When the sim is active it owns NPC perception — skip duplicate percepts here
+        if (!plugin.simActive) emitProximityPercepts()
+    }
+
+    /**
+     * Emits [NPCPerceptEvent] only when a character (player with bound character, or
+     * Story NPC with a character ID) enters or leaves an NPC's proximity.
+     * No spam — one event on change, not every tick.
+     */
+    private fun emitProximityPercepts() {
+        if (!plugin.isCharacterRegistryReady) return
+        for (npc in plugin.npcRegistry.all()) {
+            val loc = npc.location ?: continue
+            val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
+
+            // Collect all nearby character IDs — players with bound characters + other Story NPCs
+            val nearbyCharacters = mutableMapOf<String, String>() // characterId → displayName
+
+            Bukkit.getOnlinePlayers()
+                .filter { it.world == loc.world && it.location.distanceSquared(loc) <= radius * radius }
+                .forEach { p ->
+                    val pid = try { p.characterId } catch (_: Exception) { null } ?: return@forEach
+                    val name = try { p.characterName } catch (_: Exception) { p.name }
+                    nearbyCharacters[pid] = name
+                }
+
+            plugin.npcRegistry.nearby(loc, radius)
+                .filter { it.uniqueId != npc.uniqueId }
+                .forEach { other ->
+                    val oid = plugin.characterRegistry.getCharacterIdForNPC(other) ?: return@forEach
+                    nearbyCharacters[oid] = other.name
+                }
+
+            val currentIds = nearbyCharacters.keys.toSet()
+            val previous = npcProximityState[npc.uniqueId] ?: emptySet()
+            val entered = currentIds - previous
+            val left = previous - currentIds
+
+            entered.forEach { cid ->
+                plugin.eventBus.emit(NPCPerceptEvent(
+                    characterId = charId,
+                    characterName = npc.name,
+                    perceptType = "character_entered_range",
+                    triggerName = nearbyCharacters[cid] ?: cid,
+                ))
+            }
+            left.forEach { cid ->
+                plugin.eventBus.emit(NPCPerceptEvent(
+                    characterId = charId,
+                    characterName = npc.name,
+                    perceptType = "character_left_range",
+                    triggerName = cid,
+                ))
+            }
+
+            npcProximityState[npc.uniqueId] = currentIds
         }
     }
 

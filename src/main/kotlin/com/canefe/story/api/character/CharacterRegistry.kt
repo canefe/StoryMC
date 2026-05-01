@@ -70,6 +70,7 @@ class CharacterRegistry(
     fun getByStoryNPC(npc: StoryNPC): CharacterRecord? =
         byCitizensUuid[npc.uniqueId]?.let { byId[it] }
             ?: byCitizensNpcId[npc.id]?.let { byId[it] }
+            ?: byId[npc.uniqueId.toString()]
             ?: byNameLower[npc.name.lowercase()]?.let { byId[it] }
 
     // ── Convenience ─────────────────────────────────────────────────────
