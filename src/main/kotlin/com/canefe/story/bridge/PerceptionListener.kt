@@ -32,11 +32,10 @@ class PerceptionListener(
         val victim = event.entity
         if (victim !is LivingEntity) return
         
-        // Add logging to verify triggering
-        plugin.logger.info("Entity damaged: ${event.entity.name}, damage: ${event.finalDamage}")
-
         val victimCharId = getCharacterId(victim) ?: return
         if (!plugin.isNpcRegistryReady || plugin.npcRegistry.getByEntity(victim) == null) return
+
+        plugin.logger.info("Entity damaged: ${event.entity.name}, damage: ${event.finalDamage}")
 
         val attacker = if (event is EntityDamageByEntityEvent) {
             (event.damager as? Projectile)?.shooter as? org.bukkit.entity.Entity ?: event.damager

@@ -24,6 +24,16 @@ import java.util.logging.Logger
  * one). Skin field is overwritten on each run since Citizens is the source of
  * truth for current visual identity.
  */
+private fun org.bukkit.Location.lazilyLoadedWorldName(): String? = try {
+    var cls: Class<*>? = this.javaClass
+    var field: java.lang.reflect.Field? = null
+    while (cls != null && field == null) {
+        field = try { cls.getDeclaredField("worldName") } catch (_: NoSuchFieldException) { null }
+        cls = cls.superclass
+    }
+    field?.also { it.isAccessible = true }?.get(this) as? String
+} catch (_: Exception) { null }
+
 class CharacterPositionMigration(
     private val mongo: MongoClientManager,
     private val characterRegistry: CharacterRegistry,
@@ -71,7 +81,7 @@ class CharacterPositionMigration(
             // ── Position ────────────────────────────────────────────────
             val entity = citizensNpc.entity as? LivingEntity
             val loc = entity?.location ?: citizensNpc.storedLocation
-            val world = loc?.world?.name
+            val world = loc?.world?.name ?: loc?.lazilyLoadedWorldName()
             if (loc == null || world == null) {
                 positionsSkippedNotSpawned++
             } else {

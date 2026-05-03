@@ -67,6 +67,9 @@ class NPCInteractionListener(
         // Broadcast the message
         plugin.npcMessageService.broadcastPlayerMessage(message, player)
 
+        // Emit speech perception unconditionally — NPCs react via the perception system, not conversations.
+        plugin.conversationManager.emitPlayerSpeech(player, message)
+
         // Determine chat settings
         val isWhispering = message.matches(Regex(".*\\*whisper(s|ing)?\\*.*"))
         val chatRadius = if (isWhispering) 2.0 else plugin.config.chatRadius

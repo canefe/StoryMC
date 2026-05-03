@@ -84,6 +84,8 @@ data class NPCSpeakIntent(
     val message: String,
     val target: String? = null,
     val conversationId: Int? = null,
+    val addressedToId: String? = null,
+    val addressedToName: String? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.speak"
 }

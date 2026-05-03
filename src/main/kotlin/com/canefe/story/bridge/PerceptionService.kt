@@ -146,12 +146,16 @@ class PerceptionService(
         source: String,
         exclude: String? = null,
         participants: Map<String, String> = emptyMap(),
+        excludeSet: Set<String> = emptySet(),
     ) {
         val world = epicenter.world ?: return
         val pos = Position(epicenter.x, epicenter.y, epicenter.z, world.name)
         val gameTime = plugin.timeService.getCurrentGameTime()
+        val emitted = mutableSetOf<String>()
 
         fun emitFor(perceiverCharId: String, perceiverName: String, distance: Double) {
+            if (!emitted.add(perceiverCharId)) return
+            if (perceiverName in excludeSet) return
             val perception =
                 PerceptionEvent(
                     characterId = perceiverCharId,

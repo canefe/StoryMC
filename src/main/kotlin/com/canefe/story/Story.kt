@@ -160,11 +160,13 @@ open class Story :
     // Perception — observes world events and emits them for nearby characters
     lateinit var perceptionService: PerceptionService
         private set
+    val isPerceptionServiceReady: Boolean get() = ::perceptionService.isInitialized
     private var perceptionListener: PerceptionListener? = null
 
     // Intelligence — abstraction for all LLM/thinking operations
     lateinit var intelligence: StoryIntelligence
         private set
+    val isIntelligenceReady: Boolean get() = ::intelligence.isInitialized
 
     // WebSocket transport to Go orchestrator (null when bridge.enabled=false)
     var wsTransport: WebSocketTransport? = null
@@ -258,6 +260,7 @@ open class Story :
     lateinit var positionBroadcaster: PositionBroadcaster
     lateinit var recognitionBroadcaster: RecognitionBroadcaster
     lateinit var perceptionBroadcaster: com.canefe.story.perception.PerceptionBroadcaster
+    lateinit var gazeBroadcaster: com.canefe.story.perception.GazeBroadcaster
 
     val affordanceTypeRegistry = com.canefe.story.affordance.AffordanceTypeRegistry()
     val characterStatsCache = com.canefe.story.perception.CharacterStatsCache()
@@ -435,6 +438,8 @@ open class Story :
 
         perceptionBroadcaster = com.canefe.story.perception.PerceptionBroadcaster(this)
         perceptionBroadcaster.start()
+        gazeBroadcaster = com.canefe.story.perception.GazeBroadcaster(this)
+        gazeBroadcaster.start()
 
         npcFollowTracker = NPCFollowTracker(this)
 

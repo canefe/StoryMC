@@ -40,18 +40,20 @@ class RecognizeCommand(
                         return@PlayerCommandExecutor
                     }
 
-                    val perceiverName = args.get("perceiver") as String
-                    val targetName = args.get("target") as String
+                    val perceiverArg = args.get("perceiver") as String
+                    val targetArg = args.get("target") as String
                     val realNameArg = args["realName"] as? String
 
-                    val perceiver = plugin.characterRegistry.getByName(perceiverName)
-                    val target = plugin.characterRegistry.getByName(targetName)
+                    val perceiver = plugin.characterRegistry.getById(perceiverArg)
+                        ?: plugin.characterRegistry.getByName(perceiverArg)
+                    val target = plugin.characterRegistry.getById(targetArg)
+                        ?: plugin.characterRegistry.getByName(targetArg)
                     if (perceiver == null) {
-                        player.sendError("Unknown character '$perceiverName'.")
+                        player.sendError("Unknown character '$perceiverArg'.")
                         return@PlayerCommandExecutor
                     }
                     if (target == null) {
-                        player.sendError("Unknown character '$targetName'.")
+                        player.sendError("Unknown character '$targetArg'.")
                         return@PlayerCommandExecutor
                     }
 
@@ -92,8 +94,12 @@ class RecognizeCommand(
                         return@PlayerCommandExecutor
                     }
 
-                    val perceiver = plugin.characterRegistry.getByName(args.get("perceiver") as String)
-                    val target = plugin.characterRegistry.getByName(args.get("target") as String)
+                    val perceiverArg = args.get("perceiver") as String
+                    val targetArg = args.get("target") as String
+                    val perceiver = plugin.characterRegistry.getById(perceiverArg)
+                        ?: plugin.characterRegistry.getByName(perceiverArg)
+                    val target = plugin.characterRegistry.getById(targetArg)
+                        ?: plugin.characterRegistry.getByName(targetArg)
                     if (perceiver == null || target == null) {
                         player.sendError("Unknown character.")
                         return@PlayerCommandExecutor

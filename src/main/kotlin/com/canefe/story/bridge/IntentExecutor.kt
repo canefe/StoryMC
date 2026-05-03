@@ -33,7 +33,7 @@ object IntentExecutor {
             return
         }
 
-        plugin.conversationManager.speakAsNPC(npc, intent.message)
+        plugin.conversationManager.speakAsNPC(npc, intent.message, addressedToId = intent.addressedToId, addressedToName = intent.addressedToName)
     }
 
     fun executeMoveIntent(
@@ -151,8 +151,19 @@ object IntentExecutor {
             return
         }
 
-        val world = Bukkit.getWorlds().firstOrNull() ?: return
+        val targetWorld = if (intent.world.isNotBlank()) Bukkit.getWorld(intent.world) else null
+        val world = targetWorld ?: Bukkit.getWorlds().firstOrNull() ?: return
         val loc = Location(world, intent.x, intent.y, intent.z)
+
+        // Only spawn if a player is nearby — prevents mass spawning with no players online
+        val nearPlayer = Bukkit.getOnlinePlayers().any { p ->
+            p.world == world &&
+                p.location.distanceSquared(loc) <= SPAWN_RADIUS_SQ
+        }
+        if (!nearPlayer) {
+            plugin.logger.info("[NpcSpawn] Skipping spawn of '${intent.name}' — no player within range")
+            return
+        }
 
         plugin.logger.info("[NpcSpawn] Spawning '${intent.name}' (${intent.characterId}) at $loc")
         // "character" is the generic MythicMobs template for story NPCs.
@@ -229,6 +240,11 @@ object IntentExecutor {
             }
 
         if (record != null) {
+            // Prefer the live StoryNPCRegistry first (MythicMob-backed NPCs live here)
+            if (plugin.isNpcRegistryReady) {
+                plugin.npcRegistry.getByName(record.name)?.let { return it }
+            }
+
             val config =
                 try {
                     plugin.characterRegistry.getMinecraftConfig(characterId)
@@ -236,24 +252,17 @@ object IntentExecutor {
                     null
                 }
 
-            // Try Citizens UUID from frontend config
+            // Fall back to Citizens via UUID or numeric ID from frontend config
             config?.citizensUuid?.let { uuid ->
                 val citizenNpc = CitizensAPI.getNPCRegistry().getByUniqueId(uuid)
                 if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
             }
-
-            // Try Citizens NPC ID from frontend config
             config?.citizensNpcId?.let { id ->
                 val citizenNpc = CitizensAPI.getNPCRegistry().getById(id)
                 if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
             }
 
-            // Try unified StoryNPC registry (covers MythicMob-backed NPCs) by name
-            if (plugin.isNpcRegistryReady) {
-                plugin.npcRegistry.getByName(record.name)?.let { return it }
-            }
-
-            // Fall back to name match in Citizens
+            // Name match in Citizens
             val citizenNpc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == record.name }
             if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
         }
@@ -349,6 +358,9 @@ object IntentExecutor {
             }
         }
     }
+
+    private const val SPAWN_RADIUS = 96.0
+    private const val SPAWN_RADIUS_SQ = SPAWN_RADIUS * SPAWN_RADIUS
 
     private fun resolveTarget(plugin: Story, targetId: String): Entity? {
         Bukkit.getPlayerExact(targetId)?.let { return it }

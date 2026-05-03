@@ -3,9 +3,13 @@ package com.canefe.story.perception
 import com.canefe.story.Story
 import com.canefe.story.bridge.PerceptionStimulusEvent
 import com.canefe.story.util.characterId
+import com.github.retrooper.packetevents.PacketEvents
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPluginMessage
 import org.bukkit.Bukkit
 import org.bukkit.entity.LivingEntity
 import org.bukkit.util.Vector
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import kotlin.math.acos
 import kotlin.math.sqrt
 
@@ -137,7 +141,9 @@ class PerceptionBroadcaster(private val plugin: Story) {
                         plugin.npcRegistry.all().firstOrNull {
                             plugin.characterRegistry.getCharacterIdForNPC(it) == target.charId
                         }?.name ?: target.charId
-                    plugin.logger.info("[Perception] $perceiverName perceived $targetName (${target.charId}) dist=%.1f".format(dist))
+                    if (plugin.configService.debugMessages) plugin.logger.info("[Perception] $perceiverName perceived $targetName (${target.charId}) dist=%.1f".format(dist))
+                    val clientUuid = npc.clientFacingUuid ?: perceiverEntity.uniqueId
+                    broadcastPerceptionPopup(clientUuid, targetName)
                 }
 
                 plugin.eventBus.emit(PerceptionStimulusEvent(
@@ -211,6 +217,21 @@ class PerceptionBroadcaster(private val plugin: Story) {
             }
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    private fun broadcastPerceptionPopup(npcUuid: java.util.UUID, perceivedLabel: String) {
+        val baos = ByteArrayOutputStream()
+        DataOutputStream(baos).use { out ->
+            out.writeLong(npcUuid.mostSignificantBits)
+            out.writeLong(npcUuid.leastSignificantBits)
+            out.writeUTF(perceivedLabel)
+        }
+        val packet = WrapperPlayServerPluginMessage("story:npc_perception", baos.toByteArray())
+        for (player in Bukkit.getOnlinePlayers()) {
+            try {
+                PacketEvents.getAPI().playerManager.getUser(player).sendPacket(packet)
+            } catch (_: Exception) {}
         }
     }
 

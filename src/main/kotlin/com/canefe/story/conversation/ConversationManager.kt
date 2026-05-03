@@ -1,6 +1,7 @@
 package com.canefe.story.conversation
 
 import com.canefe.story.Story
+import net.citizensnpcs.api.CitizensAPI
 import com.canefe.story.api.StoryNPC
 import com.canefe.story.api.character.AICharacter
 import com.canefe.story.api.event.*
@@ -691,8 +692,6 @@ class ConversationManager(
                 conversationId = conversation.id,
             ),
         )
-        emitPlayerSpeechPerception(player, message)
-
         // Generate physical reactions from NPCs
         generateNPCReactions(conversation, playerName, message)
 
@@ -947,6 +946,8 @@ class ConversationManager(
         npc: StoryNPC,
         message: String,
         addToHistory: Boolean = true,
+        addressedToId: String? = null,
+        addressedToName: String? = null,
     ) {
         if (!npc.isSpawned || npc.entity == null) return
 
@@ -1006,7 +1007,7 @@ class ConversationManager(
                             message = message,
                         ),
                     )
-                    emitSpeechPerception(npc, message)
+                    emitSpeechPerception(npc, message, addressedToId = addressedToId, addressedToName = addressedToName)
                     return
                 }
 
@@ -1047,31 +1048,94 @@ class ConversationManager(
                 conversationId = conversation.id,
             ),
         )
-        emitSpeechPerception(npc, message)
+        emitSpeechPerception(npc, message, addressedToId = addressedToId, addressedToName = addressedToName)
     }
 
     private fun emitSpeechPerception(
         npc: StoryNPC,
         message: String,
+        addressedToId: String? = null,
+        addressedToName: String? = null,
     ) {
         val entity = npc.entity ?: return
         val speakerId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.uniqueId.toString()
-        val participants = mapOf(npc.name to speakerId)
+        val (resolvedAddressedToId, resolvedAddressedToName) = if (addressedToId != null) {
+            addressedToId to addressedToName
+        } else {
+            resolveGazeTarget(entity, speakerId)
+        }
+        val participants = buildMap {
+            put(npc.name, speakerId)
+            if (resolvedAddressedToName != null && resolvedAddressedToId != null) put(resolvedAddressedToName, resolvedAddressedToId)
+        }
+        val speechDetails = com.canefe.story.bridge.PerceptionDetails.Speech(
+            speakerId = speakerId,
+            speakerName = npc.name,
+            message = message,
+            addressedToId = resolvedAddressedToId,
+            addressedToName = resolvedAddressedToName,
+        )
         plugin.perceptionService.observe(
-            details =
-                com.canefe.story.bridge.PerceptionDetails.Speech(
-                    speakerId = speakerId,
-                    speakerName = npc.name,
-                    message = message,
-                ),
+            details = speechDetails,
             epicenter = entity.location,
             source = "npc_speech",
             exclude = npc.name,
             participants = participants,
         )
+        // Self-perception: the speaker logs their own speech
+        plugin.perceptionService.observeOne(
+            characterName = npc.name,
+            perceiverCharId = speakerId,
+            entity = entity,
+            details = speechDetails,
+            epicenter = entity.location,
+            source = "npc_speech",
+            participants = participants,
+        )
     }
 
-    private fun emitPlayerSpeechPerception(
+    /**
+     * Raycasts from [speaker] to find the closest character they are looking directly at
+     * (within a 15° half-cone, max 12 blocks). Returns (charId, name) or (null, null).
+     */
+    private fun resolveGazeTarget(speaker: org.bukkit.entity.Entity, speakerCharId: String): Pair<String?, String?> {
+        if (!plugin.isNpcRegistryReady) return null to null
+        val eyeLoc = (speaker as? org.bukkit.entity.LivingEntity)?.eyeLocation ?: return null to null
+        val dir = eyeLoc.direction
+        val world = eyeLoc.world ?: return null to null
+        val halfAngleCos = Math.cos(Math.toRadians(15.0))
+
+        var bestId: String? = null
+        var bestName: String? = null
+        var bestDot = -1.0
+
+        fun check(entity: org.bukkit.entity.LivingEntity, charId: String, name: String) {
+            if (charId == speakerCharId) return
+            if (entity.world != world) return
+            if (speaker.location.distance(entity.location) > 12.0) return
+            val toTarget = entity.eyeLocation.toVector().subtract(eyeLoc.toVector()).normalize()
+            val dot = dir.dot(toTarget).coerceIn(-1.0, 1.0)
+            if (dot < halfAngleCos) return
+            if (!speaker.hasLineOfSight(entity)) return
+            if (dot > bestDot) { bestDot = dot; bestId = charId; bestName = name }
+        }
+
+        for (npc in plugin.npcRegistry.all()) {
+            val entity = npc.entity as? org.bukkit.entity.LivingEntity ?: continue
+            val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
+            check(entity, charId, npc.name)
+        }
+        for (player in world.players) {
+            try { if (CitizensAPI.getNPCRegistry().isNPC(player)) continue } catch (_: Exception) {}
+            val charId = try { player.characterId } catch (_: Exception) { null } ?: continue
+            val name = try { player.characterName } catch (_: Exception) { player.name }
+            check(player, charId, name)
+        }
+
+        return bestId to bestName
+    }
+
+    fun emitPlayerSpeech(
         player: Player,
         message: String,
     ) {
@@ -1082,14 +1146,19 @@ class ConversationManager(
                 player.name
             }
         val speakerId = player.characterId ?: player.uniqueId.toString()
-        val participants = mapOf(speakerName to speakerId)
+        val (addressedToId, addressedToName) = resolveGazeTarget(player, speakerId)
+        val participants = buildMap {
+            put(speakerName, speakerId)
+            if (addressedToName != null && addressedToId != null) put(addressedToName, addressedToId)
+        }
         plugin.perceptionService.observe(
-            details =
-                com.canefe.story.bridge.PerceptionDetails.Speech(
-                    speakerId = speakerId,
-                    speakerName = speakerName,
-                    message = message,
-                ),
+            details = com.canefe.story.bridge.PerceptionDetails.Speech(
+                speakerId = speakerId,
+                speakerName = speakerName,
+                message = message,
+                addressedToId = addressedToId,
+                addressedToName = addressedToName,
+            ),
             epicenter = player.location,
             source = "player_speech",
             exclude = speakerName,

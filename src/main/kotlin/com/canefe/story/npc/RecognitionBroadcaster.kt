@@ -65,7 +65,7 @@ class RecognitionBroadcaster(
             sendBytes(player, encode(emptyMap()))
             return
         }
-        val bridge = plugin.intelligence as? BridgeIntelligence
+        val bridge = if (plugin.isIntelligenceReady) plugin.intelligence as? BridgeIntelligence else null
         if (bridge == null || !bridge.isRecognitionSupported()) {
             sendBytes(player, encode(emptyMap()))
             return

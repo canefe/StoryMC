@@ -24,7 +24,7 @@ class MongoRelationshipStorage(
                 Relationship(
                     targetName = targetName,
                     type = doc.getString("type") ?: "acquaintance",
-                    score = doc.getDouble("score") ?: 0.0,
+                    score = (doc.get("score") as? Number)?.toDouble() ?: 0.0,
                     traits = (doc.getList("traits", String::class.java) ?: emptyList()).toMutableSet(),
                     memoryIds = (doc.getList("memoryIds", String::class.java) ?: emptyList()).toMutableList(),
                 )

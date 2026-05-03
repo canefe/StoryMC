@@ -90,6 +90,10 @@ sealed interface PerceptionDetails {
         val speakerName: String,
         val message: String,
         val addressedIds: List<String> = emptyList(),
+        /** Character ID of the entity the speaker was looking directly at when speaking, if any. */
+        val addressedToId: String? = null,
+        /** Resolved name of the entity the speaker was looking at (filled in by Go per-perceiver). */
+        val addressedToName: String? = null,
     ) : PerceptionDetails {
         override val type: String = "speech"
 
@@ -107,6 +111,28 @@ sealed interface PerceptionDetails {
                         },
                     )
                 }
+                addressedToId?.let { put("addressedToId", it) }
+                addressedToName?.let { put("addressedToName", it) }
+            }
+    }
+
+    /** Someone is looking directly at another character (tight gaze, ~15° cone). */
+    data class Gaze(
+        val gazerId: String,
+        val gazerName: String,
+        /** Null when this event is sent to the target themselves ("X is looking at you"). */
+        val targetName: String? = null,
+        val targetId: String? = null,
+    ) : PerceptionDetails {
+        override val type: String = "gaze"
+
+        override fun toJson(): JsonObject =
+            buildJsonObject {
+                put("type", type)
+                put("gazerId", gazerId)
+                put("gazerName", gazerName)
+                targetName?.let { put("targetName", it) }
+                targetId?.let { put("targetId", it) }
             }
     }
 

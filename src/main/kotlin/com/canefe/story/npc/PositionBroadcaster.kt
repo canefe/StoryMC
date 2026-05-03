@@ -97,19 +97,6 @@ class PositionBroadcaster(private val plugin: Story) {
             .mapNotNull { try { it.characterId } catch (_: Exception) { null } }
             .toSet()
 
-        // Seed lastKnownPositions from currently alive NPCs so we track them
-        // even if they were never pushed through the sim state path.
-        for (npc in plugin.npcRegistry.all()) {
-            if (!npc.isSpawned) continue
-            val loc = npc.entity?.location ?: continue
-            val world = loc.world?.name ?: continue
-            val charId = npc.entity?.persistentDataContainer?.get(
-                com.canefe.story.npc.mythicmobs.MythicMobNPCKeys.CHARACTER_ID,
-                com.canefe.story.npc.mythicmobs.MythicMobNPCKeys.STRING,
-            ) ?: plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
-            lastKnownPositions[charId] = PositionSnapshot(npc.name, loc.x, loc.y, loc.z, world)
-        }
-
         val spawnedCharIds = plugin.npcRegistry.all()
             .filter { it.isSpawned }
             .mapNotNull { npc ->

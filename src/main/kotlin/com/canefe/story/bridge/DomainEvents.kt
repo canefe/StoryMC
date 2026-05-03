@@ -173,6 +173,7 @@ data class NpcSpawnIntent(
     val x: Double = 0.0,
     val y: Double = 64.0,
     val z: Double = 0.0,
+    val world: String = "",
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.spawn"
 }

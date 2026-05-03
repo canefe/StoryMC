@@ -233,7 +233,7 @@ class NearbyNPCBroadcaster(
         }
 
         val perceiverId = player.characterId
-        val bridge = plugin.intelligence as? BridgeIntelligence
+        val bridge = if (plugin.isIntelligenceReady) plugin.intelligence as? BridgeIntelligence else null
 
         if (perceiverId == null || bridge == null || !bridge.isRecognitionSupported()) {
             sendEntries(player, rawEntries)
