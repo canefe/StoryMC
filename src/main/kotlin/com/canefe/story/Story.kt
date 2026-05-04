@@ -176,6 +176,10 @@ open class Story :
     lateinit var domainEvents: DomainEventEmitter
         private set
 
+    // Decision relay — bridges Go decision events to Fabric/plugin-message clients and back
+    lateinit var decisionRelay: DecisionRelay
+        private set
+
     /**
      * True while the Bevy sim is active and owning NPC simulation.
      * When true, the plugin suppresses its own autonomous NPC behaviours
@@ -628,6 +632,10 @@ open class Story :
         // Initialize character sync from sim
         CharacterSyncService(this).register()
 
+        // Initialize decision relay
+        decisionRelay = DecisionRelay(this)
+        decisionRelay.register()
+
         val mode = if (configService.bridgeEnabled) "Bridge" else "Local"
         logger.info(
             "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
@@ -655,6 +663,7 @@ open class Story :
             if (::aiResponseService.isInitialized) aiResponseService.shutdown()
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
+            if (::decisionRelay.isInitialized) decisionRelay.unregister()
             eventBus.shutdown()
 
             logger.info("Story plugin has been successfully disabled.")
