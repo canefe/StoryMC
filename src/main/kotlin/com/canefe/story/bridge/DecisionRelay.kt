@@ -8,6 +8,7 @@ import com.canefe.story.intelligence.EventType
 import com.canefe.story.util.characterId
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 import org.bukkit.plugin.messaging.PluginMessageListener
 
@@ -157,13 +158,17 @@ class DecisionRelay(private val plugin: Story) : PluginMessageListener {
         }
 
         val stamped = dto.copy(characterId = charId)
-        plugin.eventBus.emit(DecisionResponseEvent(
-            decisionId = stamped.decisionId,
-            characterId = stamped.characterId,
-            choiceId = stamped.choiceId,
-            freeformText = stamped.freeformText,
-        ))
 
-        plugin.logger.info("[DecisionRelay] Forwarded decision response '${stamped.decisionId}' from ${player.name} (${charId})")
+        // Schedule on main thread since this callback runs on Netty I/O thread
+        Bukkit.getScheduler().runTask(plugin, Runnable {
+            plugin.eventBus.emit(DecisionResponseEvent(
+                decisionId = stamped.decisionId,
+                characterId = stamped.characterId,
+                choiceId = stamped.choiceId,
+                freeformText = stamped.freeformText,
+            ))
+
+            plugin.logger.info("[DecisionRelay] Forwarded decision response '${stamped.decisionId}' from ${player.name} (${charId})")
+        })
     }
 }
