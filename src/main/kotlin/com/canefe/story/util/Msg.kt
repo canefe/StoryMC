@@ -60,4 +60,6 @@ object Msg {
     fun CommandSender.sendRaw(message: String) {
         sendNoPrefix(this, message)
     }
+
+    fun String.stripLegacy(): String = replace(Regex("§[0-9a-fk-orA-FK-OR]"), "")
 }

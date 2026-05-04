@@ -34,6 +34,9 @@ class PerceptionBroadcaster(private val plugin: Story) {
     // perceiverCharId → set of targetCharIds currently in perception
     private val perceivedSets = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
+    /** Returns the set of charIds that [perceiverCharId] currently has in perception. */
+    fun perceivedBy(perceiverCharId: String): Set<String> = perceivedSets[perceiverCharId] ?: emptySet()
+
     companion object {
         private const val TICK_INTERVAL = 40L       // 2 seconds
         private const val MIN_CONSCIOUSNESS = 0.1   // below this = can't perceive
@@ -143,7 +146,7 @@ class PerceptionBroadcaster(private val plugin: Story) {
                         }?.name ?: target.charId
                     if (plugin.configService.debugMessages) plugin.logger.info("[Perception] $perceiverName perceived $targetName (${target.charId}) dist=%.1f".format(dist))
                     val clientUuid = npc.clientFacingUuid ?: perceiverEntity.uniqueId
-                    broadcastPerceptionPopup(clientUuid, targetName)
+                    broadcastPerceptionPopup(clientUuid, targetName, PopupType.PERCEPTION)
                 }
 
                 plugin.eventBus.emit(PerceptionStimulusEvent(
@@ -220,11 +223,16 @@ class PerceptionBroadcaster(private val plugin: Story) {
         }
     }
 
-    private fun broadcastPerceptionPopup(npcUuid: java.util.UUID, perceivedLabel: String) {
+    enum class PopupType(val id: Byte) {
+        PERCEPTION(0), COMBAT_ATTACK(1), COMBAT_ATTACKED(2), MOOD(3), AGGRESSION(4)
+    }
+
+    fun broadcastPerceptionPopup(npcUuid: java.util.UUID, perceivedLabel: String, type: PopupType = PopupType.PERCEPTION) {
         val baos = ByteArrayOutputStream()
         DataOutputStream(baos).use { out ->
             out.writeLong(npcUuid.mostSignificantBits)
             out.writeLong(npcUuid.leastSignificantBits)
+            out.writeByte(type.id.toInt())
             out.writeUTF(perceivedLabel)
         }
         val packet = WrapperPlayServerPluginMessage("story:npc_perception", baos.toByteArray())

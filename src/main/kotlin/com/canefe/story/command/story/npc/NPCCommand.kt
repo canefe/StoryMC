@@ -9,6 +9,7 @@ import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
+import com.canefe.story.util.Msg.stripLegacy
 import dev.jorel.commandapi.CommandAPICommand
 import dev.jorel.commandapi.arguments.ArgumentSuggestions
 import dev.jorel.commandapi.arguments.DoubleArgument
@@ -121,7 +122,7 @@ class NPCCommand(
                         return@CommandExecutor
                     }
                     plugin.npcFollowTracker.follow(npc, targetEntity)
-                    sender.sendSuccess("${npc.name} is now following ${targetEntity.name}.")
+                    sender.sendSuccess("${npc.name.stripLegacy()} is now following ${targetEntity.name.stripLegacy()}.")
                 },
             )
 

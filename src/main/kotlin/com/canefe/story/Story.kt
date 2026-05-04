@@ -440,6 +440,7 @@ open class Story :
         perceptionBroadcaster.start()
         gazeBroadcaster = com.canefe.story.perception.GazeBroadcaster(this)
         gazeBroadcaster.start()
+        server.pluginManager.registerEvents(com.canefe.story.perception.CombatPerceptionListener(this), this)
 
         npcFollowTracker = NPCFollowTracker(this)
 
