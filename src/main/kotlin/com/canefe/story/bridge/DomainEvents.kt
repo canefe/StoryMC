@@ -283,6 +283,20 @@ data class NPCPerceptEvent(
 }
 
 /**
+ * Plugin → Go: a player's decision response forwarded from a Fabric client.
+ * Stamped with the server-authoritative characterId before emission.
+ */
+@Serializable
+data class DecisionResponseEvent(
+    val decisionId: String,
+    val characterId: String,
+    val choiceId: String? = null,
+    val freeformText: String? = null,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "decision.response"
+}
+
+/**
  * Sim → Plugin: a frontend primitive intent from a behavior hook.
  * The plugin executes it against the in-world NPC.
  */

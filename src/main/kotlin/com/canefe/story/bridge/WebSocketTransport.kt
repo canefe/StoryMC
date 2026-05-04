@@ -170,6 +170,7 @@ class WebSocketTransport(
             is SimStatusEvent -> json.encodeToJsonElement(event)
             is NpcSpawnIntent -> json.encodeToJsonElement(event)
             is NpcStateIntent -> json.encodeToJsonElement(event)
+            is DecisionResponseEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
