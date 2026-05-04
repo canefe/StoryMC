@@ -223,6 +223,54 @@ data class ResolvedTargetDTO(
     val realName: String? = null,
     val descriptor: String,
     val shortLabel: String = "",
+    val confidence: Int = 0,
+)
+
+// --- Decision System ---
+
+@Serializable
+data class DecisionNpcVoiceDTO(
+    val characterId: String,
+    val name: String,
+    val opinion: String,
+    val stance: String,
+)
+
+@Serializable
+data class DecisionOptionDTO(
+    val id: String,
+    val label: String,
+    val consequenceHint: String = "",
+)
+
+@Serializable
+data class DecisionPromptDTO(
+    val decisionId: String,
+    val mode: String, // "leader" | "vote"
+    val leaderId: String = "",
+    val playerTargets: List<String> = emptyList(),
+    val title: String,
+    val context: String,
+    val urgency: String, // "critical" | "ambient"
+    val npcVoices: List<DecisionNpcVoiceDTO> = emptyList(),
+    val options: List<DecisionOptionDTO> = emptyList(),
+    val allowFreeform: Boolean = true,
+    val timeoutSeconds: Int = 60,
+)
+
+@Serializable
+data class DecisionObserveDTO(
+    val decisionId: String,
+    val leaderName: String,
+    val options: List<DecisionOptionDTO> = emptyList(),
+)
+
+@Serializable
+data class DecisionResponseDTO(
+    val decisionId: String,
+    val characterId: String,
+    val choiceId: String? = null,
+    val freeformText: String? = null,
 )
 
 /**
@@ -232,6 +280,9 @@ object EventType {
     const val INTELLIGENCE_REQUEST = "intelligence.request"
     const val INTELLIGENCE_RESPONSE = "intelligence.response"
     const val INTELLIGENCE_CAPABILITIES = "intelligence.capabilities"
+    const val DECISION_PROMPT = "decision.prompt"
+    const val DECISION_OBSERVE = "decision.observe"
+    const val DECISION_RESPONSE = "decision.response"
 }
 
 /**
