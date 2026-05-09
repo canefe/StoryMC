@@ -314,3 +314,44 @@ data class FrontendIntentEvent(
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.intent"
 }
+
+/**
+ * Plugin → Go: ask story-go for alive NPCs near a point. Response carries
+ * `NpcSpawnIntent`s for each character that should be in-world.
+ */
+@Serializable
+data class NpcSpawnQueryEvent(
+    val requestId: String,
+    val world: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val radius: Double,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.spawn_query"
+}
+
+/**
+ * Go → Plugin: reply to a NpcSpawnQueryEvent, addressed to the originating
+ * frontend. `requestId` echoes the request.
+ */
+@Serializable
+data class NpcSpawnQueryResponseEvent(
+    val requestId: String,
+    val intents: List<NpcSpawnIntent> = emptyList(),
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.spawn_query_response"
+}
+
+/**
+ * Plugin → Go → sim: declare that the plugin has finished initial
+ * reconciliation and at least one position tick has been broadcast.
+ * story-go forwards this as a NATS `frontend_ready` message that
+ * unpauses story-sim's `Time<Virtual>`.
+ */
+@Serializable
+data class FrontendReadyEvent(
+    val world: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "frontend.ready"
+}

@@ -181,6 +181,9 @@ class WebSocketTransport(
             is NpcSpawnIntent -> json.encodeToJsonElement(event)
             is NpcStateIntent -> json.encodeToJsonElement(event)
             is DecisionResponseEvent -> json.encodeToJsonElement(event)
+            is NpcSpawnQueryEvent -> json.encodeToJsonElement(event)
+            is NpcSpawnQueryResponseEvent -> json.encodeToJsonElement(event)
+            is FrontendReadyEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
@@ -201,6 +204,9 @@ class WebSocketTransport(
                 "npc.spawn" -> json.decodeFromString<NpcSpawnIntent>(data)
                 "npc.state" -> json.decodeFromString<NpcStateIntent>(data)
                 "frontend.intent" -> json.decodeFromString<FrontendIntentEvent>(data)
+                "npc.spawn_query" -> json.decodeFromString<NpcSpawnQueryEvent>(data)
+                "npc.spawn_query_response" -> json.decodeFromString<NpcSpawnQueryResponseEvent>(data)
+                "frontend.ready" -> json.decodeFromString<FrontendReadyEvent>(data)
                 // Pass through unknown event types as generic StoryEvents
                 // so listeners registered by eventType string (e.g. intelligence.response) still receive them
                 else ->
