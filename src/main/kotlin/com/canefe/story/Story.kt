@@ -25,6 +25,7 @@ import com.canefe.story.intelligence.LocalIntelligence
 import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
+import com.canefe.story.npc.ChunkLoadReconciler
 import com.canefe.story.npc.NPCFollowTracker
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.NearbyNPCBroadcaster
@@ -442,6 +443,7 @@ open class Story :
 
         reconciliationService = ReconciliationService(this)
         reconciliationService.start()
+        server.pluginManager.registerEvents(ChunkLoadReconciler(this), this)
 
         recognitionBroadcaster = RecognitionBroadcaster(this)
 
