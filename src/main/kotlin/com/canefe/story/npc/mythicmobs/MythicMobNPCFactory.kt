@@ -263,6 +263,24 @@ class MythicMobNPCFactory(
         val entity = event.entity ?: return
         val storyNpc = plugin.npcRegistry.getByEntity(entity) ?: return
         plugin.npcRegistry.unregister(storyNpc.uniqueId)
+
+        val location = entity.location
+        val delayTicks = plugin.configService.npcRespawnDelaySeconds * 20L
+        val world = location.world?.name ?: return
+        Bukkit.getScheduler().runTaskLater(
+            plugin,
+            Runnable {
+                plugin.reconciliationService.requestNearby(
+                    world = world,
+                    x = location.x,
+                    y = location.y,
+                    z = location.z,
+                    radius = plugin.configService.reconcileShortRadius,
+                    source = "death",
+                )
+            },
+            delayTicks,
+        )
     }
 
     @EventHandler
