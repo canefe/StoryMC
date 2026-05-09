@@ -184,6 +184,7 @@ class WebSocketTransport(
             is NpcSpawnQueryEvent -> json.encodeToJsonElement(event)
             is NpcSpawnQueryResponseEvent -> json.encodeToJsonElement(event)
             is FrontendReadyEvent -> json.encodeToJsonElement(event)
+            is FrontendPauseEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 

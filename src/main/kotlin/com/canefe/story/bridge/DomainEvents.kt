@@ -355,3 +355,16 @@ data class FrontendReadyEvent(
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.ready"
 }
+
+/**
+ * Plugin → Go → sim: operator-issued pause request. story-go forwards this as
+ * a NATS `frontend_pause` message that pauses story-sim's `Time<Virtual>` and
+ * transitions phase back to Boot. A subsequent FrontendReadyEvent (manual
+ * resume) re-unpauses the sim.
+ */
+@Serializable
+data class FrontendPauseEvent(
+    val world: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "frontend.pause"
+}

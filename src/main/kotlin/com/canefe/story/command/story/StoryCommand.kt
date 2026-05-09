@@ -1,6 +1,8 @@
 package com.canefe.story.command.story
 
 import com.canefe.story.Story
+import com.canefe.story.bridge.FrontendPauseEvent
+import com.canefe.story.bridge.FrontendReadyEvent
 import com.canefe.story.command.base.BaseCommand
 import com.canefe.story.command.base.CommandComponentUtils
 import com.canefe.story.command.story.affordance.AffordanceCommand
@@ -52,6 +54,7 @@ class StoryCommand(
             .withSubcommand(getTaskCommand())
             .withSubcommand(AffordanceCommand(plugin).getCommand())
             .withSubcommand(getMigrateCommand())
+            .withSubcommand(getSimCommand())
             .withSubcommand(getStatusCommand())
             .withSubcommand(RecognizeCommand(plugin).getRecognizeCommand())
             .withSubcommand(RecognizeCommand(plugin).getForgetCommand())
@@ -587,6 +590,55 @@ class StoryCommand(
                             "skippedNoConfig=${result.skinsSkippedNoConfig} | " +
                             "skippedNoCharacter=${result.skippedNoCharacter}",
                     )
+                },
+            )
+
+    private fun getSimCommand(): CommandAPICommand =
+        CommandAPICommand("sim")
+            .withPermission("story.admin")
+            .withSubcommand(getSimPauseCommand())
+            .withSubcommand(getSimResumeCommand())
+            .executes(
+                CommandExecutor { sender, _ ->
+                    sender.sendRaw(
+                        "<yellow>Usage:</yellow> /story sim <pause|resume>",
+                    )
+                },
+            )
+
+    private fun getSimPauseCommand(): CommandAPICommand =
+        CommandAPICommand("pause")
+            .withPermission("story.admin")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    if (!plugin.configService.bridgeEnabled) {
+                        sender.sendError("Bridge is disabled — cannot control sim.")
+                        return@CommandExecutor
+                    }
+                    val world =
+                        (sender as? org.bukkit.entity.Player)?.world?.name
+                            ?: org.bukkit.Bukkit.getWorlds().firstOrNull()?.name
+                            ?: ""
+                    plugin.eventBus.emit(FrontendPauseEvent(world = world))
+                    sender.sendSuccess("Sim pause requested (world=$world).")
+                },
+            )
+
+    private fun getSimResumeCommand(): CommandAPICommand =
+        CommandAPICommand("resume")
+            .withPermission("story.admin")
+            .executes(
+                CommandExecutor { sender, _ ->
+                    if (!plugin.configService.bridgeEnabled) {
+                        sender.sendError("Bridge is disabled — cannot control sim.")
+                        return@CommandExecutor
+                    }
+                    val world =
+                        (sender as? org.bukkit.entity.Player)?.world?.name
+                            ?: org.bukkit.Bukkit.getWorlds().firstOrNull()?.name
+                            ?: ""
+                    plugin.eventBus.emit(FrontendReadyEvent(world = world))
+                    sender.sendSuccess("Sim resume requested (world=$world).")
                 },
             )
 
