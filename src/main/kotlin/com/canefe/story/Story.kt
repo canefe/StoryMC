@@ -592,10 +592,7 @@ open class Story :
             resendAffordances()
         }
         eventBus.on<NpcSpawnIntent> { IntentExecutor.executeNpcSpawnIntent(this, it) }
-        eventBus.on<NpcStateIntent> {
-            positionBroadcaster.updateFromSim(it.characterId, it.name, it.x, it.y, it.z, it.world)
-            IntentExecutor.executeNpcStateIntent(this, it)
-        }
+        eventBus.on<NpcStateIntent> { IntentExecutor.executeNpcStateIntent(this, it) }
         eventBus.on<FrontendIntentEvent> { IntentExecutor.executeFrontendIntent(this, it) }
 
         // Initialize query handler for MCP/orchestrator queries

@@ -144,7 +144,6 @@ class PerceptionBroadcaster(private val plugin: Story) {
                         plugin.npcRegistry.all().firstOrNull {
                             plugin.characterRegistry.getCharacterIdForNPC(it) == target.charId
                         }?.name ?: target.charId
-                    if (plugin.configService.debugMessages) plugin.logger.info("[Perception] $perceiverName perceived $targetName (${target.charId}) dist=%.1f".format(dist))
                     val clientUuid = npc.clientFacingUuid ?: perceiverEntity.uniqueId
                     broadcastPerceptionPopup(clientUuid, targetName, PopupType.PERCEPTION)
                 }

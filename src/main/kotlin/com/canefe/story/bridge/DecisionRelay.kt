@@ -6,11 +6,16 @@ import com.canefe.story.intelligence.DecisionPromptDTO
 import com.canefe.story.intelligence.DecisionResponseDTO
 import com.canefe.story.intelligence.EventType
 import com.canefe.story.util.characterId
+import com.github.retrooper.packetevents.PacketEvents
+import com.github.retrooper.packetevents.event.PacketListener
+import com.github.retrooper.packetevents.event.PacketListenerPriority
+import com.github.retrooper.packetevents.event.PacketReceiveEvent
+import com.github.retrooper.packetevents.protocol.packettype.PacketType
+import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPluginMessage
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import org.bukkit.plugin.messaging.PluginMessageListener
 
 /**
  * Bridges Go decision events to Fabric/plugin-message clients and back.
@@ -22,7 +27,7 @@ import org.bukkit.plugin.messaging.PluginMessageListener
  * Inbound from clients (plugin message channel "story:decision_response"):
  *   - Parse [DecisionResponseDTO], stamp [characterId], emit to event bus → Go
  */
-class DecisionRelay(private val plugin: Story) : PluginMessageListener {
+class DecisionRelay(private val plugin: Story) : PacketListener {
 
     private val CHANNEL_OUT = "story:decision"
     private val CHANNEL_IN = "story:decision_response"
@@ -56,16 +61,18 @@ class DecisionRelay(private val plugin: Story) : PluginMessageListener {
             sendDecisionObserve(dto)
         }
 
-        // Register plugin message channels
+        // Outgoing plugin message channel (server → client) still uses Bukkit messenger
         plugin.server.messenger.registerOutgoingPluginChannel(plugin, CHANNEL_OUT)
-        plugin.server.messenger.registerIncomingPluginChannel(plugin, CHANNEL_IN, this)
 
-        plugin.logger.info("[DecisionRelay] Registered channels: out=$CHANNEL_OUT, in=$CHANNEL_IN")
+        // Inbound from Fabric client comes through as a vanilla PLUGIN_MESSAGE packet,
+        // intercepted via PacketEvents (matches PuppetCommandListener / SquadOrderListener).
+        PacketEvents.getAPI().eventManager.registerListener(this, PacketListenerPriority.NORMAL)
+
+        plugin.logger.info("[DecisionRelay] Registered channels: out=$CHANNEL_OUT, in=$CHANNEL_IN (PacketEvents)")
     }
 
     fun unregister() {
         plugin.server.messenger.unregisterOutgoingPluginChannel(plugin, CHANNEL_OUT)
-        plugin.server.messenger.unregisterIncomingPluginChannel(plugin, CHANNEL_IN, this)
     }
 
     /**
@@ -131,18 +138,32 @@ class DecisionRelay(private val plugin: Story) : PluginMessageListener {
     }
 
     /**
-     * Receive a [DecisionResponseDTO] from a Fabric client, stamp the player's
-     * character ID, and forward it to Go via the event bus.
+     * Receive a [DecisionResponseDTO] from a Fabric client via the vanilla
+     * PLUGIN_MESSAGE packet, stamp the player's character ID, and forward it
+     * to Go via the event bus.
      */
-    override fun onPluginMessageReceived(channel: String, player: Player, message: ByteArray) {
-        if (channel != CHANNEL_IN) return
+    override fun onPacketReceive(event: PacketReceiveEvent) {
+        if (event.packetType !== PacketType.Play.Client.PLUGIN_MESSAGE) return
+        val wrapper = WrapperPlayClientPluginMessage(event)
+        if (wrapper.channelName != CHANNEL_IN) return
 
+        val player = Bukkit.getPlayer(event.user.uuid) ?: return
+        val data = wrapper.data
+
+        Bukkit.getScheduler().runTask(plugin, Runnable {
+            handleResponse(player, data)
+        })
+    }
+
+    private fun handleResponse(player: Player, data: ByteArray) {
         val jsonStr = try {
-            String(message, Charsets.UTF_8)
+            String(data, Charsets.UTF_8)
         } catch (e: Exception) {
             plugin.logger.warning("[DecisionRelay] Failed to decode plugin message from ${player.name}: ${e.message}")
             return
         }
+
+        plugin.logger.info("[DecisionRelay] Received decision_response from ${player.name}: $jsonStr")
 
         val dto = try {
             json.decodeFromString<DecisionResponseDTO>(jsonStr)
@@ -151,7 +172,6 @@ class DecisionRelay(private val plugin: Story) : PluginMessageListener {
             return
         }
 
-        // Stamp the authoritative characterId from the server-side player record
         val charId = player.characterId ?: run {
             plugin.logger.warning("[DecisionRelay] Player ${player.name} has no characterId, dropping decision response")
             return
@@ -159,16 +179,13 @@ class DecisionRelay(private val plugin: Story) : PluginMessageListener {
 
         val stamped = dto.copy(characterId = charId)
 
-        // Schedule on main thread since this callback runs on Netty I/O thread
-        Bukkit.getScheduler().runTask(plugin, Runnable {
-            plugin.eventBus.emit(DecisionResponseEvent(
-                decisionId = stamped.decisionId,
-                characterId = stamped.characterId,
-                choiceId = stamped.choiceId,
-                freeformText = stamped.freeformText,
-            ))
+        plugin.eventBus.emit(DecisionResponseEvent(
+            decisionId = stamped.decisionId,
+            characterId = stamped.characterId,
+            choiceId = stamped.choiceId,
+            freeformText = stamped.freeformText,
+        ))
 
-            plugin.logger.info("[DecisionRelay] Forwarded decision response '${stamped.decisionId}' from ${player.name} (${charId})")
-        })
+        plugin.logger.info("[DecisionRelay] Forwarded decision response '${stamped.decisionId}' from ${player.name} (${charId})")
     }
 }

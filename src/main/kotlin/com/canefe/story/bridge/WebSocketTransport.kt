@@ -80,7 +80,13 @@ class WebSocketTransport(
     }
 
     override fun publish(event: StoryEvent) {
-        val socket = ws ?: return
+        val socket = ws
+        if (socket == null) {
+            if (event is DecisionResponseEvent) {
+                plugin.logger.warning("[WSTransport] DecisionResponseEvent dropped — WebSocket not connected")
+            }
+            return
+        }
 
         val data =
             when (event) {
@@ -90,6 +96,10 @@ class WebSocketTransport(
 
         val message = BridgeMessage(type = event.eventType, data = data, source = "story")
         val serialized = json.encodeToString(message)
+
+        if (event is DecisionResponseEvent) {
+            plugin.logger.info("[WSTransport] sending decision.response: $serialized")
+        }
 
         try {
             socket.sendText(serialized, true)

@@ -268,7 +268,7 @@ data class DecisionObserveDTO(
 @Serializable
 data class DecisionResponseDTO(
     val decisionId: String,
-    val characterId: String,
+    val characterId: String = "",
     val choiceId: String? = null,
     val freeformText: String? = null,
 )

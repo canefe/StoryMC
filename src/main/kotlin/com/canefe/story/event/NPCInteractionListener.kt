@@ -33,6 +33,7 @@ class NPCInteractionListener(
     /** Handles player chat events and processes NPC interactions */
     @EventHandler
     fun onPlayerChat(event: AsyncChatEvent) {
+        if (!plugin.config.chatEnabled) return
         val player = event.player
         val message = PlainTextComponentSerializer.plainText().serialize(event.message())
         event.isCancelled = true

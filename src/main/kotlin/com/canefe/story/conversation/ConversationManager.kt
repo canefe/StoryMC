@@ -1485,6 +1485,11 @@ class ConversationManager(
                         if (!conversation.active || !conversation.autoMode) return@Runnable
                         if (repository.getConversationById(conversation.id) == null) return@Runnable
                         autoTimers.remove(conversation.id)
+                        if (!plugin.config.chatEnabled) {
+                            // Re-arm; we'll check again next tick rather than killing autoMode state.
+                            scheduleAutoTimer(conversation)
+                            return@Runnable
+                        }
                         generateResponses(conversation).thenRun {
                             // Schedule the next auto response after this one completes
                             if (conversation.active && conversation.autoMode) {
