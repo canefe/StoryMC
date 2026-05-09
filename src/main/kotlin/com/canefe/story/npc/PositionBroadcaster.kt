@@ -79,5 +79,10 @@ class PositionBroadcaster(private val plugin: Story) {
                 ),
             )
         }
+        try {
+            plugin.frontendReadinessTracker.markPositionsTicked()
+        } catch (_: UninitializedPropertyAccessException) {
+            // tracker not yet wired during tests — ignore
+        }
     }
 }

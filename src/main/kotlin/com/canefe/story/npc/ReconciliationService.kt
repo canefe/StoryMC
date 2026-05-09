@@ -90,5 +90,10 @@ class ReconciliationService(private val plugin: Story) {
             "[Reconcile] response requestId=${event.requestId} total=${event.intents.size} " +
                 "applied=$applied alreadySpawned=$skipped"
         )
+        try {
+            plugin.frontendReadinessTracker.markReconcileApplied()
+        } catch (_: UninitializedPropertyAccessException) {
+            // ignore in tests
+        }
     }
 }

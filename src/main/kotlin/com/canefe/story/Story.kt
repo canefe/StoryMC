@@ -265,6 +265,7 @@ open class Story :
     lateinit var nearbyNpcBroadcaster: NearbyNPCBroadcaster
     lateinit var positionBroadcaster: PositionBroadcaster
     lateinit var reconciliationService: ReconciliationService
+    lateinit var frontendReadinessTracker: FrontendReadinessTracker
     lateinit var recognitionBroadcaster: RecognitionBroadcaster
     lateinit var perceptionBroadcaster: com.canefe.story.perception.PerceptionBroadcaster
     lateinit var gazeBroadcaster: com.canefe.story.perception.GazeBroadcaster
@@ -444,6 +445,9 @@ open class Story :
         reconciliationService = ReconciliationService(this)
         reconciliationService.start()
         server.pluginManager.registerEvents(ChunkLoadReconciler(this), this)
+
+        frontendReadinessTracker = FrontendReadinessTracker(this)
+        frontendReadinessTracker.start()
 
         recognitionBroadcaster = RecognitionBroadcaster(this)
 
