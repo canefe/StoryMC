@@ -33,6 +33,7 @@ import com.canefe.story.npc.RecognitionBroadcaster
 import com.canefe.story.npc.PuppetCommandListener
 import com.canefe.story.npc.PuppetGroupBroadcaster
 import com.canefe.story.npc.PuppetManager
+import com.canefe.story.npc.ReconciliationService
 import com.canefe.story.npc.squad.SquadListBroadcaster
 import com.canefe.story.npc.squad.SquadOrderListener
 import com.canefe.story.npc.squad.SquadOrderTracker
@@ -262,6 +263,7 @@ open class Story :
     // Pushes nearby-NPC info bundles to clients for the action wheel
     lateinit var nearbyNpcBroadcaster: NearbyNPCBroadcaster
     lateinit var positionBroadcaster: PositionBroadcaster
+    lateinit var reconciliationService: ReconciliationService
     lateinit var recognitionBroadcaster: RecognitionBroadcaster
     lateinit var perceptionBroadcaster: com.canefe.story.perception.PerceptionBroadcaster
     lateinit var gazeBroadcaster: com.canefe.story.perception.GazeBroadcaster
@@ -437,6 +439,9 @@ open class Story :
 
         positionBroadcaster = PositionBroadcaster(this)
         positionBroadcaster.start()
+
+        reconciliationService = ReconciliationService(this)
+        reconciliationService.start()
 
         recognitionBroadcaster = RecognitionBroadcaster(this)
 
