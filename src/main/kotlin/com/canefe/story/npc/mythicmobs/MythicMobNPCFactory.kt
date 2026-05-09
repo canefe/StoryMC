@@ -299,6 +299,14 @@ class MythicMobNPCFactory(
                         reapplyDisguise(entity)
                     }
                 }
+                plugin.reconciliationService.requestNearby(
+                    world = player.world.name,
+                    x = player.location.x,
+                    y = player.location.y,
+                    z = player.location.z,
+                    radius = plugin.configService.reconcileRadius,
+                    source = "player_join",
+                )
             },
             40L,
         )
