@@ -95,6 +95,14 @@ class ConfigService(
     // Cooldown period in seconds before an NPC can be selected for random pathing again
     var randomPathingCooldown: Int = 300
 
+    // NPC reconciliation
+    var reconcileRadius: Double = 128.0
+    var reconcileShortRadius: Double = 32.0
+    var reconcileResponseTimeoutMillis: Long = 5000L
+    var chunkLoadDebounceTicks: Long = 20L
+    var npcRespawnDelaySeconds: Int = 300
+    var frontendReadyFallbackMillis: Long = 30000L
+
     // NPC Voice settings
     var maxVoiceFiles: Int = 6
     var soundNameSpace: String = "iamusic:npc"
@@ -237,6 +245,13 @@ class ConfigService(
 
         maxProcessPerTick = config.getInt("npc.maxProcessPerTick", 3)
         randomPathingCooldown = config.getInt("npc.randomPathingCooldown", 300)
+
+        reconcileRadius = config.getDouble("npc.reconcileRadius", 128.0)
+        reconcileShortRadius = config.getDouble("npc.reconcileShortRadius", 32.0)
+        reconcileResponseTimeoutMillis = config.getLong("npc.reconcileResponseTimeoutMillis", 5000L)
+        chunkLoadDebounceTicks = config.getLong("npc.chunkLoadDebounceTicks", 20L)
+        npcRespawnDelaySeconds = config.getInt("npc.respawnDelaySeconds", 300)
+        frontendReadyFallbackMillis = config.getLong("npc.frontendReadyFallbackMillis", 30000L)
 
         teleportOnFail = config.getBoolean("npc.teleportOnFail", true)
 
