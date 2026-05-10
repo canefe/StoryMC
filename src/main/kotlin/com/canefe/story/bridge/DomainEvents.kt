@@ -311,6 +311,11 @@ data class FrontendIntentEvent(
     val maxYaw: Float = 0f,
     val maxPitch: Float = 0f,
     val useEyeLocation: Boolean = false,
+    // flee_from: anchor (XZ) the NPC should run away from + distance band
+    val fromX: Double = 0.0,
+    val fromZ: Double = 0.0,
+    val minDist: Double = 0.0,
+    val maxDist: Double = 0.0,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.intent"
 }

@@ -90,6 +90,15 @@ interface StoryNPC {
     /** Stop attacking a specific player. */
     fun stopAttacking(target: Player)
 
+    /**
+     * Set this NPC's combat target without triggering an attack skill.
+     *
+     * Default no-op for backends without a native targeting concept (e.g. Citizens
+     * routes hostility through Sentinel's target list, not a single live target).
+     * MythicMobs sets the underlying Mob's threat target so the AI engages naturally.
+     */
+    fun setTarget(target: Player) {}
+
     // -- Following --
 
     /** Make this NPC follow a player. */

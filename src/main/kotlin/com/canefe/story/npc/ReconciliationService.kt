@@ -63,6 +63,7 @@ class ReconciliationService(private val plugin: Story) {
     }
 
     private fun handleResponse(event: NpcSpawnQueryResponseEvent) {
+        plugin.logger.info("[Reconcile] handleResponse entered requestId=${event.requestId} pending=${pending.size}")
         val entry = pending.remove(event.requestId)
         if (entry == null) {
             plugin.logger.warning("[Reconcile] response for unknown requestId=${event.requestId}, dropping")

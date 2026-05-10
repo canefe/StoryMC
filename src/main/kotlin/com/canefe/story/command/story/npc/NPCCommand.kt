@@ -69,6 +69,101 @@ class NPCCommand(
             .withSubcommand(getMmnpcCommand())
             .withSubcommand(getFollowCommand())
             .withSubcommand(getFollowCharCommand())
+            .withSubcommand(getSelCommand())
+            .withSubcommand(getTpHereCommand())
+
+    /** Per-player selected NPC name for follow-up commands like /story npc tphere. */
+    private val selectedNpc = java.util.concurrent.ConcurrentHashMap<java.util.UUID, String>()
+
+    private fun npcNameSuggestions(): ArgumentSuggestions<org.bukkit.command.CommandSender> =
+        ArgumentSuggestions.strings { _ ->
+            if (!plugin.isCharacterRegistryReady) emptyArray()
+            else plugin.characterRegistry.allNPCs().map { it.name }.toTypedArray()
+        }
+
+    private fun getSelCommand(): CommandAPICommand =
+        CommandAPICommand("sel")
+            .withPermission("story.dm")
+            .withArguments(
+                GreedyStringArgument("name").replaceSuggestions(npcNameSuggestions()),
+            )
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val name = (args.get("name") as String).trim().trim('"')
+                    if (!plugin.isCharacterRegistryReady) {
+                        player.sendError("Character registry not ready.")
+                        return@PlayerCommandExecutor
+                    }
+                    val record = plugin.characterRegistry.getByName(name)
+                    if (record == null) {
+                        player.sendError("No character named '$name'.")
+                        return@PlayerCommandExecutor
+                    }
+                    selectedNpc[player.uniqueId] = record.name
+                    player.sendSuccess("Selected '${record.name}'.")
+                },
+            )
+
+    private fun getTpHereCommand(): CommandAPICommand =
+        CommandAPICommand("tphere")
+            .withPermission("story.dm")
+            .withOptionalArguments(
+                GreedyStringArgument("name").replaceSuggestions(npcNameSuggestions()),
+            )
+            .executesPlayer(
+                PlayerCommandExecutor { player, args ->
+                    val rawName = (args.getOptional("name").orElse(null) as? String)?.trim()?.trim('"')
+                    val name = rawName?.takeIf { it.isNotEmpty() } ?: selectedNpc[player.uniqueId]
+                    if (name == null) {
+                        player.sendError("No NPC selected. Use /story npc sel <name> first, or pass a name.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    // Already in-world? Just teleport the existing entity.
+                    val existing = plugin.npcRegistry.getByName(name)
+                    if (existing?.entity?.isValid == true) {
+                        existing.entity?.teleport(player.location)
+                        player.sendSuccess("Teleported '${existing.name}' to you.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    if (!plugin.isCharacterRegistryReady) {
+                        player.sendError("Character registry not ready.")
+                        return@PlayerCommandExecutor
+                    }
+                    val record = plugin.characterRegistry.getByName(name)
+                    if (record == null) {
+                        player.sendError("No character named '$name'.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    if (!Bukkit.getPluginManager().isPluginEnabled("MythicMobs")) {
+                        player.sendError("MythicMobs plugin is not enabled.")
+                        return@PlayerCommandExecutor
+                    }
+                    if (plugin.mythicMobNpcFactoryOrNull == null) {
+                        player.sendError("MythicMob NPC factory is not initialized.")
+                        return@PlayerCommandExecutor
+                    }
+
+                    // Stale registry entry from a previous life — drop it before spawning fresh.
+                    if (existing != null) {
+                        plugin.npcRegistry.unregister(existing.uniqueId)
+                    }
+
+                    val npc = plugin.mythicMobNpcFactory.spawn(
+                        mobTemplate = "Character",
+                        location = player.location,
+                        displayName = record.name,
+                        characterId = record.id,
+                    )
+                    if (npc == null) {
+                        player.sendError("Failed to spawn '${record.name}' (template=Character).")
+                    } else {
+                        player.sendSuccess("Spawned '${record.name}' at your location.")
+                    }
+                },
+            )
 
     private fun getFollowCommand(): CommandAPICommand =
         CommandAPICommand("follow")

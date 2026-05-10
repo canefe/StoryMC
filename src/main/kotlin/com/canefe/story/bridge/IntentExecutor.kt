@@ -15,6 +15,45 @@ import org.bukkit.entity.LivingEntity
  * into Minecraft actions. All methods run on the main server thread.
  */
 object IntentExecutor {
+    /** Per-characterId timestamp of last reconciliation trigger from a missing-NPC intent. */
+    private val lastMissingReconcile = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val MISSING_RECONCILE_COOLDOWN_MS = 5_000L
+
+    /** Global floor between any two missing-NPC reconciliation requests. */
+    @Volatile private var lastMissingReconcileGlobal: Long = 0L
+    private const val MISSING_RECONCILE_GLOBAL_INTERVAL_MS = 1_500L
+
+    /**
+     * If story-go sends an intent for a characterId we don't have spawned, ask the sim
+     * to reconcile around the nearest player. Two debounces:
+     *   - per-characterId cooldown: same missing NPC won't retrigger within COOLDOWN_MS.
+     *   - global interval: at most one missing-driven reconcile every GLOBAL_INTERVAL_MS,
+     *     so a flood of distinct unknown IDs doesn't spam the sim.
+     */
+    private fun requestReconcileForMissing(plugin: Story, characterId: String, source: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastMissingReconcileGlobal < MISSING_RECONCILE_GLOBAL_INTERVAL_MS) return
+        val previous = lastMissingReconcile[characterId]
+        if (previous != null && now - previous < MISSING_RECONCILE_COOLDOWN_MS) return
+        lastMissingReconcile[characterId] = now
+        lastMissingReconcileGlobal = now
+
+        val anchor = Bukkit.getOnlinePlayers().firstOrNull() ?: return
+        val service = try {
+            plugin.reconciliationService
+        } catch (_: UninitializedPropertyAccessException) {
+            return
+        }
+        service.requestNearby(
+            world = anchor.world.name,
+            x = anchor.location.x,
+            y = anchor.location.y,
+            z = anchor.location.z,
+            radius = plugin.configService.reconcileRadius,
+            source = "$source:missing=$characterId",
+        )
+    }
+
     fun executeSpeakIntent(
         plugin: Story,
         intent: NPCSpeakIntent,
@@ -43,6 +82,7 @@ object IntentExecutor {
         val npc = resolveNPC(plugin, intent.characterId)
         if (npc == null) {
             plugin.logger.warning("[MoveIntent] NPC not found for characterId=${intent.characterId}")
+            requestReconcileForMissing(plugin, intent.characterId, source = "move_intent")
             return
         }
         plugin.logger.info("[MoveIntent] ${npc.name} → (${intent.x}, ${intent.y}, ${intent.z})")
@@ -290,8 +330,10 @@ object IntentExecutor {
     }
 
     fun executeFrontendIntent(plugin: Story, intent: FrontendIntentEvent) {
+        plugin.logger.info("[FrontendIntent] received primitive=${intent.primitive} char=${intent.characterId}")
         val npc = resolveNPC(plugin, intent.characterId) ?: run {
             plugin.logger.warning("[FrontendIntent] NPC not found for characterId=${intent.characterId}")
+            requestReconcileForMissing(plugin, intent.characterId, source = "frontend_intent")
             return
         }
 
@@ -300,7 +342,7 @@ object IntentExecutor {
                 val targetId = intent.targetCharId ?: return
                 val target = resolveTarget(plugin, targetId) as? org.bukkit.entity.Player
                 if (target != null) {
-                    npc.attack(target)
+                    npc.setTarget(target)
                 } else {
                     plugin.logger.warning("[FrontendIntent] set_target: player target not found for $targetId")
                 }
@@ -308,6 +350,57 @@ object IntentExecutor {
             "navigate_to" -> {
                 val world = Bukkit.getWorlds().firstOrNull() ?: return
                 npc.navigateTo(Location(world, intent.x, intent.y, intent.z))
+            }
+            "flee_from" -> {
+                plugin.logger.info("[FrontendIntent] flee_from from=(${intent.fromX},${intent.fromZ}) min=${intent.minDist} max=${intent.maxDist}")
+                val entity = npc.entity as? LivingEntity ?: run {
+                    plugin.logger.warning("[FrontendIntent] flee_from: npc.entity is not LivingEntity for ${intent.characterId}")
+                    return
+                }
+                val world = entity.world
+                val origin = entity.location
+                // Vector from threat anchor to NPC, in XZ — the direction we want to flee.
+                var dx = origin.x - intent.fromX
+                var dz = origin.z - intent.fromZ
+                val len = Math.sqrt(dx * dx + dz * dz)
+                if (len < 1e-3) {
+                    // Threat is on top of us — pick a random direction to break the tie.
+                    val angle = Math.random() * 2.0 * Math.PI
+                    dx = Math.cos(angle); dz = Math.sin(angle)
+                } else {
+                    dx /= len; dz /= len
+                }
+                val minD = if (intent.minDist > 0.0) intent.minDist else 12.0
+                val maxD = if (intent.maxDist > minD) intent.maxDist else (minD + 15.0)
+
+                // Sample candidates in a 90° cone around the away-vector at random distances.
+                // First standable candidate wins; fall back to a straight-line shot if none pass.
+                val rng = java.util.concurrent.ThreadLocalRandom.current()
+                var chosen: Location? = null
+                repeat(8) {
+                    val coneOffset = (rng.nextDouble() - 0.5) * (Math.PI / 2.0) // ±45°
+                    val baseAngle = Math.atan2(dz, dx)
+                    val a = baseAngle + coneOffset
+                    val d = minD + rng.nextDouble() * (maxD - minD)
+                    val tx = origin.x + Math.cos(a) * d
+                    val tz = origin.z + Math.sin(a) * d
+                    val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
+                    val candidate = Location(world, tx, ty, tz)
+                    val standOn = candidate.clone().add(0.0, -1.0, 0.0).block
+                    val feet = candidate.block
+                    if (standOn.type.isSolid && !feet.type.isSolid && !feet.isLiquid) {
+                        chosen = candidate
+                        return@repeat
+                    }
+                }
+                val dest = chosen ?: run {
+                    val d = (minD + maxD) / 2.0
+                    val tx = origin.x + dx * d
+                    val tz = origin.z + dz * d
+                    val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
+                    Location(world, tx, ty, tz)
+                }
+                npc.navigateTo(dest)
             }
             "look_at" -> {
                 val entity = npc.entity as? LivingEntity ?: return
@@ -349,9 +442,9 @@ object IntentExecutor {
                 val targetId = intent.targetCharId ?: return
                 val target = resolveTarget(plugin, targetId) as? LivingEntity ?: return
                 val attacker = npc.entity as? LivingEntity ?: return
-                attacker.world.getNearbyEntities(attacker.location, 5.0, 5.0, 5.0)
-                    .firstOrNull { it.uniqueId == target.uniqueId }
-                    ?.let { attacker.attack(it as LivingEntity) }
+                if (attacker.location.distanceSquared(target.location) <= 9.0) {
+                    attacker.attack(target)
+                }
             }
             "clear_target" -> {
                 npc.cancelNavigation()

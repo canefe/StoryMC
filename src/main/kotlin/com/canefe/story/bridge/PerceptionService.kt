@@ -47,8 +47,10 @@ class PerceptionService(
     }
 
     private fun publishProximity() {
-        // Sim owns spatial awareness when active — suppress plugin-side proximity spam
+        // Sim owns spatial awareness when active — suppress plugin-side proximity spam.
+        // Also suppress while operator-paused so we don't render stimuli for a frozen world.
         if (plugin.simActive) return
+        if (plugin.simPaused) return
         for (player in Bukkit.getOnlinePlayers()) {
             if (plugin.playerManager.isPlayerDisabled(player)) continue
 
@@ -113,6 +115,7 @@ class PerceptionService(
         source: String,
         participants: Map<String, String> = emptyMap(),
     ) {
+        if (plugin.simPaused) return
         val world = epicenter.world ?: return
         val pos = Position(epicenter.x, epicenter.y, epicenter.z, world.name)
         val gameTime = plugin.timeService.getCurrentGameTime()
@@ -148,6 +151,7 @@ class PerceptionService(
         participants: Map<String, String> = emptyMap(),
         excludeSet: Set<String> = emptySet(),
     ) {
+        if (plugin.simPaused) return
         val world = epicenter.world ?: return
         val pos = Position(epicenter.x, epicenter.y, epicenter.z, world.name)
         val gameTime = plugin.timeService.getCurrentGameTime()

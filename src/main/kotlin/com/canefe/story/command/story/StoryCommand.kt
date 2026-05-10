@@ -619,6 +619,7 @@ class StoryCommand(
                         (sender as? org.bukkit.entity.Player)?.world?.name
                             ?: org.bukkit.Bukkit.getWorlds().firstOrNull()?.name
                             ?: ""
+                    plugin.simPaused = true
                     plugin.eventBus.emit(FrontendPauseEvent(world = world))
                     sender.sendSuccess("Sim pause requested (world=$world).")
                 },

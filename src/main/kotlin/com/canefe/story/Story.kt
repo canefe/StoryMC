@@ -192,6 +192,16 @@ open class Story :
     var simActive: Boolean = false
         private set
 
+    /**
+     * True while the operator has paused the sim via `/story sim pause`.
+     * While paused, MC suppresses outbound perception emission (the sim is
+     * frozen, so feeding it more stimuli would queue garbage and the
+     * fading-text rendered on the client would imply a live world).
+     * Cleared by `/story sim resume`.
+     */
+    @Volatile
+    var simPaused: Boolean = false
+
     private var simWatchdogTaskId: Int = -1
 
     /** Called on each sim.status heartbeat — refreshes the watchdog. */
@@ -443,7 +453,7 @@ open class Story :
         positionBroadcaster.start()
 
         reconciliationService = ReconciliationService(this)
-        reconciliationService.start()
+        // start() is called from initializeEventBus() after transports are registered
         server.pluginManager.registerEvents(ChunkLoadReconciler(this), this)
 
         frontendReadinessTracker = FrontendReadinessTracker(this)
@@ -605,6 +615,7 @@ open class Story :
         eventBus.on<NpcSpawnIntent> { IntentExecutor.executeNpcSpawnIntent(this, it) }
         eventBus.on<NpcStateIntent> { IntentExecutor.executeNpcStateIntent(this, it) }
         eventBus.on<FrontendIntentEvent> { IntentExecutor.executeFrontendIntent(this, it) }
+        reconciliationService.start()
 
         // Initialize query handler for MCP/orchestrator queries
         QueryHandler(this).initialize()

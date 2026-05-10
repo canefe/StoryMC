@@ -166,6 +166,11 @@ open class MythicMobStoryNPC(
         skill.execute(metadata)
     }
 
+    override fun setTarget(target: Player) {
+        val active = activeMob() ?: return
+        active.setTarget(BukkitAdapter.adapt(target))
+    }
+
     override fun stopAttacking(target: Player) {
         // No persistent target list on the Mythic side for one-shot skill casts.
         // If StoryAttack ever becomes a sustained aura, cancel it here.
