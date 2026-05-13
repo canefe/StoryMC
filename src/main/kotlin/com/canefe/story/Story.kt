@@ -9,6 +9,12 @@ import com.canefe.story.audio.AudioManager
 import com.canefe.story.audio.VoiceManager
 import com.canefe.story.bridge.*
 import com.canefe.story.character.skill.SkillManager
+import com.canefe.story.combat.DirectionalCombatService
+import com.canefe.story.combat.adapter.CombatantRegistry
+import com.canefe.story.combat.adapter.PlayerCombatant
+import com.canefe.story.combat.listener.VanillaMeleeListener
+import com.canefe.story.combat.packet.CombatPacketBridge
+import com.canefe.story.combat.stimulus.CombatStimulusEmitter
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.config.ConfigService
 import com.canefe.story.config.PromptService
@@ -145,6 +151,11 @@ open class Story :
     lateinit var mythicMobConversation: MythicMobConversationIntegration
 
     lateinit var skillManager: SkillManager
+
+    lateinit var combatantRegistry: CombatantRegistry
+        private set
+    lateinit var directionalCombatService: DirectionalCombatService
+        private set
 
     lateinit var storageFactory: StorageFactory
         private set
@@ -512,8 +523,42 @@ open class Story :
             com.canefe.story.conversation.skillcheck
                 .SkillCheckService(this)
 
+        combatantRegistry = CombatantRegistry()
+        directionalCombatService = DirectionalCombatService(this, combatantRegistry)
+        directionalCombatService.start()
+        server.pluginManager.registerEvents(VanillaMeleeListener(this, directionalCombatService), this)
+
+        val combatPacketBridge = CombatPacketBridge(this, directionalCombatService)
+        combatPacketBridge.register()
+        val lastLoggedClass = java.util.concurrent.ConcurrentHashMap<Int, String>()
+        directionalCombatService.onStateChange = { combatant, state ->
+            // Players within tracking distance need this for the pose mixin /
+            // outcome HUDs; the combatant themselves needs it for their own HUD.
+            val audience = nearbyPlayersForCombat(combatant)
+            val cls = state::class.simpleName ?: "?"
+            if (lastLoggedClass.put(combatant.entityId, cls) != cls) {
+                logger.info("[combat] state ${combatant.entityId} -> $cls audience=${audience.size}")
+            }
+            combatPacketBridge.pushState(combatant, state, audience)
+        }
+        val combatStimulusEmitter = CombatStimulusEmitter(this)
+        directionalCombatService.onHitOutcome = { attacker, defender, dir, outcome, damage ->
+            val audience = nearbyPlayersForCombat(attacker) + nearbyPlayersForCombat(defender)
+            combatPacketBridge.pushHitOutcome(attacker, defender, dir, outcome, audience.distinct())
+            combatStimulusEmitter.emit(attacker, defender, dir, outcome, damage)
+        }
+
         eventManager = EventManager(this)
         eventManager.registerEvents()
+    }
+
+    private fun nearbyPlayersForCombat(combatant: com.canefe.story.combat.Combatant): List<org.bukkit.entity.Player> {
+        // Use Bukkit's tracking distance as the audience radius.
+        val origin = try { combatant.eyeLocation() } catch (_: Throwable) { return emptyList() }
+        val world = origin.world ?: return emptyList()
+        val r = 64.0
+        val rSq = r * r
+        return world.players.filter { it.location.distanceSquared(origin) <= rSq }
     }
 
     fun tryReconnectStorage(sender: CommandSender? = null) {

@@ -316,8 +316,30 @@ data class FrontendIntentEvent(
     val fromZ: Double = 0.0,
     val minDist: Double = 0.0,
     val maxDist: Double = 0.0,
+    // attempt_hit: directional combat swing direction. Null = plugin picks.
+    // Wire-format string ("overhead"/"left"/"right"/"thrust") parsed via SwingDir.fromWire.
+    val swingDirection: String? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.intent"
+}
+
+/**
+ * Plugin → sim: directional combat hit outcome stimulus (spec §6).
+ * Sim consumers can use this to feed CombatBrain state, drive flee/morale
+ * decisions, or update relationships based on combat events.
+ *
+ * Outcome wire values: "unblocked" / "parry" / "perfect_block" / "partial_block" / "bad_block"
+ * Direction wire values: "overhead" / "left" / "right" / "thrust"
+ */
+@Serializable
+data class CombatHitOutcomeEvent(
+    val attackerCharId: String?,
+    val defenderCharId: String?,
+    val direction: String,
+    val outcome: String,
+    val damage: Double,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "combat.hit_outcome"
 }
 
 /**

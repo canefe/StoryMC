@@ -21,6 +21,11 @@ class ConfigService(
     var bridgeEnabled: Boolean = false
     var bridgeUri: String = "ws://localhost:8080/story"
 
+    // Directional combat (Bannerlord-style melee) — see docs/superpowers/specs/2026-05-10-directional-combat-design.md
+    var combatEnabled: Boolean = false
+    var combatParryWindowBaseTicks: Int = 5
+    var combatWindupBaseTicks: Int = 12
+
     // OpenAI API settings
     var openAIUrl: String = ""
     var openAIKey: String = ""
@@ -174,6 +179,10 @@ class ConfigService(
         // Bridge settings
         bridgeEnabled = config.getBoolean("bridge.enabled", false)
         bridgeUri = config.getString("bridge.uri", "ws://localhost:8080/story") ?: "ws://localhost:8080/story"
+
+        combatEnabled = config.getBoolean("combat.enabled", false)
+        combatParryWindowBaseTicks = config.getInt("combat.parry-window-base-ticks", 5)
+        combatWindupBaseTicks = config.getInt("combat.windup-base-ticks", 12)
 
         storageBackend = config.getString("storage.backend", "sqlite") ?: "sqlite"
         mongoUri = config.getString("storage.mongodb.uri", "mongodb://localhost:27017") ?: "mongodb://localhost:27017"

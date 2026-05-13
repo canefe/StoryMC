@@ -2,6 +2,8 @@ package com.canefe.story.bridge
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.combat.SwingDir
+import com.canefe.story.combat.adapter.NpcCombatant
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.util.characterId
 import net.citizensnpcs.api.CitizensAPI
@@ -442,8 +444,21 @@ object IntentExecutor {
                 val targetId = intent.targetCharId ?: return
                 val target = resolveTarget(plugin, targetId) as? LivingEntity ?: return
                 val attacker = npc.entity as? LivingEntity ?: return
-                if (attacker.location.distanceSquared(target.location) <= 9.0) {
-                    attacker.attack(target)
+
+                if (plugin.configService.combatEnabled) {
+                    // Route through directional combat. Direction comes from sim;
+                    // null falls back to a random pick so legacy callers still work.
+                    val service = plugin.directionalCombatService
+                    val combatant =
+                        service.registry.byUuid(attacker.uniqueId)
+                            ?: service.registry.byEntityId(attacker.entityId)
+                            ?: NpcCombatant(npc).also { service.registry.register(it) }
+                    val dir = SwingDir.fromWire(intent.swingDirection) ?: SwingDir.entries.random()
+                    service.queueSwing(combatant, dir)
+                } else {
+                    if (attacker.location.distanceSquared(target.location) <= 9.0) {
+                        attacker.attack(target)
+                    }
                 }
             }
             "clear_target" -> {

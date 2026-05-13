@@ -47,6 +47,12 @@ conversation:
   dialoguePathSelectionEnabled: false
   delayedPlayerMessageProcessing: false
   summarizationThreshold: 5 # Summarize conversation history every N messages
+# Directional Combat (Bannerlord-style melee)
+combat:
+  enabled: false
+  parry-window-base-ticks: 5
+  windup-base-ticks: 12
+
 # NPC Behavior
 npc:
   headRotationDelay: 2

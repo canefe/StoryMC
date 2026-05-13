@@ -369,5 +369,6 @@ tasks.register<Exec>("deployToSSH") {
 tasks {
     runServer {
         minecraftVersion("1.21")
+        jvmArgs("-Dpaper.disableChannelLimit=true")
     }
 }
