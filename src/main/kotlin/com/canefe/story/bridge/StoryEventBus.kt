@@ -38,8 +38,30 @@ class StoryEventBus {
             }
         }
 
-        // Notify class-type listeners
-        classListeners[event::class.java.name]?.forEach { handler ->
+        // Notify class-type listeners (concrete class + every superclass/interface).
+        // Walking the type hierarchy lets `on<SealedMarker>` receive every subtype emit
+        // (e.g. IntentOutcomeEvent receives both Completed and Rejected).
+        notifyClassListeners(event)
+    }
+
+    private fun notifyClassListeners(event: StoryEvent) {
+        val seen = HashSet<String>()
+        var cls: Class<*>? = event::class.java
+        while (cls != null) {
+            dispatchByKey(cls.name, event, seen)
+            for (iface in cls.interfaces) dispatchInterface(iface, event, seen)
+            cls = cls.superclass
+        }
+    }
+
+    private fun dispatchInterface(iface: Class<*>, event: StoryEvent, seen: HashSet<String>) {
+        dispatchByKey(iface.name, event, seen)
+        for (parent in iface.interfaces) dispatchInterface(parent, event, seen)
+    }
+
+    private fun dispatchByKey(key: String, event: StoryEvent, seen: HashSet<String>) {
+        if (!seen.add(key)) return
+        classListeners[key]?.forEach { handler ->
             try {
                 handler(event)
             } catch (_: Exception) {
@@ -81,12 +103,7 @@ class StoryEventBus {
                 } catch (_: Exception) {
                 }
             }
-            classListeners[event::class.java.name]?.forEach { handler ->
-                try {
-                    handler(event)
-                } catch (_: Exception) {
-                }
-            }
+            notifyClassListeners(event)
         }
     }
 

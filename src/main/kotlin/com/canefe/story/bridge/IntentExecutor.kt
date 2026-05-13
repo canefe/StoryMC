@@ -336,135 +336,201 @@ object IntentExecutor {
         val npc = resolveNPC(plugin, intent.characterId) ?: run {
             plugin.logger.warning("[FrontendIntent] NPC not found for characterId=${intent.characterId}")
             requestReconcileForMissing(plugin, intent.characterId, source = "frontend_intent")
+            rejectIntent(plugin, intent, RejectionReason.NPC_NOT_FOUND)
             return
         }
 
-        when (intent.primitive) {
-            "set_target" -> {
-                val targetId = intent.targetCharId ?: return
-                val target = resolveTarget(plugin, targetId) as? org.bukkit.entity.Player
-                if (target != null) {
+        try {
+            when (intent.primitive) {
+                "set_target" -> {
+                    val targetId = intent.targetCharId
+                    if (targetId == null) {
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                    }
+                    val target = resolveTarget(plugin, targetId) as? org.bukkit.entity.Player
+                    if (target == null) {
+                        plugin.logger.warning("[FrontendIntent] set_target: player target not found for $targetId")
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                    }
                     npc.setTarget(target)
-                } else {
-                    plugin.logger.warning("[FrontendIntent] set_target: player target not found for $targetId")
+                    completeIntent(plugin, intent)
                 }
-            }
-            "navigate_to" -> {
-                val world = Bukkit.getWorlds().firstOrNull() ?: return
-                npc.navigateTo(Location(world, intent.x, intent.y, intent.z))
-            }
-            "flee_from" -> {
-                plugin.logger.info("[FrontendIntent] flee_from from=(${intent.fromX},${intent.fromZ}) min=${intent.minDist} max=${intent.maxDist}")
-                val entity = npc.entity as? LivingEntity ?: run {
-                    plugin.logger.warning("[FrontendIntent] flee_from: npc.entity is not LivingEntity for ${intent.characterId}")
-                    return
-                }
-                val world = entity.world
-                val origin = entity.location
-                // Vector from threat anchor to NPC, in XZ — the direction we want to flee.
-                var dx = origin.x - intent.fromX
-                var dz = origin.z - intent.fromZ
-                val len = Math.sqrt(dx * dx + dz * dz)
-                if (len < 1e-3) {
-                    // Threat is on top of us — pick a random direction to break the tie.
-                    val angle = Math.random() * 2.0 * Math.PI
-                    dx = Math.cos(angle); dz = Math.sin(angle)
-                } else {
-                    dx /= len; dz /= len
-                }
-                val minD = if (intent.minDist > 0.0) intent.minDist else 12.0
-                val maxD = if (intent.maxDist > minD) intent.maxDist else (minD + 15.0)
-
-                // Sample candidates in a 90° cone around the away-vector at random distances.
-                // First standable candidate wins; fall back to a straight-line shot if none pass.
-                val rng = java.util.concurrent.ThreadLocalRandom.current()
-                var chosen: Location? = null
-                repeat(8) {
-                    val coneOffset = (rng.nextDouble() - 0.5) * (Math.PI / 2.0) // ±45°
-                    val baseAngle = Math.atan2(dz, dx)
-                    val a = baseAngle + coneOffset
-                    val d = minD + rng.nextDouble() * (maxD - minD)
-                    val tx = origin.x + Math.cos(a) * d
-                    val tz = origin.z + Math.sin(a) * d
-                    val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
-                    val candidate = Location(world, tx, ty, tz)
-                    val standOn = candidate.clone().add(0.0, -1.0, 0.0).block
-                    val feet = candidate.block
-                    if (standOn.type.isSolid && !feet.type.isSolid && !feet.isLiquid) {
-                        chosen = candidate
-                        return@repeat
+                "navigate_to" -> {
+                    val world = Bukkit.getWorlds().firstOrNull()
+                    if (world == null) {
+                        rejectIntent(plugin, intent, RejectionReason.EXECUTION_ERROR); return
                     }
+                    npc.navigateTo(Location(world, intent.x, intent.y, intent.z))
+                    completeIntent(plugin, intent)
                 }
-                val dest = chosen ?: run {
-                    val d = (minD + maxD) / 2.0
-                    val tx = origin.x + dx * d
-                    val tz = origin.z + dz * d
-                    val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
-                    Location(world, tx, ty, tz)
-                }
-                npc.navigateTo(dest)
-            }
-            "look_at" -> {
-                val entity = npc.entity as? LivingEntity ?: return
-                val from = if (intent.useEyeLocation) entity.eyeLocation else entity.location
-                val to: Location = if (intent.targetCharId != null) {
-                    val target = resolveTarget(plugin, intent.targetCharId) as? LivingEntity ?: return
-                    target.eyeLocation
-                } else {
+                "flee_from" -> {
+                    plugin.logger.info("[FrontendIntent] flee_from from=(${intent.fromX},${intent.fromZ}) min=${intent.minDist} max=${intent.maxDist}")
+                    val entity = npc.entity as? LivingEntity
+                    if (entity == null) {
+                        plugin.logger.warning("[FrontendIntent] flee_from: npc.entity is not LivingEntity for ${intent.characterId}")
+                        rejectIntent(plugin, intent, RejectionReason.UNSUPPORTED_BACKEND); return
+                    }
                     val world = entity.world
-                    Location(world, intent.x, intent.y, intent.z)
+                    val origin = entity.location
+                    // Vector from threat anchor to NPC, in XZ — the direction we want to flee.
+                    var dx = origin.x - intent.fromX
+                    var dz = origin.z - intent.fromZ
+                    val len = Math.sqrt(dx * dx + dz * dz)
+                    if (len < 1e-3) {
+                        // Threat is on top of us — pick a random direction to break the tie.
+                        val angle = Math.random() * 2.0 * Math.PI
+                        dx = Math.cos(angle); dz = Math.sin(angle)
+                    } else {
+                        dx /= len; dz /= len
+                    }
+                    val minD = if (intent.minDist > 0.0) intent.minDist else 12.0
+                    val maxD = if (intent.maxDist > minD) intent.maxDist else (minD + 15.0)
+
+                    // Sample candidates in a 90° cone around the away-vector at random distances.
+                    // First standable candidate wins; fall back to a straight-line shot if none pass.
+                    val rng = java.util.concurrent.ThreadLocalRandom.current()
+                    var chosen: Location? = null
+                    repeat(8) {
+                        val coneOffset = (rng.nextDouble() - 0.5) * (Math.PI / 2.0) // ±45°
+                        val baseAngle = Math.atan2(dz, dx)
+                        val a = baseAngle + coneOffset
+                        val d = minD + rng.nextDouble() * (maxD - minD)
+                        val tx = origin.x + Math.cos(a) * d
+                        val tz = origin.z + Math.sin(a) * d
+                        val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
+                        val candidate = Location(world, tx, ty, tz)
+                        val standOn = candidate.clone().add(0.0, -1.0, 0.0).block
+                        val feet = candidate.block
+                        if (standOn.type.isSolid && !feet.type.isSolid && !feet.isLiquid) {
+                            chosen = candidate
+                            return@repeat
+                        }
+                    }
+                    val dest = chosen ?: run {
+                        val d = (minD + maxD) / 2.0
+                        val tx = origin.x + dx * d
+                        val tz = origin.z + dz * d
+                        val ty = world.getHighestBlockYAt(tx.toInt(), tz.toInt()) + 1.0
+                        Location(world, tx, ty, tz)
+                    }
+                    npc.navigateTo(dest)
+                    completeIntent(plugin, intent)
                 }
+                "look_at" -> {
+                    val entity = npc.entity as? LivingEntity
+                    if (entity == null) {
+                        rejectIntent(plugin, intent, RejectionReason.UNSUPPORTED_BACKEND); return
+                    }
+                    val from = if (intent.useEyeLocation) entity.eyeLocation else entity.location
+                    val to: Location = if (intent.targetCharId != null) {
+                        val target = resolveTarget(plugin, intent.targetCharId) as? LivingEntity
+                        if (target == null) {
+                            rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                        }
+                        target.eyeLocation
+                    } else {
+                        val world = entity.world
+                        Location(world, intent.x, intent.y, intent.z)
+                    }
 
-                val dx = to.x - from.x
-                val dy = to.y - from.y
-                val dz = to.z - from.z
-                val horizDist = Math.sqrt(dx * dx + dz * dz)
-                var targetYaw = (Math.toDegrees(Math.atan2(-dx, dz)).toFloat())
-                var targetPitch = (Math.toDegrees(-Math.atan2(dy, horizDist)).toFloat())
+                    val dx = to.x - from.x
+                    val dy = to.y - from.y
+                    val dz = to.z - from.z
+                    val horizDist = Math.sqrt(dx * dx + dz * dz)
+                    var targetYaw = (Math.toDegrees(Math.atan2(-dx, dz)).toFloat())
+                    var targetPitch = (Math.toDegrees(-Math.atan2(dy, horizDist)).toFloat())
 
-                val currentYaw = entity.location.yaw
-                val currentPitch = entity.location.pitch
+                    val currentYaw = entity.location.yaw
+                    val currentPitch = entity.location.pitch
 
-                val finalYaw = if (intent.maxYaw > 0f) {
-                    val diff = wrapAngle(targetYaw - currentYaw)
-                    currentYaw + diff.coerceIn(-intent.maxYaw, intent.maxYaw)
-                } else targetYaw
+                    val finalYaw = if (intent.maxYaw > 0f) {
+                        val diff = wrapAngle(targetYaw - currentYaw)
+                        currentYaw + diff.coerceIn(-intent.maxYaw, intent.maxYaw)
+                    } else targetYaw
 
-                val finalPitch = if (intent.maxPitch > 0f) {
-                    val diff = wrapAngle(targetPitch - currentPitch)
-                    currentPitch + diff.coerceIn(-intent.maxPitch, intent.maxPitch)
-                } else targetPitch
+                    val finalPitch = if (intent.maxPitch > 0f) {
+                        val diff = wrapAngle(targetPitch - currentPitch)
+                        currentPitch + diff.coerceIn(-intent.maxPitch, intent.maxPitch)
+                    } else targetPitch
 
-                val newLoc = entity.location.clone()
-                newLoc.yaw = finalYaw
-                newLoc.pitch = finalPitch
-                entity.teleport(newLoc)
-            }
-            "attempt_hit" -> {
-                val targetId = intent.targetCharId ?: return
-                val target = resolveTarget(plugin, targetId) as? LivingEntity ?: return
-                val attacker = npc.entity as? LivingEntity ?: return
+                    val newLoc = entity.location.clone()
+                    newLoc.yaw = finalYaw
+                    newLoc.pitch = finalPitch
+                    entity.teleport(newLoc)
+                    completeIntent(plugin, intent)
+                }
+                "attempt_hit" -> {
+                    val targetId = intent.targetCharId
+                    if (targetId == null) {
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                    }
+                    val target = resolveTarget(plugin, targetId) as? LivingEntity
+                    if (target == null) {
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                    }
+                    val attacker = npc.entity as? LivingEntity
+                    if (attacker == null) {
+                        rejectIntent(plugin, intent, RejectionReason.UNSUPPORTED_BACKEND); return
+                    }
+                    if (attacker.isDead) {
+                        rejectIntent(plugin, intent, RejectionReason.NPC_DEAD); return
+                    }
 
-                if (plugin.configService.combatEnabled) {
-                    // Route through directional combat. Direction comes from sim;
-                    // null falls back to a random pick so legacy callers still work.
-                    val service = plugin.directionalCombatService
-                    val combatant =
-                        service.registry.byUuid(attacker.uniqueId)
-                            ?: service.registry.byEntityId(attacker.entityId)
-                            ?: NpcCombatant(npc).also { service.registry.register(it) }
-                    val dir = SwingDir.fromWire(intent.swingDirection) ?: SwingDir.entries.random()
-                    service.queueSwing(combatant, dir)
-                } else {
-                    if (attacker.location.distanceSquared(target.location) <= 9.0) {
-                        attacker.attack(target)
+                    if (plugin.configService.combatEnabled) {
+                        // Route through directional combat. Direction comes from sim;
+                        // null falls back to a random pick so legacy callers still work.
+                        val service = plugin.directionalCombatService
+                        val combatant =
+                            service.registry.byUuid(attacker.uniqueId)
+                                ?: service.registry.byEntityId(attacker.entityId)
+                                ?: NpcCombatant(npc).also { service.registry.register(it) }
+                        val dir = SwingDir.fromWire(intent.swingDirection) ?: SwingDir.entries.random()
+                        service.queueSwing(combatant, dir)
+                        completeIntent(plugin, intent)
+                    } else {
+                        if (attacker.location.distanceSquared(target.location) <= 9.0) {
+                            attacker.attack(target)
+                            completeIntent(plugin, intent)
+                        } else {
+                            rejectIntent(plugin, intent, RejectionReason.OUT_OF_RANGE)
+                        }
                     }
                 }
+                "clear_target" -> {
+                    npc.cancelNavigation()
+                    completeIntent(plugin, intent)
+                }
+                else -> {
+                    plugin.logger.warning("[FrontendIntent] unknown primitive=${intent.primitive}")
+                    rejectIntent(plugin, intent, RejectionReason.INVALID_PRIMITIVE)
+                }
             }
-            "clear_target" -> {
-                npc.cancelNavigation()
-            }
+        } catch (e: Exception) {
+            plugin.logger.severe("[FrontendIntent] exception applying primitive=${intent.primitive} char=${intent.characterId}: ${e.message}")
+            e.printStackTrace()
+            rejectIntent(plugin, intent, RejectionReason.EXECUTION_ERROR)
         }
+    }
+
+    private fun completeIntent(plugin: Story, intent: FrontendIntentEvent) {
+        plugin.eventBus.emit(
+            IntentCompletedEvent(
+                intentId = intent.intentId,
+                characterId = intent.characterId,
+                primitive = intent.primitive,
+            ),
+        )
+    }
+
+    private fun rejectIntent(plugin: Story, intent: FrontendIntentEvent, reason: RejectionReason) {
+        plugin.eventBus.emit(
+            IntentRejectedEvent(
+                intentId = intent.intentId,
+                characterId = intent.characterId,
+                primitive = intent.primitive,
+                reason = reason,
+            ),
+        )
     }
 
     private const val SPAWN_RADIUS = 96.0

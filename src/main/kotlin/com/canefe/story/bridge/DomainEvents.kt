@@ -319,8 +319,68 @@ data class FrontendIntentEvent(
     // attempt_hit: directional combat swing direction. Null = plugin picks.
     // Wire-format string ("overhead"/"left"/"right"/"thrust") parsed via SwingDir.fromWire.
     val swingDirection: String? = null,
+    // Sim-minted correlation id. Echoed back via IntentCompletedEvent/IntentRejectedEvent.
+    // Empty string when absent (older sim builds).
+    val intentId: String = "",
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.intent"
+}
+
+/**
+ * Why an intent was rejected by the actuator layer. Typed so sim behaviors can
+ * pattern-match on the reason instead of parsing strings.
+ */
+@Serializable
+enum class RejectionReason {
+    NPC_NOT_FOUND,
+    TARGET_NOT_FOUND,
+    OUT_OF_RANGE,
+    NPC_DEAD,
+    NPC_BUSY,
+    INVALID_PRIMITIVE,
+    UNSUPPORTED_BACKEND,
+    EXECUTION_ERROR,
+}
+
+/**
+ * Marker interface so listeners can subscribe to all intent outcomes at once
+ * (`eventBus.on<IntentOutcomeEvent> { ... }`). Wire serialization stays on the
+ * concrete subtypes — kotlinx polymorphic serializers are unused here.
+ */
+sealed interface IntentOutcomeEvent : SerializableStoryEvent {
+    val intentId: String
+    val characterId: String
+    val primitive: String
+    val timestamp: Long
+}
+
+/**
+ * Plugin → Go → sim: an intent was successfully applied.
+ * Sim's blackboard treats this as "stop re-issuing".
+ */
+@Serializable
+data class IntentCompletedEvent(
+    override val intentId: String,
+    override val characterId: String,
+    override val primitive: String,
+    override val timestamp: Long = System.currentTimeMillis(),
+) : IntentOutcomeEvent {
+    override val eventType: String get() = "intent.completed"
+}
+
+/**
+ * Plugin → Go → sim: an intent could not be applied. `reason` is typed so sim
+ * behaviors can decide whether to retry, re-plan, or abandon.
+ */
+@Serializable
+data class IntentRejectedEvent(
+    override val intentId: String,
+    override val characterId: String,
+    override val primitive: String,
+    val reason: RejectionReason,
+    override val timestamp: Long = System.currentTimeMillis(),
+) : IntentOutcomeEvent {
+    override val eventType: String get() = "intent.rejected"
 }
 
 /**
