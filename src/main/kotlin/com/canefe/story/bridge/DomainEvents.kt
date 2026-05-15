@@ -165,6 +165,29 @@ data class CharacterUpdateIntent(
     override val eventType: String get() = "intent.character.update"
 }
 
+@Serializable
+data class SessionStartedIntent(
+    val sessionId: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "intent.session.started"
+}
+
+@Serializable
+data class SessionEndedIntent(
+    val sessionId: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "intent.session.ended"
+}
+
+@Serializable
+data class SessionNarrationIntent(
+    val sessionId: String,
+    val text: String,
+    val playerNames: List<String>,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "intent.session.narration"
+}
+
 /**
  * Go → Plugin: send a named MythicMobs signal to an NPC.
  * The signal name is a motor command (AI_Run, AI_Fight, AI_Idle, etc.).

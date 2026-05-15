@@ -57,6 +57,7 @@ import com.canefe.story.player.PlayerManager
 import com.canefe.story.quest.QuestListener
 import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
+import com.canefe.story.session.SessionIntentListener
 import com.canefe.story.session.SessionManager
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
@@ -652,6 +653,10 @@ open class Story :
         eventBus.on<QuestUpdateIntent> { IntentExecutor.executeQuestUpdateIntent(this, it) }
         eventBus.on<QuestCompleteIntent> { IntentExecutor.executeQuestCompleteIntent(this, it) }
         eventBus.on<CharacterUpdateIntent> { IntentExecutor.executeCharacterUpdateIntent(this, it) }
+        val sessionIntentListener = SessionIntentListener(this)
+        eventBus.on<SessionStartedIntent> { sessionIntentListener.onStarted(it) }
+        eventBus.on<SessionEndedIntent> { sessionIntentListener.onEnded(it) }
+        eventBus.on<SessionNarrationIntent> { sessionIntentListener.onNarration(it) }
         eventBus.on<SimStatusEvent> { if (it.running) onSimHeartbeat() }
         eventBus.on<SimAffordanceRegistryEvent> {
             affordanceTypeRegistry.update(it.types)

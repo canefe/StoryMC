@@ -264,6 +264,14 @@ class SessionManager(
             }
     }
 
+    fun onStartedFromBridge(sessionId: String) {
+        plugin.logger.info("[Session] (stub) started from bridge: $sessionId")
+    }
+
+    fun onEndedFromBridge(sessionId: String) {
+        plugin.logger.info("[Session] (stub) ended from bridge: $sessionId")
+    }
+
     /** End the active session and persist it to disk. */
     fun endSession() {
         val session = current.getAndSet(null) ?: return

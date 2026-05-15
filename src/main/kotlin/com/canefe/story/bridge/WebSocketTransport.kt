@@ -225,6 +225,9 @@ class WebSocketTransport(
                 "npc.spawn_query" -> json.decodeFromString<NpcSpawnQueryEvent>(data)
                 "npc.spawn_query_response" -> json.decodeFromString<NpcSpawnQueryResponseEvent>(data)
                 "frontend.ready" -> json.decodeFromString<FrontendReadyEvent>(data)
+                "intent.session.started" -> json.decodeFromString<SessionStartedIntent>(data)
+                "intent.session.ended" -> json.decodeFromString<SessionEndedIntent>(data)
+                "intent.session.narration" -> json.decodeFromString<SessionNarrationIntent>(data)
                 // Pass through unknown event types as generic StoryEvents
                 // so listeners registered by eventType string (e.g. intelligence.response) still receive them
                 else ->
