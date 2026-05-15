@@ -297,6 +297,19 @@ data class DecisionResponseEvent(
 }
 
 /**
+ * Plugin → Go: the DM's decision for a single permission.ask. accepted=false
+ * covers explicit deny, timeout, and no-DM-online — story-go does not
+ * distinguish between them. Carries the same requestId Go sent.
+ */
+@Serializable
+data class PermissionResponseEvent(
+    val requestId: String,
+    val accepted: Boolean,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "permission.response"
+}
+
+/**
  * Sim → Plugin: a frontend primitive intent from a behavior hook.
  * The plugin executes it against the in-world NPC.
  */

@@ -191,6 +191,7 @@ open class Story :
 
     // Decision relay — bridges Go decision events to Fabric/plugin-message clients and back
     lateinit var decisionRelay: DecisionRelay
+    lateinit var permissionRelay: PermissionRelay
         private set
 
     /**
@@ -700,6 +701,10 @@ open class Story :
         decisionRelay = DecisionRelay(this)
         decisionRelay.register()
 
+        // Initialize permission relay (story-go side-effect gates → DM prompts)
+        permissionRelay = PermissionRelay(this)
+        permissionRelay.register()
+
         val mode = if (configService.bridgeEnabled) "Bridge" else "Local"
         logger.info(
             "Event bus initialized — transports: Bukkit${if (configService.bridgeEnabled) ", WebSocket" else ""}" +
@@ -728,6 +733,7 @@ open class Story :
             if (::voiceManager.isInitialized) voiceManager.shutdown()
             if (::storageFactory.isInitialized) storageFactory.shutdown()
             if (::decisionRelay.isInitialized) decisionRelay.unregister()
+            if (::permissionRelay.isInitialized) permissionRelay.unregister()
             eventBus.shutdown()
 
             logger.info("Story plugin has been successfully disabled.")

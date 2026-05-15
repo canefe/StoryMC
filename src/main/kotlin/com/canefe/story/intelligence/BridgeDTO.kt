@@ -274,6 +274,20 @@ data class DecisionResponseDTO(
 )
 
 /**
+ * Inbound from Go: ask the DM whether story-go may proceed with some
+ * side effect (memory writes today; generic for any future gate).
+ * Plugin replies with PermissionResponseEvent over the bus.
+ */
+@Serializable
+data class PermissionAskDTO(
+    val requestId: String,
+    val trigger: String,
+    val permission: String = "story.dm",
+    val timeoutSec: Int = 60,
+    val description: String,
+)
+
+/**
  * Constants for intelligence wire protocol.
  */
 object EventType {
@@ -283,6 +297,8 @@ object EventType {
     const val DECISION_PROMPT = "decision.prompt"
     const val DECISION_OBSERVE = "decision.observe"
     const val DECISION_RESPONSE = "decision.response"
+    const val PERMISSION_ASK = "permission.ask"
+    const val PERMISSION_RESPONSE = "permission.response"
 }
 
 /**
