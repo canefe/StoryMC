@@ -423,7 +423,7 @@ open class Story :
         }
 
         timeService = TimeService(this)
-        sessionManager = SessionManager(this, storageFactory.sessionStorage)
+        sessionManager = SessionManager(this)
         disguiseManager = DisguiseManager(this)
         typingSessionManager = TypingSessionManager(this)
         contextExtractor = ContextExtractor(this)
@@ -612,8 +612,7 @@ open class Story :
             // Push new storage implementations to all managers
             locationManager.updateStorage(storageFactory.locationStorage)
             questManager.updateStorage(storageFactory.questStorage)
-            sessionManager.updateStorage(storageFactory.sessionStorage)
-            relationshipManager.updateStorage(storageFactory.relationshipStorage)
+relationshipManager.updateStorage(storageFactory.relationshipStorage)
             lorebookManager.updateStorage(storageFactory.loreStorage)
             playerManager.updateStorage(storageFactory.playerStorage)
             worldEventManager.updateStorage(storageFactory.worldEventStorage)

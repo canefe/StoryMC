@@ -1,365 +1,73 @@
 package com.canefe.story.session
 
 import com.canefe.story.Story
-import com.canefe.story.conversation.ConversationMessage
-import com.canefe.story.storage.SessionDocument
-import com.canefe.story.storage.SessionStorage
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Manager to track gameplay sessions and persist them using a storage backend.
+ * Thin proxy over the Go-side session handler. The plugin no longer owns
+ * the sessions Mongo collection — start/end/add-player events flow to Go
+ * via DomainEventEmitter, and the current sessionId is mirrored back via
+ * SessionIntentListener.
  */
 class SessionManager(
     private val plugin: Story,
-    private var sessionStorage: SessionStorage,
 ) {
-    fun updateStorage(storage: SessionStorage) {
-        sessionStorage = storage
-    }
+    private val current = AtomicReference<String?>(null)
 
-    private val current = AtomicReference<Session?>(null)
-    private var currentSessionId: String? = null
-    private var lastSaveTime: Long = 0
-
-    init {
-        // Start autosave task (every 2 minutes)
-        plugin.server.scheduler.runTaskTimerAsynchronously(
-            plugin,
-            Runnable {
-                autosaveCurrentSession()
-            },
-            20 * 30,
-            20 * 120,
-        ) // 30s initial delay, 2min interval
-    }
-
-    fun load() {
-        autosaveCurrentSession()
-    }
-
-    /** Start a new session if none is active. */
     fun startSession() {
-        if (current.get() != null) return
-
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy_HH-mm-ss"))
-        val session = Session(plugin.timeService.getCurrentGameTime())
-        current.set(session)
-
-        currentSessionId = "session-$timestamp"
-
-        // Let's add all currently online players to the session by default
-        plugin.server.onlinePlayers.forEach { player ->
-            session.players.add(player.name)
+        if (current.get() != null) {
+            plugin.logger.info("Session already active locally; ignoring start.")
+            return
         }
-
-        // Save immediately
-        autosaveCurrentSession()
-
-        plugin.logger.info("Started new session: $currentSessionId")
+        val uuids = plugin.server.onlinePlayers.map { it.uniqueId.toString() }
+        plugin.domainEvents.emitSessionStart(
+            initialPlayerUuids = uuids,
+            startTimeGame = plugin.timeService.getCurrentGameTime(),
+        )
+        plugin.logger.info("Session start requested for ${uuids.size} players")
     }
 
-    /** Returns true if a session is currently active. */
+    fun endSession() {
+        if (current.get() == null) {
+            plugin.logger.info("No local session to end.")
+            return
+        }
+        plugin.domainEvents.emitSessionEnd(plugin.timeService.getCurrentGameTime())
+    }
+
+    fun addPlayer(name: String) {
+        val player = plugin.server.getPlayer(name)
+        if (player == null) {
+            plugin.logger.warning("addPlayer: $name not online; skipping")
+            return
+        }
+        plugin.domainEvents.emitSessionAddPlayer(player.uniqueId.toString())
+    }
+
     fun hasActiveSession(): Boolean = current.get() != null
 
-    /** Returns the current session ID, or null if no session is active. */
-    fun getCurrentSessionId(): String? = currentSessionId
+    fun getCurrentSessionId(): String? = current.get()
 
-    /** Add a player name to the active session. */
-    fun addPlayer(name: String) {
-        current.get()?.players?.add(name)
-        autosaveCurrentSession()
-    }
-
-    /**
-     * Generate an AI response based on the input text enriched with relevant context,
-     * then append the response to the session history.
-     */
-    fun feed(
-        text: String,
-        force: Boolean = false,
-    ) {
-        val session = current.get() ?: return
-
-        // Gather context from lore, NPCs, and locations
-        val contextBuilder = StringBuilder()
-
-        // Find relevant lore
-        val loreContexts = plugin.lorebookManager.findLoresByKeywords(text)
-        if (loreContexts.isNotEmpty()) {
-            contextBuilder.append("RELEVANT LORE:\n")
-            loreContexts.take(3).forEach { lore ->
-                contextBuilder.append("- ${lore.loreName}: ${lore.context}\n")
-            }
-            contextBuilder.append("\n")
-        }
-
-        // Extract keywords for location and NPC matching
-        val keywords =
-            text
-                .split(" ")
-                .filter { it.length > 3 }
-                .map { it.lowercase().trim(',', '.', '?', '!', '\'', '"') }
-                .distinct()
-
-        // Determine which player is mentioned in the text and get their current location
-        var currentPlayerLocation: String? = null
-        for (playerName in session.players) {
-            val player = plugin.server.getPlayer(playerName)
-            if (player != null) {
-                val nickname =
-                    com.canefe.story.util.EssentialsUtils
-                        .getNickname(player.name)
-                if (text.contains(player.name, ignoreCase = true) ||
-                    text.contains(nickname, ignoreCase = true) ||
-                    keywords.any { keyword ->
-                        keyword.equals(player.name, ignoreCase = true) ||
-                            keyword.equals(nickname, ignoreCase = true)
-                    }
-                ) {
-                    val actualLocation = plugin.locationManager.getLocationByPosition2D(player.location, 150.0)
-                    if (actualLocation != null) {
-                        currentPlayerLocation = "${player.name} is currently at ${actualLocation.name}.\n" +
-                            "Location context: ${actualLocation.getContextForPrompt(plugin.locationManager)}\n"
-                        break
-                    }
-                }
-            }
-        }
-
-        if (currentPlayerLocation == null) {
-            for (playerName in session.players) {
-                val player = plugin.server.getPlayer(playerName)
-                if (player != null) {
-                    val actualLocation = plugin.locationManager.getLocationByPosition2D(player.location, 150.0)
-                    if (actualLocation != null) {
-                        currentPlayerLocation = "Current scene location: ${actualLocation.name}.\n" +
-                            "Location context: ${actualLocation.getContextForPrompt(plugin.locationManager)}\n"
-                        break
-                    }
-                }
-            }
-        }
-
-        if (currentPlayerLocation != null) {
-            contextBuilder.append("CURRENT LOCATION:\n")
-            contextBuilder.append(currentPlayerLocation)
-            contextBuilder.append("\n")
-        }
-
-        val mentionedLocations =
-            plugin.locationManager.getAllLocations().filter { location ->
-                text.contains(location.name, ignoreCase = true) ||
-                    keywords.any { keyword -> location.name.contains(keyword, ignoreCase = true) }
-            }
-
-        if (mentionedLocations.isNotEmpty()) {
-            contextBuilder.append("RELEVANT LOCATIONS:\n")
-            mentionedLocations.take(3).forEach { location ->
-                contextBuilder.append("- ${location.name}: ${location.description}\n")
-            }
-            contextBuilder.append("\n")
-        }
-
-        val allNPCNames = plugin.characterRegistry.allNPCs().map { it.name }
-        val mentionedNPCs =
-            allNPCNames.filter { npcName ->
-                text.contains(npcName, ignoreCase = true) ||
-                    keywords.any { keyword ->
-                        keyword.equals(npcName, ignoreCase = true) || npcName.contains(keyword, ignoreCase = true)
-                    }
-            }
-
-        if (mentionedNPCs.isNotEmpty()) {
-            contextBuilder.append("RELEVANT NPCS:\n")
-            mentionedNPCs.take(3).forEach { npcName ->
-                val record = plugin.characterRegistry.getByName(npcName)
-                if (record != null) {
-                    contextBuilder.append("- $npcName: ${record.appearance}\n")
-                }
-            }
-            contextBuilder.append("\n")
-        }
-
-        val sessionHistoryContext = session.historySummary ?: session.history.toString()
-        if (sessionHistoryContext.isNotEmpty()) {
-            contextBuilder.append("CURRENT SESSION HISTORY:\n")
-            contextBuilder.append(sessionHistoryContext)
-            contextBuilder.append("\n")
-        }
-
-        val messages =
-            mutableListOf(
-                ConversationMessage(
-                    "system",
-                    """
-            You are a narrative storyteller in a medieval fantasy world. Convert the given input
-            into a rich narrative description, incorporating any context about locations, NPCs,
-            and lore provided below.
-
-            Write in a descriptive, literary style appropriate for a fantasy story.
-            Be specific, evocative, and incorporate references to the world.
-            Limit your response to 2-3 paragraphs maximum.
-
-            $contextBuilder
-            """,
-                ),
-                ConversationMessage("user", text),
-            )
-
-        plugin
-            .getAIResponse(messages)
-            .thenAccept { aiResponse ->
-                if (aiResponse != null) {
-                    val addToSession = {
-                        session.history.append(aiResponse)
-                        var message = aiResponse
-                        message = message.replace(Regex("\"([^\"]*)\""), "<yellow>\"$1\"</yellow>")
-                        val formatted =
-                            plugin.npcMessageService.formatMessage(
-                                message = message,
-                                name = "",
-                                formatColor = "<color:#e67e22>",
-                                formatColorSuffix = "</color:#e67e22>",
-                            )
-                        if (plugin.config.broadcastSessionEntries) {
-                            session.players.forEach { player ->
-                                val ply = plugin.server.getPlayer(player)
-                                for (messagePart in formatted) {
-                                    ply?.sendMessage(messagePart)
-                                }
-                            }
-                        }
-                        session.history.append("\n\n")
-                        session.entriesSinceLastSummary++
-                        autosaveCurrentSession()
-                        summarizeIfNeeded(session)
-                    }
-
-                    if (force) {
-                        addToSession()
-                    } else {
-                        plugin.taskManager.createTask(
-                            description =
-                                "<yellow>Following narrative response will be added to session" +
-                                    " history. Do you want to proceed?</yellow> \n\n $aiResponse",
-                            permission = "story.task.respond",
-                            onAccept =
-                                Runnable {
-                                    addToSession()
-                                },
-                            onRefuse =
-                                Runnable {
-                                    plugin.logger.info("Narrative response was not added to session history. Rejected.")
-                                },
-                        )
-                    }
-                } else {
-                    plugin.logger.warning("[ERROR] Failed to generate narrative response")
-                }
-            }.exceptionally { e ->
-                plugin.logger.warning("[ERROR] Failed to process narrative: ${e.message}")
-                null
-            }
-    }
-
+    /** Called by SessionIntentListener when Go confirms a session started. */
     fun onStartedFromBridge(sessionId: String) {
-        plugin.logger.info("[Session] (stub) started from bridge: $sessionId")
+        current.set(sessionId)
+        plugin.logger.info("Session active: $sessionId")
     }
 
+    /** Called by SessionIntentListener when Go confirms a session ended. */
     fun onEndedFromBridge(sessionId: String) {
-        plugin.logger.info("[Session] (stub) ended from bridge: $sessionId")
+        plugin.logger.info("Session ended: $sessionId")
+        current.set(null)
     }
 
-    /** End the active session and persist it to disk. */
-    fun endSession() {
-        val session = current.getAndSet(null) ?: return
-        session.endTime = plugin.timeService.getCurrentGameTime()
-
-        val sessionId = currentSessionId
-        if (sessionId != null) {
-            val doc = sessionToDocument(sessionId, session)
-            sessionStorage.saveSession(sessionId, doc)
-            plugin.logger.info("Session ended and saved: $sessionId")
-        }
-
-        currentSessionId = null
-    }
-
-    companion object {
-        private const val SUMMARIZE_EVERY_N_ENTRIES = 3
-    }
-
-    private fun summarizeIfNeeded(session: Session) {
-        if (session.entriesSinceLastSummary < SUMMARIZE_EVERY_N_ENTRIES) return
-
-        val historyText = session.history.toString()
-        if (historyText.isBlank()) return
-
-        val previousSummary = session.historySummary
-        val summaryPrompt =
-            if (previousSummary != null) {
-                "Previous summary:\n$previousSummary\n\nNew entries since last summary:\n$historyText"
-            } else {
-                historyText
-            }
-
-        val messages =
-            mutableListOf(
-                ConversationMessage("system", plugin.promptService.getSessionHistorySummaryPrompt()),
-                ConversationMessage("user", summaryPrompt),
-            )
-
-        plugin
-            .getAIResponse(messages, lowCost = true)
-            .thenAccept { summary ->
-                if (summary != null) {
-                    session.historySummary = summary
-                    session.entriesSinceLastSummary = 0
-                    plugin.logger.info("Session history summarized successfully")
-                }
-            }.exceptionally { e ->
-                plugin.logger.warning("[ERROR] Failed to summarize session history: ${e.message}")
-                null
-            }
-    }
-
-    private fun autosaveCurrentSession() {
-        val session = current.get() ?: return
-        val sessionId = currentSessionId ?: return
-
-        if (System.currentTimeMillis() - lastSaveTime > 5000) {
-            val doc = sessionToDocument(sessionId, session)
-            sessionStorage.updateSession(sessionId, doc)
-            lastSaveTime = System.currentTimeMillis()
-            plugin.logger.info("Auto-saved active session: $sessionId")
-        }
-    }
-
-    /** Persist and clear the current session. */
+    /** Plugin shutdown: emit end if local mirror still shows an active session. */
     fun shutdown() {
-        current.getAndSet(null)?.let { session ->
-            session.endTime = plugin.timeService.getCurrentGameTime()
-            val sessionId = currentSessionId
-            if (sessionId != null) {
-                val doc = sessionToDocument(sessionId, session)
-                sessionStorage.saveSession(sessionId, doc)
-            }
+        if (current.get() != null) {
+            plugin.domainEvents.emitSessionEnd(plugin.timeService.getCurrentGameTime())
         }
-        currentSessionId = null
+        current.set(null)
     }
 
-    private fun sessionToDocument(
-        sessionId: String,
-        session: Session,
-    ): SessionDocument =
-        SessionDocument(
-            sessionId = sessionId,
-            startTime = session.startTime,
-            endTime = session.endTime,
-            players = session.players.toList(),
-            history = session.history.toString(),
-            active = session.endTime == null,
-        )
+    /** Stub kept for compatibility with ConfigService.load() callers. */
+    fun load() = Unit
 }
