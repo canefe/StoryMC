@@ -160,4 +160,24 @@ class DomainEventEmitter(
             ),
         )
     }
+
+    fun emitSessionStart(
+        initialPlayerUuids: List<String>,
+        startTimeGame: Long,
+    ) {
+        emit(
+            SessionStartEvent(
+                initialPlayerUuids = initialPlayerUuids,
+                startTimeGame = startTimeGame,
+            ),
+        )
+    }
+
+    fun emitSessionEnd(endTimeGame: Long) {
+        emit(SessionEndEvent(endTimeGame = endTimeGame))
+    }
+
+    fun emitSessionAddPlayer(playerUuid: String) {
+        emit(SessionAddPlayerEvent(playerUuid = playerUuid))
+    }
 }

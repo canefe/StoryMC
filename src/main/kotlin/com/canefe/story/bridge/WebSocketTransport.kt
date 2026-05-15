@@ -199,6 +199,9 @@ class WebSocketTransport(
             is FrontendPauseEvent -> json.encodeToJsonElement(event)
             is IntentCompletedEvent -> json.encodeToJsonElement(event)
             is IntentRejectedEvent -> json.encodeToJsonElement(event)
+            is SessionStartEvent -> json.encodeToJsonElement(event)
+            is SessionEndEvent -> json.encodeToJsonElement(event)
+            is SessionAddPlayerEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 

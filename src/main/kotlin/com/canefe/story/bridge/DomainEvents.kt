@@ -93,6 +93,28 @@ data class SessionFeedEvent(
     override val eventType: String get() = "domain.session.feed"
 }
 
+@Serializable
+data class SessionStartEvent(
+    val initialPlayerUuids: List<String>,
+    val startTimeGame: Long,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "domain.session.start"
+}
+
+@Serializable
+data class SessionEndEvent(
+    val endTimeGame: Long,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "domain.session.end"
+}
+
+@Serializable
+data class SessionAddPlayerEvent(
+    val playerUuid: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "domain.session.add_player"
+}
+
 // ── Sim status (sim → Go → Plugin) ───────────────────────────────────
 
 /**
