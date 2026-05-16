@@ -149,22 +149,11 @@ class WebSocketTransport(
     private fun handleInboundMessage(payload: String) {
         try {
             val bridgeMessage = json.decodeFromString<BridgeMessage>(payload)
-            if (bridgeMessage.type == "npc.spawn_query_response") {
-                logger.info("[WS] received npc.spawn_query_response payload=${payload.take(200)}")
-            }
             val event = deserializeEvent(bridgeMessage) ?: return
 
             Bukkit.getScheduler().runTask(
                 plugin,
                 Runnable {
-                    if (bridgeMessage.type == "npc.spawn_query_response") {
-                        val key = event::class.java.name
-                        val story = plugin as? com.canefe.story.Story
-                        val bus = story?.eventBus
-                        val mapEntry = bus?.classListeners?.get(key)
-                        val keys = bus?.classListeners?.keys?.filter { it.contains("SpawnQuery") }
-                        logger.info("[WS] dispatching key=$key story=${story != null} bus=${bus != null} entryNull=${mapEntry == null} entrySize=${mapEntry?.size} matchingKeys=$keys")
-                    }
                     inboundHandler?.invoke(event)
                 },
             )
@@ -181,6 +170,7 @@ class WebSocketTransport(
             is NPCSpeakIntent -> json.encodeToJsonElement(event)
             is NPCMoveIntent -> json.encodeToJsonElement(event)
             is NPCEmoteIntent -> json.encodeToJsonElement(event)
+            is NPCActionIntent -> json.encodeToJsonElement(event)
             is PlayerProximityEvent -> json.encodeToJsonElement(event)
             is GMSpeakEvent -> json.encodeToJsonElement(event)
             is CharacterSpokeEvent -> json.encodeToJsonElement(event)
@@ -212,6 +202,7 @@ class WebSocketTransport(
                 "npc.speak" -> json.decodeFromString<NPCSpeakIntent>(data)
                 "npc.move" -> json.decodeFromString<NPCMoveIntent>(data)
                 "npc.emote" -> json.decodeFromString<NPCEmoteIntent>(data)
+                "npc.action" -> json.decodeFromString<NPCActionIntent>(data)
                 "npc.signal" -> json.decodeFromString<NPCSignalIntent>(data)
                 "player.message" -> json.decodeFromString<PlayerMessageEvent>(data)
                 "npc.damaged" -> json.decodeFromString<NPCDamagedEvent>(data)

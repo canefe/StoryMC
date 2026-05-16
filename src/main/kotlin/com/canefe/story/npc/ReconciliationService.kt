@@ -34,10 +34,6 @@ class ReconciliationService(private val plugin: Story) {
 
     fun requestNearby(world: String, x: Double, y: Double, z: Double, radius: Double, source: String) {
         val requestId = UUID.randomUUID().toString()
-        plugin.logger.info(
-            "[Reconcile] requestNearby src=$source requestId=$requestId world=$world " +
-                "pos=($x,$y,$z) radius=$radius"
-        )
         val timeoutMs = plugin.configService.reconcileResponseTimeoutMillis
         val timeoutTaskId = Bukkit.getScheduler().runTaskLater(
             plugin,
@@ -63,7 +59,6 @@ class ReconciliationService(private val plugin: Story) {
     }
 
     private fun handleResponse(event: NpcSpawnQueryResponseEvent) {
-        plugin.logger.info("[Reconcile] handleResponse entered requestId=${event.requestId} pending=${pending.size}")
         val entry = pending.remove(event.requestId)
         if (entry == null) {
             plugin.logger.warning("[Reconcile] response for unknown requestId=${event.requestId}, dropping")
@@ -87,10 +82,6 @@ class ReconciliationService(private val plugin: Story) {
             applied++
         }
         hasAppliedAnyResponse = true
-        plugin.logger.info(
-            "[Reconcile] response requestId=${event.requestId} total=${event.intents.size} " +
-                "applied=$applied alreadySpawned=$skipped"
-        )
         try {
             plugin.frontendReadinessTracker.markReconcileApplied()
         } catch (_: UninitializedPropertyAccessException) {

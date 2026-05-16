@@ -202,18 +202,9 @@ class NPCManager(
                     // Have the NPC face the player
                     makeNPCFaceLocation(npc, player.location)
 
-                    // create a list consisting of npc
-                    val npcs = ArrayList<StoryNPC>()
-                    npcs.add(npc)
-
-                    val conversation = plugin.conversationManager.startConversation(player, npcs)
-                    if (radiant) conversation.radiant = true
-
-                    // Send the message
-                    plugin.npcMessageService.broadcastNPCMessage(message, npc)
-
-                    // Add NPC message
-                    conversation.addNPCMessage(npc, message)
+                    // Broadcast the line via speakAsNPC so speech perception is emitted,
+                    // without creating or joining a Conversation aggregate.
+                    plugin.conversationManager.speakAsNPC(npc, message)
 
                     // Set cooldown for this NPC
                     setNPCCooldown(npc)
@@ -251,64 +242,10 @@ class NPCManager(
                     // Have the initiator face the target
                     makeNPCFaceLocation(initiator, target.entity!!.location)
 
-                    // Send the message
-                    plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator, streaming = true)
-                    plugin.npcMessageService.broadcastNPCMessage(firstMessage, initiator)
-                    // Start a conversation between the NPCs
-                    val npcs = ArrayList<StoryNPC>()
-                    npcs.add(initiator)
-                    npcs.add(target)
-
-                    val responseDelay = 4.toLong() // Delay in seconds before NPC responds
-
-                    if (radiant) {
-                        plugin.conversationManager.startRadiantConversation(npcs).thenAccept { conversation ->
-                            // Add the first message to the conversation
-                            conversation.addNPCMessage(initiator, firstMessage)
-                            // Get A list of string only from conversation.history
-                            val history = conversation.history.map { it.content }
-                            plugin.conversationManager.handleHolograms(conversation, target.name)
-                            // Generate the NPC response after a delay
-                            Bukkit.getScheduler().scheduleSyncDelayedTask(plugin, {
-                                // Generate the NPC response
-                                plugin.npcResponseService
-                                    .generateNPCResponse(target, history, broadcast = true)
-                                    .thenAccept { response ->
-                                        // Add the response to the conversation
-                                        conversation.addNPCMessage(target, response)
-                                        plugin.conversationManager.cleanupHolograms(conversation)
-
-                                        // Generate final response from initiator after another delay
-                                        val finalResponseDelay = 4.toLong() // Delay before final response
-                                        Bukkit.getScheduler().scheduleSyncDelayedTask(plugin, {
-                                            // Get updated history including target's response
-                                            val updatedHistory = conversation.history.map { it.content }
-                                            plugin.conversationManager.handleHolograms(conversation, initiator.name)
-                                            // Generate the initiator's final response
-                                            plugin.npcResponseService
-                                                .generateNPCResponse(
-                                                    initiator,
-                                                    updatedHistory,
-                                                    broadcast = true,
-                                                ).thenAccept { finalResponse ->
-                                                    // Add the final response to the conversation
-                                                    conversation.addNPCMessage(initiator, finalResponse)
-                                                    plugin.conversationManager.cleanupHolograms(conversation)
-                                                }
-                                        }, finalResponseDelay * 20L) // Convert seconds to ticks
-                                    }
-                            }, responseDelay * 20L) // Convert seconds to ticks
-                        }
-                    } else {
-                        plugin.conversationManager.startConversation(npcs).thenAccept { conversation ->
-                            // Add the first message to the conversation
-                            conversation.addNPCMessage(initiator, firstMessage)
-                            plugin.intelligence.generateNPCResponse(target, conversation).thenAccept { response ->
-                                conversation.addNPCMessage(target, response)
-                                plugin.conversationManager.speakAsNPC(target, response, addToHistory = false)
-                            }
-                        }
-                    }
+                    // Broadcast initiator's opening line via speakAsNPC — emits speech perception,
+                    // does not create a conversation. The target reacts (if at all) through the
+                    // perception system, not through scripted turn-taking here.
+                    plugin.conversationManager.speakAsNPC(initiator, firstMessage)
 
                     // Set cooldowns
                     setNPCCooldown(initiator)

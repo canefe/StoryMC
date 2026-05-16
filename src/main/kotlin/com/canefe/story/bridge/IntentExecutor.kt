@@ -74,7 +74,27 @@ object IntentExecutor {
             return
         }
 
+        // Speaking ends any prior action label automatically — the speech bubble
+        // overrides the action indicator on the client.
+        plugin.conversationManager.clearActionIndicator(npc)
         plugin.conversationManager.speakAsNPC(npc, intent.message, addressedToId = intent.addressedToId, addressedToName = intent.addressedToName)
+    }
+
+    fun executeActionIntent(
+        plugin: Story,
+        intent: NPCActionIntent,
+    ) {
+        val npc = resolveNPC(plugin, intent.characterId)
+        if (npc == null) {
+            plugin.logger.warning("[ActionIntent] NPC not found for characterId=${intent.characterId}")
+            return
+        }
+        val action = intent.action?.trim().orEmpty()
+        if (action.isEmpty()) {
+            plugin.conversationManager.clearActionIndicator(npc)
+        } else {
+            plugin.conversationManager.sendActionIndicator(npc, action)
+        }
     }
 
     fun executeMoveIntent(

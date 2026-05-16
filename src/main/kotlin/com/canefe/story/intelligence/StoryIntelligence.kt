@@ -65,9 +65,9 @@ interface StoryIntelligence {
      * @return The fleshed-out player-character dialogue
      */
     fun playerGhostwrite(
+        player: org.bukkit.entity.Player,
         characterId: String,
         characterName: String,
-        conversation: Conversation,
         draftMessage: String,
     ): CompletableFuture<String>
 

@@ -132,25 +132,31 @@ class BridgeIntelligence(
     }
 
     override fun playerGhostwrite(
+        player: org.bukkit.entity.Player,
         characterId: String,
         characterName: String,
-        conversation: Conversation,
         draftMessage: String,
     ): CompletableFuture<String> {
         if (!isSupported(Method.GM_GHOSTWRITE)) {
-            return local.playerGhostwrite(characterId, characterName, conversation, draftMessage)
+            return local.playerGhostwrite(player, characterId, characterName, draftMessage)
         }
+
+        val (nearbyNpcIds, nearbyPlayerIds) =
+            plugin.characterRegistry.getNearbyCharacterIds(
+                player,
+                plugin.config.chatRadius,
+            ) { !plugin.playerManager.isPlayerDisabled(it) }
 
         val requestId = UUID.randomUUID().toString()
         val dto =
             GMGhostwriteRequest(
                 requestId = requestId,
                 characterId = characterId,
-                conversationId = conversation.id,
+                conversationId = -1,
                 draftMessage = draftMessage,
-                history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
-                characterIds = conversation.npcNames,
-                playerCharacterIds = conversation.players.mapNotNull { Bukkit.getPlayer(it)?.characterId },
+                history = emptyList(),
+                characterIds = nearbyNpcIds,
+                playerCharacterIds = nearbyPlayerIds,
             )
 
         return sendRequest(requestId, json.encodeToJsonElement(GMGhostwriteRequest.serializer(), dto).jsonObject)
@@ -158,7 +164,7 @@ class BridgeIntelligence(
                 response["result"]?.toString()?.trim('"') ?: ""
             }.exceptionally { e ->
                 plugin.logger.warning("Bridge playerGhostwrite failed, falling back to local: ${e.message}")
-                local.playerGhostwrite(characterId, characterName, conversation, draftMessage).get()
+                local.playerGhostwrite(player, characterId, characterName, draftMessage).get()
             }
     }
 
@@ -559,6 +565,45 @@ class BridgeIntelligence(
             val res = response["result"] as? JsonObject
                 ?: throw RuntimeException("getAppearanceTemplates: missing result")
             json.decodeFromJsonElement(AppearanceTemplatesDTO.serializer(), res)
+        }
+    }
+
+    /** Fetches the perception log for a character from the orchestrator. */
+    fun getPerceptions(characterId: String): CompletableFuture<List<PerceptionEntryDTO>> {
+        if (!isSupported(Method.GET_PERCEPTIONS)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support getPerceptions"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = GetPerceptionsRequest(requestId, characterId = characterId)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(GetPerceptionsRequest.serializer(), dto).jsonObject,
+        ).thenApply<List<PerceptionEntryDTO>> { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject ?: return@thenApply emptyList()
+            val arr = res["entries"] as? JsonArray ?: return@thenApply emptyList()
+            arr.map { json.decodeFromJsonElement(PerceptionEntryDTO.serializer(), it) }
+        }
+    }
+
+    /** Removes the perception entry at [index] for [characterId]. In-memory in story-go. */
+    fun forgetPerception(characterId: String, index: Int): CompletableFuture<Boolean> {
+        if (!isSupported(Method.FORGET_PERCEPTION)) {
+            return CompletableFuture.failedFuture(
+                IllegalStateException("Bridge does not support forgetPerception"),
+            )
+        }
+        val requestId = UUID.randomUUID().toString()
+        val dto = ForgetPerceptionRequest(requestId, characterId = characterId, index = index)
+        return sendRequest(
+            requestId,
+            json.encodeToJsonElement(ForgetPerceptionRequest.serializer(), dto).jsonObject,
+        ).thenApply { response ->
+            response["error"]?.let { throw RuntimeException(it.toString().trim('"')) }
+            val res = response["result"] as? JsonObject ?: return@thenApply false
+            res["removed"]?.toString()?.trim('"') == "true"
         }
     }
 

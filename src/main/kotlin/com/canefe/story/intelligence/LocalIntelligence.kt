@@ -81,50 +81,11 @@ class LocalIntelligence(
     ): CompletableFuture<String> = CompletableFuture.completedFuture(draftMessage)
 
     override fun playerGhostwrite(
+        player: org.bukkit.entity.Player,
         characterId: String,
         characterName: String,
-        conversation: Conversation,
         draftMessage: String,
-    ): CompletableFuture<String> {
-        val recentMessages = conversation.history.map { it.content }
-        val record = plugin.characterRegistry.getById(characterId)
-
-        val appearanceBlock = "\n===APPEARANCES===\n" +
-            conversation.npcs.joinToString("\n") { convNpc ->
-                val r = plugin.characterRegistry.getByStoryNPC(convNpc)
-                "${convNpc.name}: ${r?.appearance ?: "No appearance information available."}"
-            } +
-            conversation.players.joinToString("\n") { playerId ->
-                val p = Bukkit.getPlayer(playerId) ?: return@joinToString ""
-                val nick = p.characterName
-                val r = p.character
-                "$nick: ${r?.appearance ?: "No appearance information available."}"
-            } +
-            "\n========================="
-
-        val conversationBlock = "====CURRENT CONVERSATION====\n" +
-            recentMessages.joinToString("\n") +
-            "\n=========================\n" +
-            "This is an active conversation. You are talking to: " +
-            conversation.players.joinToString(", ") { Bukkit.getPlayer(it)?.characterName ?: "" } +
-            ". " + conversation.npcNames.joinToString("\n") +
-            ". Respond in character as $characterName."
-
-        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(characterName, draftMessage)
-
-        val prompts = mutableListOf(
-            ConversationMessage("system", "You are roleplaying as $characterName in a fantasy medieval world."),
-        )
-        if (record != null && record.appearance.isNotEmpty()) {
-            prompts.add(ConversationMessage("system", "===PHYSICAL APPEARANCE===\n${record.appearance}"))
-        }
-        prompts.add(ConversationMessage("system", appearanceBlock))
-        prompts.add(ConversationMessage("system", conversationBlock))
-        prompts.add(ConversationMessage("system", talkAsNpcPrompt))
-
-        return plugin.aiResponseService.getAIResponseAsync(prompts, lowCost = false)
-            .thenApply { it?.trim() ?: "" }
-    }
+    ): CompletableFuture<String> = CompletableFuture.completedFuture(draftMessage)
 
     override fun selectNextSpeaker(conversation: Conversation): CompletableFuture<String?> =
         plugin.npcResponseService.determineNextSpeaker(conversation)

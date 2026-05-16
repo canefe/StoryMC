@@ -196,4 +196,27 @@ class CharacterRegistry(
 
         return npcIds to playerIds
     }
+
+    /**
+     * Player-centred overload of [getNearbyCharacterIds].
+     * Self is included in the player list.
+     */
+    fun getNearbyCharacterIds(
+        player: Player,
+        radius: Double,
+        playerFilter: (Player) -> Boolean = { true },
+    ): Pair<List<String>, List<String>> {
+        val npcIds =
+            NPCUtils.getNearbyNPCs(player, radius)
+                .mapNotNull { getCharacterIdForNPC(it) ?: it.name }
+
+        val nearbyPlayers = NPCUtils.getNearbyPlayers(player, radius)
+        val playerIds =
+            (nearbyPlayers + player)
+                .distinctBy { it.uniqueId }
+                .filter(playerFilter)
+                .mapNotNull { getCharacterIdForPlayer(it) }
+
+        return npcIds to playerIds
+    }
 }

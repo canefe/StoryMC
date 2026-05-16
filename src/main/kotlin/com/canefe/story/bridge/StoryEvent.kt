@@ -110,6 +110,21 @@ data class NPCEmoteIntent(
 }
 
 /**
+ * Shows or clears a transient action label on an NPC's chat bubble (e.g. "Thinking...",
+ * "Searching...", "Listening..."). Pass a blank/null [action] to clear.
+ *
+ * The orchestrator typically emits this around long-running work so players see the NPC
+ * doing something rather than standing silent.
+ */
+@Serializable
+data class NPCActionIntent(
+    val characterId: String,
+    val action: String? = null,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.action"
+}
+
+/**
  * Emitted periodically with the list of NPCs near each player.
  * Used by Go's AgentManager to preemptively research NPC context.
  */

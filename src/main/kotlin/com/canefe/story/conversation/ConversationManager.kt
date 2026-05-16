@@ -817,38 +817,40 @@ class ConversationManager(
             // Mark NPC as in conversation for behavior manager
             plugin.npcBehaviorManager.setNPCInConversation(npc, true)
 
-            // Send thinking indicator to client via action text
             if (speakerName == null || speakerName == npc.name) {
-                sendThinkingIndicator(npc)
+                sendActionIndicator(npc, "Thinking...")
             }
         }
     }
 
     /**
-     * Clean up thinking indicators from NPCs
+     * Clean up action indicators from NPCs
      */
     fun cleanupHolograms(conversation: Conversation) {
         for (npc in conversation.npcs) {
-            clearThinkingIndicator(npc)
+            clearActionIndicator(npc)
         }
     }
 
     /**
-     * Sends a thinking indicator to nearby players via the streaming message system.
-     * Shows as action text (e.g. *thinking...*) on the client's bubble renderer.
+     * Shows a transient action label on an NPC, rendered like an emote
+     * (e.g. "Thinking...", "Searching..."). Pass any short label.
      */
-    private fun sendThinkingIndicator(npc: StoryNPC) {
+    fun sendActionIndicator(npc: StoryNPC, action: String) {
         if (!npc.isSpawned || npc.entity == null) return
-        plugin.npcMessageService.broadcastNPCStreamMessage(
-            message = "*thinking...*",
+        val text = action.trim().ifEmpty { return }
+        val wrapped = if (text.startsWith("*")) text else "*$text*"
+        plugin.npcMessageService.broadcastNPCMessage(
+            message = wrapped,
             npc = npc,
+            streaming = true,
         )
     }
 
     /**
-     * Clears the thinking indicator for an NPC by sending a typing end signal.
+     * Clears any action indicator for an NPC by sending a typing end signal.
      */
-    private fun clearThinkingIndicator(npc: StoryNPC) {
+    fun clearActionIndicator(npc: StoryNPC) {
         if (!npc.isSpawned || npc.entity == null) return
         val npcUuid = npc.clientFacingUuid ?: return
         val endMessage = "<npc_typing_end>id:$npcUuid"
@@ -954,67 +956,27 @@ class ConversationManager(
         val npcName = npc.name
         val chatRadius = plugin.config.chatRadius
 
-        // Find or create conversation
-        val conversation =
-            getConversation(npcName) ?: run {
-                val nearbyNPCs = NPCUtils.getNearbyNPCs(npc, chatRadius) + listOf(npc)
-                var players = NPCUtils.getNearbyPlayers(npc, chatRadius)
-                players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
-
-                // Check for existing conversations among nearby entities
-                val existingConversation =
-                    nearbyNPCs.firstNotNullOfOrNull { getConversation(it.name) }
-
-                val playerConversation =
-                    players
-                        .flatMap { player ->
-                            getAllActiveConversations()
-                                .filter { conv -> conv.players.contains(player.uniqueId) }
-                        }.firstOrNull()
-
-                if (existingConversation != null) {
-                    if (!existingConversation.hasNPC(npc)) {
-                        existingConversation.addNPC(npc)
-                    }
-                    players.forEach { p ->
-                        if (!existingConversation.hasPlayer(p)) {
-                            existingConversation.addPlayer(p)
-                        }
-                    }
-                    return@run existingConversation
-                } else if (playerConversation != null) {
-                    if (!playerConversation.hasNPC(npc)) {
-                        playerConversation.addNPC(npc)
-                    }
-                    return@run playerConversation
-                }
-
-                // No existing conversation — create new one
-                if (players.isEmpty() && nearbyNPCs.size <= 1) {
-                    // No one around — just broadcast without conversation
-                    plugin.npcMessageService.broadcastNPCStreamMessage(message = message, npc = npc)
-                    Bukkit.getScheduler().runTaskLater(
-                        plugin,
-                        Runnable {
-                            plugin.npcMessageService.broadcastNPCMessage(message = message, npc = npc)
-                        },
-                        1L,
-                    )
-                    plugin.eventBus.emit(
-                        CharacterSpokeEvent(
-                            characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
-                            characterName = npcName,
-                            message = message,
-                        ),
-                    )
-                    emitSpeechPerception(npc, message, addressedToId = addressedToId, addressedToName = addressedToName)
-                    return
-                }
-
-                val newConv = startConversation(nearbyNPCs).join()
-                players.forEach { p -> newConv.addPlayer(p) }
-                newConv
-            }
+        // Conversation creation is no longer triggered from speech — NPCs only speak
+        // into an existing conversation. If none exists, we just broadcast + emit perception.
+        val conversation = getConversation(npcName) ?: run {
+            plugin.npcMessageService.broadcastNPCStreamMessage(message = message, npc = npc)
+            Bukkit.getScheduler().runTaskLater(
+                plugin,
+                Runnable {
+                    plugin.npcMessageService.broadcastNPCMessage(message = message, npc = npc)
+                },
+                1L,
+            )
+            plugin.eventBus.emit(
+                CharacterSpokeEvent(
+                    characterId = plugin.characterRegistry.getCharacterIdForNPC(npc),
+                    characterName = npcName,
+                    message = message,
+                ),
+            )
+            emitSpeechPerception(npc, message, addressedToId = addressedToId, addressedToName = addressedToName)
+            return
+        }
 
         // Add to history and broadcast
         if (addToHistory) conversation.addNPCMessage(npc, message)

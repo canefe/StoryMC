@@ -170,36 +170,12 @@ class MythicMobConversationIntegration(
                     return true
                 }
 
-                // check if there is any CitizensNPC nearby before starting a conversation
-                val nearbyCitizensNPCs = NPCUtils.getNearbyNPCs(player, plugin.config.chatRadius)
-
-                val existingConversation =
-                    conversationManager.getConversation(npc) ?: run {
-                        if (nearbyCitizensNPCs.isNotEmpty()) {
-                            return true
-                        }
-
-                        // No existing conversation, create a new one
-                        val npcs = ArrayList<StoryNPC>()
-                        npcs.add(npc)
-
-                        // Set MythicMob in conversation mode
-                        if (entity != null) {
-                            mythicMobsHandler.setMythicMobInConversation(entity, true)
-                            mythicMobsHandler.lookAtTarget(entity, player)
-                        }
-
-                        conversationManager.startConversation(player, npcs)
-                        return true
-                    }
-
-                // Set MythicMob in conversation mode if joining existing conversation
+                // Conversation creation is disabled; just face/track the player.
                 if (entity != null) {
                     mythicMobsHandler.setMythicMobInConversation(entity, true)
                     mythicMobsHandler.lookAtTarget(entity, player)
                 }
 
-                existingConversation.addPlayer(player)
                 return true
             }
         } catch (e: Exception) {
@@ -216,46 +192,20 @@ class MythicMobConversationIntegration(
     }
 
     /**
-     * Start a conversation with a MythicMob
+     * Mark a MythicMob as in conversation mode and face the player.
+     * Previously also created a Conversation aggregate — that's removed; speech is
+     * handled by the perception system.
      */
     fun startConversation(
         player: Player,
         entity: Entity,
     ): Boolean {
         if (!mythicMobsHandler.isMythicMob(entity)) return false
+        getOrCreateNPCAdapter(entity) ?: return false
 
-        val adapter = getOrCreateNPCAdapter(entity) ?: return false
-
-        // Mark as in conversation
         mythicMobsHandler.setMythicMobInConversation(entity, true)
-
-        // Tell the entity to look at the player
         mythicMobsHandler.lookAtTarget(entity, player)
-
-        // Start conversation using the conversation manager
-        try {
-            val conversationManager = plugin.conversationManager
-            val npcs = listOf(adapter)
-            conversationManager.startConversation(player, npcs)
-
-            // Schedule task to check if conversation ended
-            Bukkit.getScheduler().runTaskLater(
-                plugin,
-                Runnable {
-                    if (!conversationManager.isInConversation(adapter)) {
-                        mythicMobsHandler.setMythicMobInConversation(entity, false)
-                    }
-                },
-                20L,
-            ) // Check after 1 second
-
-            return true
-        } catch (e: Exception) {
-            plugin.logger.severe("Error starting conversation with MythicMob: ${e.message}")
-            e.printStackTrace()
-            mythicMobsHandler.setMythicMobInConversation(entity, false)
-            return false
-        }
+        return true
     }
 
     /**

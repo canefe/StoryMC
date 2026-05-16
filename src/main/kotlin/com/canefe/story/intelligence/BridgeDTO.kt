@@ -198,6 +198,30 @@ data class DescribeRequest(
 )
 
 @Serializable
+data class GetPerceptionsRequest(
+    val requestId: String,
+    val method: String = Method.GET_PERCEPTIONS,
+    val characterId: String,
+)
+
+@Serializable
+data class ForgetPerceptionRequest(
+    val requestId: String,
+    val method: String = Method.FORGET_PERCEPTION,
+    val characterId: String,
+    val index: Int,
+)
+
+@Serializable
+data class PerceptionEntryDTO(
+    val source: String = "",
+    val description: String = "",
+    val timestamp: Long = 0L,
+    val perceiverId: String = "",
+    val distance: Double = 0.0,
+)
+
+@Serializable
 data class AppearanceDocDTO(
     val characterId: String,
     val gender: String = "unknown",
@@ -325,4 +349,6 @@ object Method {
     const val GET_APPEARANCE = "getAppearance"
     const val DESCRIBE = "describe"
     const val GET_APPEARANCE_TEMPLATES = "getAppearanceTemplates"
+    const val GET_PERCEPTIONS = "getPerceptions"
+    const val FORGET_PERCEPTION = "forgetPerception"
 }

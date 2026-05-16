@@ -37,6 +37,8 @@ import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.NearbyNPCBroadcaster
 import com.canefe.story.npc.PositionBroadcaster
 import com.canefe.story.npc.RecognitionBroadcaster
+import com.canefe.story.npc.PerceptionCommandListener
+import com.canefe.story.npc.PerceptionLogBroadcaster
 import com.canefe.story.npc.PuppetCommandListener
 import com.canefe.story.npc.PuppetGroupBroadcaster
 import com.canefe.story.npc.PuppetManager
@@ -304,6 +306,9 @@ open class Story :
     lateinit var puppetManager: PuppetManager
     lateinit var puppetGroupBroadcaster: PuppetGroupBroadcaster
 
+    // DM perception-log inspector wheel UI in StoryClient
+    lateinit var perceptionLogBroadcaster: PerceptionLogBroadcaster
+
     // Squad command system — per-squad order state + broadcast to commanders
     lateinit var squadOrderTracker: SquadOrderTracker
     lateinit var squadListBroadcaster: SquadListBroadcaster
@@ -512,6 +517,12 @@ open class Story :
             PacketListenerPriority.NORMAL,
         )
 
+        perceptionLogBroadcaster = PerceptionLogBroadcaster(this)
+        PacketEvents.getAPI().eventManager.registerListener(
+            PerceptionCommandListener(this, perceptionLogBroadcaster),
+            PacketListenerPriority.NORMAL,
+        )
+
         squadOrderTracker = SquadOrderTracker(this)
         squadListBroadcaster = SquadListBroadcaster(this)
         squadListBroadcaster.start()
@@ -669,6 +680,7 @@ relationshipManager.updateStorage(storageFactory.relationshipStorage)
         eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
         eventBus.on<NPCMoveIntent> { IntentExecutor.executeMoveIntent(this, it) }
         eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+        eventBus.on<NPCActionIntent> { IntentExecutor.executeActionIntent(this, it) }
         eventBus.on<NPCSignalIntent> { IntentExecutor.executeSignalIntent(this, it) }
         eventBus.on<QuestAssignIntent> { IntentExecutor.executeQuestAssignIntent(this, it) }
         eventBus.on<QuestUpdateIntent> { IntentExecutor.executeQuestUpdateIntent(this, it) }

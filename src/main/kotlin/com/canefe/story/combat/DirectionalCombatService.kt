@@ -154,6 +154,7 @@ class DirectionalCombatService(
     }
 
     private fun tick() {
+        if (!plugin.configService.combatEnabled) return
         globalTick++
         val all = registry.all()
         for (c in all) advanceState(c)
