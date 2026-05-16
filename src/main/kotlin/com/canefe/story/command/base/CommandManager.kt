@@ -625,96 +625,14 @@ class CommandManager(
                 } else {
                     null
                 }
-            val conversation =
-                plugin.conversationManager.getConversation(npcName) ?: run {
-                    // create new conversation with nearby NPCs and players
-                    var nearbyNPCs =
-                        NPCUtils.getNearbyNPCs(resolvedNpc, chatRadius)
-                    var players = NPCUtils.getNearbyPlayers(resolvedNpc, chatRadius)
-
-                    if (isImpersonated && impersonator != null) {
-                        nearbyNPCs = NPCUtils.getNearbyNPCs(impersonator, chatRadius)
-                        players = NPCUtils.getNearbyPlayers(impersonator, chatRadius)
-                    }
-
-                    // remove players that have their chat disabled
-                    players = players.filterNot { plugin.playerManager.isPlayerDisabled(it) }
-
-                    // Add the NPC to the list of nearby NPCs
-                    nearbyNPCs = nearbyNPCs + listOf(resolvedNpc)
-
-                    // Check if any nearby NPCs are already in a conversation
-                    val existingConversation =
-                        nearbyNPCs.firstNotNullOfOrNull { plugin.conversationManager.getConversation(it.name) }
-
-                    // Check if any nearby players are already in a conversation
-                    val playerConversation =
-                        players
-                            .flatMap { player ->
-                                plugin.conversationManager
-                                    .getAllActiveConversations()
-                                    .filter { conv -> conv.players?.contains(player.uniqueId) == true }
-                            }.firstOrNull()
-
-                    // Use existing conversation if available
-                    if (existingConversation != null) {
-                        // Add this NPC to the existing conversation if not already included
-                        if (existingConversation.npcs?.contains(resolvedNpc) != true) {
-                            existingConversation.addNPC(resolvedNpc)
-                        }
-
-                        // Add any players not already in the conversation
-                        players.forEach { p ->
-                            if (existingConversation.players?.contains(p.uniqueId) != true) {
-                                existingConversation.addPlayer(p)
-                            }
-                        }
-
-                        // Any disguised players should also be added to the conversation
-
-                        plugin.conversationManager.handleHolograms(existingConversation, resolvedNpc.name)
-                        return@run existingConversation
-                    } else if (playerConversation != null) {
-                        // Add this NPC to the player's existing conversation
-                        if (!playerConversation.npcs.contains(resolvedNpc)) {
-                            playerConversation.addNPC(resolvedNpc)
-                        }
-
-                        plugin.conversationManager.handleHolograms(playerConversation, resolvedNpc.name)
-                        return@run playerConversation
-                    }
-
-                    if (!(players.isNotEmpty() || nearbyNPCs.size > 1)) {
-                        player.sendError("No players or NPCs nearby to start a conversation.")
-                        return
-                    }
-
-                    val newConversationFuture = plugin.conversationManager.startConversation(nearbyNPCs)
-
-                    newConversationFuture.thenAccept { newConv ->
-                        plugin.conversationManager.handleHolograms(newConv, resolvedNpc.name)
-
-                        for (p in players) {
-                            newConv.addPlayer(p)
-                        }
-                    }
-
-                    newConversationFuture.join()
-                }
-
-            // Show holograms for the NPCs
-            plugin.conversationManager.handleHolograms(conversation, resolvedNpc.name)
             if (plugin.characterRegistry.getByStoryNPC(resolvedNpc) == null) {
                 player.sendError("NPC not found in character registry.")
                 return
             }
 
-            // Reset auto mode timer to prevent double responses
-            plugin.conversationManager.resetAutoTimer(conversation)
-
-            // Delegate ghostwriting to the intelligence layer (Go orchestrator or local fallback)
-            plugin.intelligence.gmGhostwrite(resolvedNpc, conversation, message).thenApply { response ->
-                conversation.addNPCMessage(resolvedNpc, response)
+            // Delegate ghostwriting to the intelligence layer (Go orchestrator or local fallback).
+            // Audience (nearby NPCs/players) is resolved inside the intelligence implementation.
+            plugin.intelligence.gmGhostwrite(resolvedNpc, message).thenApply { response ->
                 plugin.conversationManager.speakAsNPC(resolvedNpc, response, addToHistory = false)
             }
         }
@@ -1007,28 +925,13 @@ class CommandManager(
         target: StoryNPC,
         prompt: String,
     ) {
-        // Get or create conversation for context
-        val conversation = plugin.conversationManager.getConversation(npc)
-        if (conversation != null) {
-            plugin.intelligence.gmGhostwrite(npc, conversation, prompt).thenAccept { response ->
-                Bukkit.getScheduler().runTask(
-                    plugin,
-                    Runnable {
-                        plugin.npcManager.walkToNPC(npc, target, response)
-                    },
-                )
-            }
-        } else {
-            // No conversation — fall back to direct local generation
-            val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(npc.name, prompt)
-            plugin.npcResponseService.generateNPCResponse(npc, listOf(talkAsNpcPrompt), false).thenAccept { response ->
-                Bukkit.getScheduler().runTask(
-                    plugin,
-                    Runnable {
-                        plugin.npcManager.walkToNPC(npc, target, response)
-                    },
-                )
-            }
+        plugin.intelligence.gmGhostwrite(npc, prompt).thenAccept { response ->
+            Bukkit.getScheduler().runTask(
+                plugin,
+                Runnable {
+                    plugin.npcManager.walkToNPC(npc, target, response)
+                },
+            )
         }
     }
 

@@ -100,16 +100,52 @@ class BridgeIntelligence(
 
     override fun gmGhostwrite(
         npc: StoryNPC,
-        conversation: Conversation,
         draftMessage: String,
     ): CompletableFuture<String> {
-        if (!isSupported(Method.GM_GHOSTWRITE)) return local.gmGhostwrite(npc, conversation, draftMessage)
+        if (!isSupported(Method.GM_GHOSTWRITE)) return local.gmGhostwrite(npc, draftMessage)
+
+        val (nearbyNpcIds, nearbyPlayerIds) =
+            plugin.characterRegistry.getNearbyCharacterIds(
+                npc,
+                plugin.config.chatRadius,
+            ) { !plugin.playerManager.isPlayerDisabled(it) }
 
         val requestId = UUID.randomUUID().toString()
         val dto =
             GMGhostwriteRequest(
                 requestId = requestId,
                 characterId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: npc.name,
+                conversationId = -1,
+                draftMessage = draftMessage,
+                history = emptyList(),
+                characterIds = nearbyNpcIds,
+                playerCharacterIds = nearbyPlayerIds,
+            )
+
+        return sendRequest(requestId, json.encodeToJsonElement(GMGhostwriteRequest.serializer(), dto).jsonObject)
+            .thenApply { response ->
+                response["result"]?.toString()?.trim('"') ?: ""
+            }.exceptionally { e ->
+                plugin.logger.warning("Bridge gmGhostwrite failed, falling back to local: ${e.message}")
+                local.gmGhostwrite(npc, draftMessage).get()
+            }
+    }
+
+    override fun playerGhostwrite(
+        characterId: String,
+        characterName: String,
+        conversation: Conversation,
+        draftMessage: String,
+    ): CompletableFuture<String> {
+        if (!isSupported(Method.GM_GHOSTWRITE)) {
+            return local.playerGhostwrite(characterId, characterName, conversation, draftMessage)
+        }
+
+        val requestId = UUID.randomUUID().toString()
+        val dto =
+            GMGhostwriteRequest(
+                requestId = requestId,
+                characterId = characterId,
                 conversationId = conversation.id,
                 draftMessage = draftMessage,
                 history = conversation.history.takeLast(20).map { MessageDTO(it.role, it.content) },
@@ -121,8 +157,8 @@ class BridgeIntelligence(
             .thenApply { response ->
                 response["result"]?.toString()?.trim('"') ?: ""
             }.exceptionally { e ->
-                plugin.logger.warning("Bridge gmGhostwrite failed, falling back to local: ${e.message}")
-                local.gmGhostwrite(npc, conversation, draftMessage).get()
+                plugin.logger.warning("Bridge playerGhostwrite failed, falling back to local: ${e.message}")
+                local.playerGhostwrite(characterId, characterName, conversation, draftMessage).get()
             }
     }
 

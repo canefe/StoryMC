@@ -15,7 +15,7 @@ import java.io.DataOutputStream
  * Wire format:
  *   short  count
  *   for each:
- *     UTF  npcDisplayName
+ *     UTF  characterId
  */
 class PuppetGroupBroadcaster(
     private val plugin: Story,
@@ -24,11 +24,11 @@ class PuppetGroupBroadcaster(
 
     fun push(player: Player) {
         if (!plugin.isNpcRegistryReady) return
-        val names =
+        val charIds =
             plugin.puppetManager
                 .resolveGroup(player)
-                .map { it.name }
-        val bytes = encode(names)
+                .mapNotNull { plugin.characterRegistry.getCharacterIdForNPC(it) }
+        val bytes = encode(charIds)
         try {
             val packet = WrapperPlayServerPluginMessage(channelId, bytes)
             PacketEvents.getAPI().playerManager.getUser(player).sendPacket(packet)
@@ -37,11 +37,11 @@ class PuppetGroupBroadcaster(
         }
     }
 
-    private fun encode(names: List<String>): ByteArray {
+    private fun encode(charIds: List<String>): ByteArray {
         val baos = ByteArrayOutputStream()
         DataOutputStream(baos).use { out ->
-            out.writeShort(names.size)
-            for (name in names) out.writeUTF(name)
+            out.writeShort(charIds.size)
+            for (id in charIds) out.writeUTF(id)
         }
         return baos.toByteArray()
     }

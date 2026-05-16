@@ -477,7 +477,9 @@ class NPCMessageService(
 
         val out = ConcurrentHashMap<UUID, String>()
         val futures = viewers.map { p ->
-            if (p.hasPermission("story.dm")) {
+            val dmReveals = p.hasPermission("story.dm") &&
+                plugin.playerManager.getPlayerConfig(p.uniqueId).dmRevealRealNames
+            if (dmReveals) {
                 val perceiverId = p.characterId
                 if (perceiverId.isNullOrEmpty()) {
                     out[p.uniqueId] = realName

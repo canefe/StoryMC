@@ -153,6 +153,8 @@ class NearbyNPCBroadcaster(
 
     private fun broadcastTo(player: Player) {
         val canSpeakAs = player.hasPermission("story.dm")
+        val revealRealNames = canSpeakAs &&
+            plugin.playerManager.getPlayerConfig(player.uniqueId).dmRevealRealNames
         val nearbyNpcs = plugin.npcRegistry.nearby(player.location, radius)
         val nearbyPlayers =
             Bukkit.getOnlinePlayers()
@@ -193,7 +195,7 @@ class NearbyNPCBroadcaster(
                         characterId = charId,
                         descriptor = "",
                         shortLabel = "",
-                        realName = if (canSpeakAs) npc.name else "",
+                        realName = if (revealRealNames) npc.name else "",
                         hp = hp,
                         maxHp = maxHp,
                         canSpeakAs = canSpeakAs,
@@ -222,7 +224,7 @@ class NearbyNPCBroadcaster(
                         characterId = charId,
                         descriptor = "",
                         shortLabel = "",
-                        realName = if (canSpeakAs) playerCharName else "",
+                        realName = if (revealRealNames) playerCharName else "",
                         hp = hp,
                         maxHp = maxHp,
                         canSpeakAs = false,

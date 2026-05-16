@@ -165,112 +165,59 @@ class NPCInteractionListener(
         message: String,
     ) {
         val playerCharacterName = player.characterName
+        val playerCharacterId = player.characterId
 
-        // Get player record via the unified resolver (players.activeCharacters.minecraft + legacy fallback)
-        val playerRecord =
-            player.character
-                ?: run {
-                    player.sendError(
-                        "Could not find character data for $playerCharacterName.",
-                    )
-                    return
-                }
-
-        // Build conversation context similar to /g command
-        val conversation = getOrCreateConversationForPlayer(player, playerCharacterName)
-        val recentMessages = conversation.history.map { it.content }
-
-        // Prepare response context (same as /g command)
-        var responseContext =
-            listOf(
-                "====CURRENT CONVERSATION====\n" +
-                    recentMessages.joinToString("\n") +
-                    "\n=========================\n" +
-                    "This is an active conversation and you are talking to multiple characters: ${
-                        conversation.players.joinToString(
-                            ", ",
-                        ) {
-                            Bukkit.getPlayer(it)?.characterName ?: ""
-                        }
-                    }. " +
-                    conversation.npcNames.joinToString("\n") +
-                    "\n===APPEARANCES===\n" +
-                    conversation.npcs.joinToString("\n") { npc ->
-                        val record = plugin.characterRegistry.getByStoryNPC(npc)
-                        "${npc.name}: ${record?.appearance ?: "No appearance information available."}"
-                    } +
-                    // We treat players as NPCs for this purpose
-                    conversation.players.joinToString("\n") { playerId ->
-                        val p = Bukkit.getPlayer(playerId)
-                        if (p == null) return@joinToString ""
-                        val pRecord = p.character
-                        val nickname = p.characterName
-                        "$nickname: ${pRecord?.appearance ?: "No appearance information available."}"
-                    } +
-                    "\n=========================",
-            )
-
-        // Add relationship context
-        val relationships = plugin.relationshipManager.getAllRelationships(playerCharacterName)
-        if (relationships.isNotEmpty()) {
-            val relationshipContext =
-                plugin.relationshipManager.buildRelationshipContext(
-                    playerCharacterName,
-                    relationships,
-                    conversation,
-                )
-            if (relationshipContext.isNotEmpty()) {
-                responseContext = responseContext + "===RELATIONSHIPS===\n$relationshipContext"
-            }
+        if (playerCharacterId.isNullOrEmpty() || player.character == null) {
+            player.sendError("Could not find character data for $playerCharacterName.")
+            return
         }
 
-        // Use PromptService to get the talk as NPC prompt (treating player as NPC)
-        val talkAsNpcPrompt = plugin.promptService.getTalkAsNpcPrompt(playerCharacterName, message)
-        responseContext = responseContext + talkAsNpcPrompt
+        val conversation = getOrCreateConversationForPlayer(player, playerCharacterName)
 
-        // Generate AI response using player-specific method
-        generatePlayerAIResponse(player, playerCharacterName, playerRecord, responseContext)
+        plugin.intelligence
+            .playerGhostwrite(playerCharacterId, playerCharacterName, conversation, message)
             .thenApply { response ->
-                // Broadcast the fleshed-out response as if it's from the player
-                val shouldStream = plugin.config.streamMessages
-
-                if (shouldStream) {
-                    // Handle streaming with typing effect
-                    handleStreamingPlayerResponse(player, response)
-                } else {
-                    // Broadcast immediately
-                    plugin.npcMessageService.broadcastPlayerMessage(response, player)
+                if (response.isBlank()) {
+                    plugin.logger.warning(
+                        "[AICharacterVoice] Empty response for ${player.name} ($playerCharacterName); falling back to raw message.",
+                    )
                 }
-                // Determine chat settings
+                val finalResponse = if (response.isBlank()) message else response
+
+                val shouldStream = plugin.config.streamMessages
+                if (shouldStream) {
+                    handleStreamingPlayerResponse(player, finalResponse)
+                } else {
+                    plugin.npcMessageService.broadcastPlayerMessage(finalResponse, player)
+                }
+
                 val isWhispering = message.matches(Regex(".*\\*whisper(s|ing)?\\*.*"))
                 val chatRadius = if (isWhispering) 2.0 else plugin.config.chatRadius
 
-                // use Main thread
-                Bukkit
-                    .getScheduler()
-                    .runTask(
-                        plugin,
-                        Runnable {
-                            // Gather nearby entities
-                            val nearbyEntities =
-                                gatherNearbyEntities(player, chatRadius)
-
-                            // Handle conversation logic
-                            val currentConversation =
-                                plugin.conversationManager.getConversation(player)
-                            if (currentConversation != null) {
-                                handleExistingConversation(
-                                    player,
-                                    response,
-                                    currentConversation,
-                                    nearbyEntities,
-                                    isWhispering,
-                                )
-                            } else {
-                                handleNoConversation(player, response, nearbyEntities)
-                            }
-                        },
-                    )
+                Bukkit.getScheduler().runTask(
+                    plugin,
+                    Runnable {
+                        val nearbyEntities = gatherNearbyEntities(player, chatRadius)
+                        val currentConversation = plugin.conversationManager.getConversation(player)
+                        if (currentConversation != null) {
+                            handleExistingConversation(
+                                player,
+                                finalResponse,
+                                currentConversation,
+                                nearbyEntities,
+                                isWhispering,
+                            )
+                        } else {
+                            handleNoConversation(player, finalResponse, nearbyEntities)
+                        }
+                    },
+                )
+            }.exceptionally { e ->
+                plugin.logger.warning(
+                    "[AICharacterVoice] playerGhostwrite failed for ${player.name}: ${e.message}",
+                )
+                e.printStackTrace()
+                null
             }
     }
 

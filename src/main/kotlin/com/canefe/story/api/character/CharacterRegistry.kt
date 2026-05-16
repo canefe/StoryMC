@@ -1,6 +1,7 @@
 package com.canefe.story.api.character
 
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.npc.util.NPCUtils
 import com.canefe.story.storage.mongo.MongoCharacterStorage
 import com.canefe.story.storage.mongo.MongoFrontendConfigStorage
 import org.bukkit.entity.Player
@@ -172,4 +173,27 @@ class CharacterRegistry(
     fun allPlayers(): List<CharacterRecord> = byId.values.filter { it.type == CharacterRecord.CharacterType.PLAYER }
 
     fun all(): List<CharacterRecord> = byId.values.toList()
+
+    /**
+     * Resolve the characterIds of every NPC and player within [radius] of [npc], plus the NPC itself.
+     *
+     * @param playerFilter optional predicate to drop players (e.g. chat-disabled ones)
+     * @return Pair of (nearby NPC characterIds including self, nearby player characterIds)
+     */
+    fun getNearbyCharacterIds(
+        npc: StoryNPC,
+        radius: Double,
+        playerFilter: (Player) -> Boolean = { true },
+    ): Pair<List<String>, List<String>> {
+        val npcIds =
+            (NPCUtils.getNearbyNPCs(npc, radius) + npc)
+                .mapNotNull { getCharacterIdForNPC(it) ?: it.name }
+
+        val playerIds =
+            NPCUtils.getNearbyPlayers(npc, radius)
+                .filter(playerFilter)
+                .mapNotNull { getCharacterIdForPlayer(it) }
+
+        return npcIds to playerIds
+    }
 }

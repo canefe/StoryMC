@@ -50,11 +50,23 @@ interface StoryIntelligence {
 
     /**
      * Ghostwrite an NPC line from a GM draft. The draft is rewritten to match the character's
-     * personality and tone. The LLM layer owns the prompt — callers just send the draft.
+     * personality and tone. The implementation handles its own audience resolution (nearby
+     * NPCs/players) — callers just supply the speaking NPC and the draft.
      * @return The fleshed-out NPC dialogue
      */
     fun gmGhostwrite(
         npc: StoryNPC,
+        draftMessage: String,
+    ): CompletableFuture<String>
+
+    /**
+     * Ghostwrite a player-character line from a player draft (the "AI Character Voice" toggle).
+     * Same semantics as [gmGhostwrite] but the subject is a player's bound character, not an NPC.
+     * @return The fleshed-out player-character dialogue
+     */
+    fun playerGhostwrite(
+        characterId: String,
+        characterName: String,
         conversation: Conversation,
         draftMessage: String,
     ): CompletableFuture<String>

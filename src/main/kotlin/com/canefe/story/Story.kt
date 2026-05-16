@@ -59,6 +59,7 @@ import com.canefe.story.quest.QuestManager
 import com.canefe.story.service.AIResponseService
 import com.canefe.story.session.SessionIntentListener
 import com.canefe.story.session.SessionManager
+import com.canefe.story.storage.MongoClientManager
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
 import com.canefe.story.storage.mongo.MongoCharacterStorage
@@ -411,8 +412,29 @@ open class Story :
                 mongoConnectTimeoutMs = configService.mongoConnectTimeoutMs,
             )
 
-        // Initialize character registry (requires MongoDB)
-        val mongoClient = storageFactory.mongoClient
+        // CharacterRegistry and SquadRegistry live in MongoDB regardless of the
+        // active storage backend (sqlite is a fallback for misc plugin state, not
+        // for the character source-of-truth). Prefer the storage-factory client
+        // when it's already a Mongo connection; otherwise stand up a dedicated
+        // connection from the same mongoUri so these registries are always
+        // available when a URI is configured.
+        var mongoClient = storageFactory.mongoClient
+        if (mongoClient == null && configService.mongoUri.isNotBlank()) {
+            val standalone =
+                MongoClientManager(
+                    uri = configService.mongoUri,
+                    databaseName = configService.mongoDatabase,
+                    maxPoolSize = configService.mongoMaxPoolSize,
+                    connectTimeoutMs = configService.mongoConnectTimeoutMs,
+                    logger = logger,
+                )
+            if (standalone.connect()) {
+                logger.info("[Storage] CharacterRegistry using standalone Mongo connection (backend=${storageFactory.activeBackend})")
+                mongoClient = standalone
+            } else {
+                logger.warning("[Storage] CharacterRegistry: standalone Mongo connect failed; registry will be unavailable")
+            }
+        }
         if (mongoClient != null) {
             val charStorage = MongoCharacterStorage(mongoClient, logger)
             val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)

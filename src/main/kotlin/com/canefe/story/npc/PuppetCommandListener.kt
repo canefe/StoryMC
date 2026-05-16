@@ -1,6 +1,8 @@
 package com.canefe.story.npc
 
 import com.canefe.story.Story
+import com.canefe.story.api.StoryNPC
+import com.canefe.story.util.characterId
 import com.github.retrooper.packetevents.event.PacketListener
 import com.github.retrooper.packetevents.event.PacketReceiveEvent
 import com.github.retrooper.packetevents.protocol.packettype.PacketType
@@ -20,13 +22,15 @@ import java.io.DataInputStream
  *
  * Opcodes:
  *   0x01 MOVE_TO     UTF world, double x, double y, double z
- *   0x02 ADD         UTF npcName
- *   0x03 REMOVE      UTF npcName
- *   0x04 TOGGLE      UTF npcName
+ *   0x02 ADD         UTF characterId
+ *   0x03 REMOVE      UTF characterId
+ *   0x04 TOGGLE      UTF characterId
  *   0x05 CLEAR
- *   0x06 SPEAK_AT    UTF targetName, UTF text   (move group to target then say text)
+ *   0x06 SPEAK_AT    UTF targetCharacterId, UTF text   (move group to target then say text)
  *
- * All commands are gated on `story.dm` permission server-side.
+ * All commands are gated on `story.dm` permission server-side. Targeting is by
+ * characterId rather than display name so puppet ops keep working when a DM
+ * has the "reveal real names" toggle off and the client only sees descriptors.
  */
 class PuppetCommandListener(
     private val plugin: Story,
@@ -70,27 +74,30 @@ class PuppetCommandListener(
                         plugin.puppetManager.moveAll(player, Location(w, x, y, z))
                     }
                     0x02 -> {
-                        val name = input.readUTF()
-                        val npc = plugin.npcRegistry.getByName(name) ?: return
+                        val charId = input.readUTF()
+                        val npc = resolveByCharacterId(charId) ?: return
                         plugin.puppetManager.add(player, npc)
                     }
                     0x03 -> {
-                        val name = input.readUTF()
-                        val npc = plugin.npcRegistry.getByName(name) ?: return
+                        val charId = input.readUTF()
+                        val npc = resolveByCharacterId(charId) ?: return
                         plugin.puppetManager.remove(player, npc)
                     }
                     0x04 -> {
-                        val name = input.readUTF()
-                        val npc = plugin.npcRegistry.getByName(name) ?: return
+                        val charId = input.readUTF()
+                        val npc = resolveByCharacterId(charId) ?: return
                         plugin.puppetManager.toggle(player, npc)
                     }
                     0x05 -> plugin.puppetManager.clear(player)
                     0x06 -> {
-                        val targetName = input.readUTF()
+                        val targetCharId = input.readUTF()
                         val text = input.readUTF()
                         // Move group to target's location, then have one of them speak.
-                        val targetNpc = plugin.npcRegistry.getByName(targetName)
-                        val targetLoc = targetNpc?.location ?: plugin.server.getPlayerExact(targetName)?.location
+                        val targetNpc = resolveByCharacterId(targetCharId)
+                        val targetLoc = targetNpc?.location
+                            ?: plugin.characterRegistry.getById(targetCharId)?.let { rec ->
+                                plugin.server.onlinePlayers.firstOrNull { it.characterId == targetCharId }?.location
+                            }
                         if (targetLoc != null) plugin.puppetManager.moveAll(player, targetLoc)
                         // Speak: pick the first NPC in the group and broadcast the text.
                         plugin.puppetManager
@@ -105,4 +112,9 @@ class PuppetCommandListener(
             plugin.logger.warning("[PuppetCommand] decode failed for ${player.name}: ${e.message}")
         }
     }
+
+    private fun resolveByCharacterId(charId: String): StoryNPC? =
+        plugin.npcRegistry.all().firstOrNull {
+            plugin.characterRegistry.getCharacterIdForNPC(it) == charId
+        }
 }

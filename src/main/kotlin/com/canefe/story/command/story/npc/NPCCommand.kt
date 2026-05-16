@@ -71,6 +71,7 @@ class NPCCommand(
             .withSubcommand(getFollowCharCommand())
             .withSubcommand(getSelCommand())
             .withSubcommand(getTpHereCommand())
+            .withSubcommand(getTpToCommand())
 
     /** Per-player selected NPC name for follow-up commands like /story npc tphere. */
     private val selectedNpc = java.util.concurrent.ConcurrentHashMap<java.util.UUID, String>()
@@ -161,6 +162,80 @@ class NPCCommand(
                         player.sendError("Failed to spawn '${record.name}' (template=Character).")
                     } else {
                         player.sendSuccess("Spawned '${record.name}' at your location.")
+                    }
+                },
+            )
+
+    /**
+     * Console-friendly variant of /story npc tphere: spawn (or teleport) an NPC
+     * at an explicit world + x/y/z. Required for RCON/integration-test paths
+     * that don't have a player sender.
+     *
+     * Usage: /story npc tpto <name> <world> <x> <y> <z>
+     */
+    private fun getTpToCommand(): CommandAPICommand =
+        CommandAPICommand("tpto")
+            .withPermission("story.dm")
+            .withArguments(StringArgument("name").replaceSuggestions(npcNameSuggestions()))
+            .withArguments(StringArgument("world"))
+            .withArguments(DoubleArgument("x"))
+            .withArguments(DoubleArgument("y"))
+            .withArguments(DoubleArgument("z"))
+            .executes(
+                CommandExecutor { sender, args ->
+                    val name = (args.get("name") as String).trim().trim('"')
+                    val worldName = args.get("world") as String
+                    val x = args.get("x") as Double
+                    val y = args.get("y") as Double
+                    val z = args.get("z") as Double
+
+                    val world = Bukkit.getWorld(worldName)
+                    if (world == null) {
+                        sender.sendError("No world named '$worldName'.")
+                        return@CommandExecutor
+                    }
+                    val location = org.bukkit.Location(world, x, y, z)
+
+                    val existing = plugin.npcRegistry.getByName(name)
+                    if (existing?.entity?.isValid == true) {
+                        existing.entity?.teleport(location)
+                        sender.sendSuccess("Teleported '${existing.name}' to $worldName ($x,$y,$z).")
+                        return@CommandExecutor
+                    }
+
+                    if (!plugin.isCharacterRegistryReady) {
+                        sender.sendError("Character registry not ready.")
+                        return@CommandExecutor
+                    }
+                    val record = plugin.characterRegistry.getByName(name)
+                    if (record == null) {
+                        sender.sendError("No character named '$name'.")
+                        return@CommandExecutor
+                    }
+
+                    if (!Bukkit.getPluginManager().isPluginEnabled("MythicMobs")) {
+                        sender.sendError("MythicMobs plugin is not enabled.")
+                        return@CommandExecutor
+                    }
+                    if (plugin.mythicMobNpcFactoryOrNull == null) {
+                        sender.sendError("MythicMob NPC factory is not initialized.")
+                        return@CommandExecutor
+                    }
+
+                    if (existing != null) {
+                        plugin.npcRegistry.unregister(existing.uniqueId)
+                    }
+
+                    val npc = plugin.mythicMobNpcFactory.spawn(
+                        mobTemplate = "Character",
+                        location = location,
+                        displayName = record.name,
+                        characterId = record.id,
+                    )
+                    if (npc == null) {
+                        sender.sendError("Failed to spawn '${record.name}' (template=Character).")
+                    } else {
+                        sender.sendSuccess("Spawned '${record.name}' at $worldName ($x,$y,$z).")
                     }
                 },
             )

@@ -1614,7 +1614,7 @@ class ConversationManager(
 
                     // If a greeting message is provided, ghostwrite it through intelligence
                     if (message.isNotEmpty()) {
-                        plugin.intelligence.gmGhostwrite(npc, conversation, message).thenAccept { response ->
+                        plugin.intelligence.gmGhostwrite(npc, message).thenAccept { response ->
                             Bukkit.getScheduler().runTask(
                                 plugin,
                                 Runnable {
