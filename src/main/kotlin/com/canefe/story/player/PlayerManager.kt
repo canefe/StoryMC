@@ -299,13 +299,6 @@ class PlayerManager(
         return updated.delayedPlayerMessageProcessing
     }
 
-    fun toggleDmRevealRealNames(player: Player): Boolean {
-        val current = getPlayerConfig(player.uniqueId)
-        val updated = current.copy(dmRevealRealNames = !current.dmRevealRealNames)
-        updatePlayerConfig(player.uniqueId, updated)
-        return updated.dmRevealRealNames
-    }
-
     // Data saving/loading methods
 
     fun saveData() {

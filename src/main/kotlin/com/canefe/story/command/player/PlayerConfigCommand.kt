@@ -32,10 +32,9 @@ class PlayerConfigCommand(
                             )
 
                             if (player.hasPermission("story.dm")) {
-                                val revealStatus = if (config.dmRevealRealNames) "<green>enabled</green>" else "<red>disabled</red>"
                                 player.sendMessage(
                                     mm.deserialize(
-                                        "  <gray>DM Reveal Real Names</gray> <dark_gray>(see real names regardless of recognition; off makes you see what your character sees)</dark_gray> $revealStatus <dark_gray>[<aqua><click:run_command:'/playerconfig toggle dmRevealRealNames'>toggle</click></aqua>]</dark_gray>",
+                                        "  <gray>DM Reveal Real Names</gray> <dark_gray>(now a client-side toggle in StoryClient's config)</dark_gray>",
                                     ),
                                 )
                             }
@@ -44,11 +43,8 @@ class PlayerConfigCommand(
             ).withSubcommand(
                 CommandAPICommand("toggle")
                     .withArguments(
-                        StringArgument("setting").replaceSuggestions { info, builder ->
+                        StringArgument("setting").replaceSuggestions { _, builder ->
                             builder.suggest("delayedPlayerMessageProcessing")
-                            if (info.sender().hasPermission("story.dm")) {
-                                builder.suggest("dmRevealRealNames")
-                            }
                             builder.buildFuture()
                         },
                     ).executesPlayer(
@@ -63,22 +59,6 @@ class PlayerConfigCommand(
                                     } else {
                                         player.sendError(
                                             "AI Character Voice <red>disabled</red>. Your messages will be sent as-is.",
-                                        )
-                                    }
-                                }
-                                "dmRevealRealNames" -> {
-                                    if (!player.hasPermission("story.dm")) {
-                                        player.sendError("Unknown setting: <yellow>$setting</yellow>")
-                                        return@PlayerCommandExecutor
-                                    }
-                                    val enabled = plugin.playerManager.toggleDmRevealRealNames(player)
-                                    if (enabled) {
-                                        player.sendSuccess(
-                                            "DM Reveal Real Names <green>enabled</green>. You see real names regardless of recognition.",
-                                        )
-                                    } else {
-                                        player.sendError(
-                                            "DM Reveal Real Names <red>disabled</red>. You now see what your character would see.",
                                         )
                                     }
                                 }

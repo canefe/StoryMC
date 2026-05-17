@@ -153,8 +153,10 @@ class NearbyNPCBroadcaster(
 
     private fun broadcastTo(player: Player) {
         val canSpeakAs = player.hasPermission("story.dm")
-        val revealRealNames = canSpeakAs &&
-            plugin.playerManager.getPlayerConfig(player.uniqueId).dmRevealRealNames
+        // DMs always receive real names. Whether to display them is a
+        // client-side preference (StoryClientConfig.dmRevealRealNames); the
+        // server treats real-name visibility as a permission, not a toggle.
+        val revealRealNames = canSpeakAs
         val nearbyNpcs = plugin.npcRegistry.nearby(player.location, radius)
         val nearbyPlayers =
             Bukkit.getOnlinePlayers()

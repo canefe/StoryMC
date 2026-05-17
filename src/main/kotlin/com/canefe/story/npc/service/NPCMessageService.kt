@@ -477,8 +477,9 @@ class NPCMessageService(
 
         val out = ConcurrentHashMap<UUID, String>()
         val futures = viewers.map { p ->
-            val dmReveals = p.hasPermission("story.dm") &&
-                plugin.playerManager.getPlayerConfig(p.uniqueId).dmRevealRealNames
+            // DMs always see the speaker's real name in chat/bubble messages.
+            // The client decides whether to render it (StoryClientConfig.dmRevealRealNames).
+            val dmReveals = p.hasPermission("story.dm")
             if (dmReveals) {
                 val perceiverId = p.characterId
                 if (perceiverId.isNullOrEmpty()) {
