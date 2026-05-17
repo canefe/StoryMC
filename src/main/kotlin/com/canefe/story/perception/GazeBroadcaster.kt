@@ -10,6 +10,41 @@ import org.bukkit.entity.LivingEntity
 import kotlin.math.acos
 
 /**
+ * Per-observer dedup for "X is looking at Y" events.
+ *
+ * The gazer-side state in [GazeBroadcaster.activeGaze] already prevents
+ * re-emitting on every tick for an unchanged target. This cache covers the
+ * observer side: a single observer should not be told the same (gazer, target)
+ * pair more than once per [ttlMillis].
+ *
+ * Keyed by (observerId, gazerId, targetId). Returns true if the event should
+ * be emitted (and records the timestamp); false to suppress.
+ */
+class ObserverGazeCache(private val ttlMillis: Long) {
+    private data class Key(val observer: String, val gazer: String, val target: String)
+    private val seen = java.util.concurrent.ConcurrentHashMap<Key, Long>()
+
+    fun shouldEmit(observerId: String, gazerId: String, targetId: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+        val key = Key(observerId, gazerId, targetId)
+        val last = seen[key]
+        if (last != null && nowMs - last < ttlMillis) {
+            return false
+        }
+        seen[key] = nowMs
+        // Opportunistic cleanup: drop entries older than 2*ttl when the map
+        // grows beyond a reasonable bound.
+        if (seen.size > 1024) {
+            seen.entries.removeIf { nowMs - it.value > ttlMillis * 2 }
+        }
+        return true
+    }
+
+    fun clear() {
+        seen.clear()
+    }
+}
+
+/**
  * Periodically raycasts from every character to detect direct eye-contact (tight ~15° cone).
  *
  * Emits two perception events per gaze pair each tick:
@@ -22,6 +57,7 @@ class GazeBroadcaster(private val plugin: Story) {
     private var taskId: Int = -1
     /** gazerId → targetId currently being gazed at. Emit only on enter/exit. */
     private val activeGaze = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val observerCache = ObserverGazeCache(ttlMillis = 30_000)
 
     companion object {
         private const val TICK_INTERVAL = 20L
@@ -45,6 +81,7 @@ class GazeBroadcaster(private val plugin: Story) {
             taskId = -1
         }
         activeGaze.clear()
+        observerCache.clear()
     }
 
     private fun tick() {
@@ -123,19 +160,30 @@ class GazeBroadcaster(private val plugin: Story) {
             )
 
             // Emit to nearby observers (excluding gazer and target): "X is looking at Y"
-            plugin.perceptionService.observe(
-                details = PerceptionDetails.Gaze(
-                    gazerId = gazer.charId,
-                    gazerName = gazer.name,
-                    targetName = gazeTarget.name,
-                    targetId = gazeTarget.charId,
-                ),
-                epicenter = gazer.entity.location,
-                source = "gaze",
-                exclude = gazer.name,
-                participants = gazerParticipants,
-                excludeSet = setOf(gazeTarget.name),
-            )
+            val now = System.currentTimeMillis()
+            for (observer in candidates) {
+                if (observer.charId == gazer.charId) continue
+                if (observer.charId == gazeTarget.charId) continue
+                if (observer.entity.world != gazer.entity.world) continue
+                val dist = observer.entity.location.distance(gazer.entity.location)
+                if (dist > plugin.perceptionService.getPerceptionRadius(observer.name)) continue
+                if (!observerCache.shouldEmit(observer.charId, gazer.charId, gazeTarget.charId, now)) continue
+
+                plugin.perceptionService.observeOne(
+                    characterName = observer.name,
+                    perceiverCharId = observer.charId,
+                    entity = observer.entity,
+                    details = PerceptionDetails.Gaze(
+                        gazerId = gazer.charId,
+                        gazerName = gazer.name,
+                        targetName = gazeTarget.name,
+                        targetId = gazeTarget.charId,
+                    ),
+                    epicenter = gazer.entity.location,
+                    source = "gaze",
+                    participants = gazerParticipants,
+                )
+            }
         }
 
         // Clear gaze state for any gazer no longer in the candidate list
