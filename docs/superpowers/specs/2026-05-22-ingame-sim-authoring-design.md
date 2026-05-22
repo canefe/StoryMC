@@ -134,14 +134,24 @@ adapting an existing Lua command queue in `lua_world_api.rs`:
 | `set_offers`     | `set_offers`                      |
 | `give_item`      | (item grant queue)                |
 | `give_trait`     | (trait queue)                     |
-| `set_need`       | (need modify) — resolve by ExternalId |
-| `set_stat`       | (stat modify) — resolve by ExternalId |
+| `set_need`       | sets need to absolute value — resolve by ExternalId |
+| `set_stat`       | sets stat to absolute value — resolve by ExternalId |
 | `know_location`  | `know_locations`                  |
 | `assign_home`    | `assign_home_locations`           |
 
 NPC-targeted handlers resolve the entity by `ExternalId == character_id`, the
-same lookup `position_sync` already uses. Handlers are adapters only — no new
-sim behavior logic; they reuse the queues the Lua handles already feed.
+same lookup `position_sync` already uses. Most handlers are thin adapters that
+reuse the queues the Lua handles already feed (`spawn_locations`, `set_offers`,
+`know_locations`, `assign_home_locations`, item/trait queues).
+
+**Exception — `set_need` / `set_stat` need a new absolute-set path.** The sim
+today only has `ModifyNeedRequest` / `ModifyStatRequest` (delta-based;
+`lua_world_api.rs`). Because `character_data` stores absolute snapshot values,
+these handlers cannot reuse the modify queues as-is. The plan must add an
+absolute-set capability — either a new `SetNeedRequest`/`SetStatRequest` variant
+with its own apply system, or a `mode: set|modify` flag on the existing requests
+(both already carry an optional `character_id`). This is the one place new sim
+logic (not just an adapter) is required.
 
 ## Data model
 
@@ -157,18 +167,29 @@ default and empty `tags` for existing docs — handled the same way
 fields (defaulting on read).
 
 ### `character_data` (new, keyed by `_id = characterId`)
+
+**`character_data` is a snapshot of intended starting state, not a log of
+effects.** Re-seed on `sim.init` restores the snapshot; it does not replay
+modifications. All values are **absolute/set semantics** — idempotent under
+re-seed and re-run.
+
 ```
 {
   _id: "<characterId>",
   offers: [ { id, wants: [{tag|item, qty}], gives: [{item, qty}], whileSituation? } ],
-  startingInventory: [ { item, qty } ],
-  traits: [ "Generous", ... ],
-  needOverrides: { hunger: -70.0, ... },
-  statOverrides: { sociability: 0.2, pride: -0.3, ... },
+  startingInventory: [ { item, qty } ],   // exact starting inventory (set, not added)
+  traits: [ "Generous", ... ],            // exact trait set
+  needValues: { hunger: 30.0, ... },      // ABSOLUTE: "hunger starts at 30"
+  statValues: { sociability: 0.7, pride: 0.2, ... }, // ABSOLUTE starting values
   knownLocations: [ "market_square", "temple_grounds" ],
   homeLocation: "market_square"
 }
 ```
+
+A command may still *read* delta-like in-game (e.g. `/story npc need <id>
+hunger -70` computes from the current/base value), but what is persisted and
+re-applied is the resulting **absolute** snapshot value. The sim-side seed sets
+the need/stat/inventory to the snapshot value rather than applying a modify.
 
 ## Acceptance: reproduce the demo in-game
 
