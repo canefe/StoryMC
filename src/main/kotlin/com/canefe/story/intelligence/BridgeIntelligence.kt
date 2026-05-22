@@ -33,7 +33,12 @@ class BridgeIntelligence(
 
     companion object {
         private const val TIMEOUT_SECONDS = 60L
-        private val json = Json { encodeDefaults = true }
+        // ignoreUnknownKeys = forward-compat with new fields added on the
+        // story-go / story-recognition side. Without it, any new key on a
+        // response payload throws and the whole bridge call falls through to
+        // a raw fallback — most recently this dropped descriptor + shortLabel
+        // off every nametag when 'epithet' was added to /resolve.
+        private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
     }
 
     init {

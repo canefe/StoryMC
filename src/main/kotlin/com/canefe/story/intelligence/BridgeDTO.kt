@@ -248,6 +248,9 @@ data class ResolvedTargetDTO(
     val descriptor: String,
     val shortLabel: String = "",
     val confidence: Int = 0,
+    /** Stable per-perceiver fantasy handle from story-recognition, e.g. "[grim-raven]". */
+    val epithet: String? = null,
+    val partialName: String? = null,
 )
 
 // --- Decision System ---
