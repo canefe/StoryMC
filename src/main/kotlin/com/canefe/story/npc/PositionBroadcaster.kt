@@ -71,6 +71,7 @@ class PositionBroadcaster(private val plugin: Story) {
 
     private fun tick() {
         if (!plugin.isNpcRegistryReady) return
+        if (!plugin.isCharacterRegistryReady) return
 
         val onlineCharIds = Bukkit.getOnlinePlayers()
             .mapNotNull { try { it.characterId } catch (_: Exception) { null } }

@@ -64,6 +64,7 @@ import com.canefe.story.session.SessionManager
 import com.canefe.story.storage.MongoClientManager
 import com.canefe.story.storage.StorageBackend
 import com.canefe.story.storage.StorageFactory
+import com.canefe.story.storage.mongo.MongoCharacterDataStorage
 import com.canefe.story.storage.mongo.MongoCharacterStorage
 import com.canefe.story.storage.mongo.MongoFrontendConfigStorage
 import com.canefe.story.task.TaskManager
@@ -274,6 +275,9 @@ open class Story :
 
     val isSquadRegistryReady: Boolean get() = ::squadRegistry.isInitialized
 
+    /** Sim-authoring snapshot store for NPC character data (needs, traits, offers, inventory). */
+    var characterDataStorage: com.canefe.story.storage.mongo.MongoCharacterDataStorage? = null
+
     // StoryNPC registry — single source of truth for in-world NPCs (Citizens + MythicMobs)
     lateinit var npcRegistry: StoryNPCRegistry
 
@@ -356,6 +360,11 @@ open class Story :
         // Initialize managers and services
         initializeManagers()
 
+        // If MongoDB was offline during initializeManagers(), the Mongo-backed
+        // registries are still uninitialized. Keep retrying in the background so
+        // they come online without a server reboot once Mongo is reachable.
+        startMongoRegistryRetry()
+
         // Register commands
         commandManager.registerCommands()
         if (System.getProperty("mockbukkit") != "true") {
@@ -418,36 +427,10 @@ open class Story :
             )
 
         // CharacterRegistry and SquadRegistry live in MongoDB regardless of the
-        // active storage backend (sqlite is a fallback for misc plugin state, not
-        // for the character source-of-truth). Prefer the storage-factory client
-        // when it's already a Mongo connection; otherwise stand up a dedicated
-        // connection from the same mongoUri so these registries are always
-        // available when a URI is configured.
-        var mongoClient = storageFactory.mongoClient
-        if (mongoClient == null && configService.mongoUri.isNotBlank()) {
-            val standalone =
-                MongoClientManager(
-                    uri = configService.mongoUri,
-                    databaseName = configService.mongoDatabase,
-                    maxPoolSize = configService.mongoMaxPoolSize,
-                    connectTimeoutMs = configService.mongoConnectTimeoutMs,
-                    logger = logger,
-                )
-            if (standalone.connect()) {
-                logger.info("[Storage] CharacterRegistry using standalone Mongo connection (backend=${storageFactory.activeBackend})")
-                mongoClient = standalone
-            } else {
-                logger.warning("[Storage] CharacterRegistry: standalone Mongo connect failed; registry will be unavailable")
-            }
-        }
-        if (mongoClient != null) {
-            val charStorage = MongoCharacterStorage(mongoClient, logger)
-            val frontendStorage = MongoFrontendConfigStorage(mongoClient, logger)
-            characterRegistry = CharacterRegistry(charStorage, frontendStorage, logger, mongoClient)
-
-            val squadStorage = MongoSquadStorage(mongoClient, logger)
-            squadRegistry = SquadRegistry(squadStorage, logger)
-        }
+        // active storage backend. Attempt initialization now; if MongoDB is
+        // offline this is a no-op and the periodic retry task (see onEnable)
+        // will keep trying until it comes online — no server reboot required.
+        ensureMongoRegistries()
 
         timeService = TimeService(this)
         sessionManager = SessionManager(this)
@@ -455,13 +438,6 @@ open class Story :
         typingSessionManager = TypingSessionManager(this)
         contextExtractor = ContextExtractor(this)
         audioManager = AudioManager(this)
-        // Run character migration and load registry
-        if (::characterRegistry.isInitialized) {
-            characterRegistry.loadAll()
-        }
-        if (::squadRegistry.isInitialized) {
-            squadRegistry.loadAll()
-        }
 
         locationManager = LocationManager(this, storageFactory.locationStorage)
         questManager = QuestManager(this, storageFactory.questStorage)
@@ -596,6 +572,94 @@ open class Story :
         return world.players.filter { it.location.distanceSquared(origin) <= rSq }
     }
 
+    /** Backing field for the periodic registry-retry task; -1 when not scheduled. */
+    private var mongoRegistryRetryTaskId: Int = -1
+
+    /**
+     * Initializes the Mongo-backed registries (character, squad, character-data)
+     * if they aren't up yet and MongoDB is reachable.
+     *
+     * CharacterRegistry and SquadRegistry live in MongoDB regardless of the active
+     * storage backend (sqlite is a fallback for misc plugin state, not for the
+     * character source-of-truth). Prefers the storage-factory client when it's
+     * already a Mongo connection; otherwise stands up a dedicated connection from
+     * the same mongoUri.
+     *
+     * Idempotent and safe to call repeatedly — returns true once the registries
+     * are ready so callers (boot path, retry task, storage-switch command) can all
+     * share one code path. Never throws if Mongo is offline; it simply returns
+     * false so the caller can retry later.
+     */
+    private fun ensureMongoRegistries(): Boolean {
+        if (::characterRegistry.isInitialized) return true
+        if (!::storageFactory.isInitialized) return false
+
+        var mongoClient = storageFactory.mongoClient
+        if (mongoClient == null && configService.mongoUri.isNotBlank()) {
+            val standalone =
+                MongoClientManager(
+                    uri = configService.mongoUri,
+                    databaseName = configService.mongoDatabase,
+                    maxPoolSize = configService.mongoMaxPoolSize,
+                    connectTimeoutMs = configService.mongoConnectTimeoutMs,
+                    logger = logger,
+                )
+            if (standalone.connect()) {
+                logger.info("[Storage] CharacterRegistry using standalone Mongo connection (backend=${storageFactory.activeBackend})")
+                mongoClient = standalone
+            }
+        }
+        if (mongoClient == null) return false
+
+        // Build and load each registry into a local before publishing the field, so
+        // a main-thread reader never observes `isCharacterRegistryReady == true`
+        // while the registry is still empty (this helper may run off-thread).
+        val charReg =
+            CharacterRegistry(
+                MongoCharacterStorage(mongoClient, logger),
+                MongoFrontendConfigStorage(mongoClient, logger),
+                logger,
+                mongoClient,
+            )
+        charReg.loadAll()
+
+        val squadReg = SquadRegistry(MongoSquadStorage(mongoClient, logger), logger)
+        squadReg.loadAll()
+
+        characterDataStorage = MongoCharacterDataStorage(mongoClient, logger)
+        squadRegistry = squadReg
+        characterRegistry = charReg
+        return true
+    }
+
+    /**
+     * Schedules a periodic task that keeps retrying [ensureMongoRegistries] until
+     * the registries come online, then cancels itself. This is what lets the plugin
+     * recover from MongoDB being offline at boot without a server reboot.
+     */
+    private fun startMongoRegistryRetry() {
+        if (::characterRegistry.isInitialized) return
+        if (mongoRegistryRetryTaskId != -1) return
+        logger.warning("[Storage] MongoDB unavailable at startup — CharacterRegistry/SquadRegistry pending; retrying every 30s")
+        // Retry every 30s (600 ticks). Async would block on Mongo connect, so run
+        // off the main thread to avoid stalling the server tick during retries.
+        mongoRegistryRetryTaskId =
+            Bukkit.getScheduler().runTaskTimerAsynchronously(
+                this,
+                Runnable {
+                    if (ensureMongoRegistries()) {
+                        logger.info("[Storage] MongoDB reachable — CharacterRegistry/SquadRegistry now initialized")
+                        if (mongoRegistryRetryTaskId != -1) {
+                            Bukkit.getScheduler().cancelTask(mongoRegistryRetryTaskId)
+                            mongoRegistryRetryTaskId = -1
+                        }
+                    }
+                },
+                600L,
+                600L,
+            ).taskId
+    }
+
     fun tryReconnectStorage(sender: CommandSender? = null) {
         if (!::storageFactory.isInitialized) return
 
@@ -607,28 +671,9 @@ open class Story :
             desired != current ||
                 (desired == StorageBackend.MONGODB && !storageFactory.isMongoConnected)
 
-        // Initialize character registry if not yet initialized and MongoDB is available
-        if (!::characterRegistry.isInitialized) {
-            val mongoClient = storageFactory.mongoClient
-            if (mongoClient != null) {
-                characterRegistry =
-                    CharacterRegistry(
-                        MongoCharacterStorage(mongoClient, logger),
-                        MongoFrontendConfigStorage(mongoClient, logger),
-                        logger,
-                        mongoClient,
-                    )
-                characterRegistry.loadAll()
-            }
-        }
-        // Same for squad registry
-        if (!::squadRegistry.isInitialized) {
-            val mongoClient = storageFactory.mongoClient
-            if (mongoClient != null) {
-                squadRegistry = SquadRegistry(MongoSquadStorage(mongoClient, logger), logger)
-                squadRegistry.loadAll()
-            }
-        }
+        // Initialize the Mongo-backed registries if they aren't up yet and
+        // MongoDB is now reachable (shared with the boot path and retry task).
+        ensureMongoRegistries()
 
         if (!needsSwitch) return
 
@@ -812,6 +857,10 @@ relationshipManager.updateStorage(storageFactory.relationshipStorage)
 
             // Cancel all scheduled tasks
             conversationManager.cancelScheduledTasks()
+            if (mongoRegistryRetryTaskId != -1) {
+                Bukkit.getScheduler().cancelTask(mongoRegistryRetryTaskId)
+                mongoRegistryRetryTaskId = -1
+            }
 
             // Shutdown scheduled tasks
             scheduleManager.shutdown()

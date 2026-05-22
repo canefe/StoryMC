@@ -80,6 +80,7 @@ class SquadListBroadcaster(
     }
 
     private fun broadcastTo(player: Player) {
+        if (!plugin.isSquadRegistryReady || !plugin.isCharacterRegistryReady) return
         val charId = plugin.characterRegistry.getActiveCharacterForPlayer(player) ?: return
         val squads = plugin.squadRegistry.commandableBy(charId)
 

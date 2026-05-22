@@ -193,7 +193,7 @@ class PerceptionService(
         }
 
         // Find nearby NPCs — StoryNPCRegistry (e.g. MythicMob-backed NPCs)
-        if (plugin.isNpcRegistryReady) {
+        if (plugin.isNpcRegistryReady && plugin.isCharacterRegistryReady) {
             for (npc in plugin.npcRegistry.all()) {
                 val entity = npc.entity ?: continue
                 if (entity.world != world) continue

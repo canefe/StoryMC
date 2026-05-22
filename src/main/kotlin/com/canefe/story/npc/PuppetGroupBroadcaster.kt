@@ -24,6 +24,7 @@ class PuppetGroupBroadcaster(
 
     fun push(player: Player) {
         if (!plugin.isNpcRegistryReady) return
+        if (!plugin.isCharacterRegistryReady) return
         val charIds =
             plugin.puppetManager
                 .resolveGroup(player)

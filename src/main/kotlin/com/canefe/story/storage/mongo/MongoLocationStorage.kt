@@ -63,6 +63,8 @@ class MongoLocationStorage(
             allowedNPCs = doc.getList("allowedNPCs", String::class.java) ?: emptyList(),
             hideTitle = doc.getBoolean("hideTitle", false),
             randomPathingAction = doc.getString("randomPathingAction"),
+            radius = (doc.get("radius") as? Number)?.toDouble() ?: 8.0,
+            tags = doc.getList("tags", String::class.java) ?: emptyList(),
         )
     }
 }

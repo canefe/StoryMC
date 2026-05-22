@@ -65,6 +65,7 @@ class PerceptionBroadcaster(private val plugin: Story) {
 
     private fun tick() {
         if (!plugin.isNpcRegistryReady) return
+        if (!plugin.isCharacterRegistryReady) return
 
         val onlinePlayers = Bukkit.getOnlinePlayers()
         val onlineCharIds = onlinePlayers

@@ -19,6 +19,8 @@ class LocationCommand(
             .withSubcommand(getMoveLocationCommand())
             .withSubcommand(getUpdateLocationCommand())
             .withSubcommand(getTeleportLocationCommand())
+            .withSubcommand(getTagLocationCommand())
+            .withSubcommand(getRadiusLocationCommand())
 
     private fun getCreateLocationCommand(): CommandAPICommand = CreateLocationCommand(commandUtils).getCommand()
 
@@ -31,4 +33,8 @@ class LocationCommand(
     private fun getUpdateLocationCommand(): CommandAPICommand = UpdateLocationCommand(commandUtils).getCommand()
 
     private fun getTeleportLocationCommand(): CommandAPICommand = TeleportLocationCommand(commandUtils).getCommand()
+
+    private fun getTagLocationCommand(): CommandAPICommand = TagLocationCommand(plugin, commandUtils).getCommand()
+
+    private fun getRadiusLocationCommand(): CommandAPICommand = RadiusLocationCommand(plugin, commandUtils).getCommand()
 }

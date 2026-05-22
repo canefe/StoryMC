@@ -89,6 +89,7 @@ class NearbyNPCBroadcaster(
 
     private fun broadcastAll() {
         if (!plugin.isNpcRegistryReady) return
+        if (!plugin.isCharacterRegistryReady) return
         for (player in Bukkit.getOnlinePlayers()) {
             broadcastTo(player)
         }

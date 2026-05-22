@@ -86,6 +86,7 @@ class GazeBroadcaster(private val plugin: Story) {
 
     private fun tick() {
         if (!plugin.isNpcRegistryReady || !plugin.isPerceptionServiceReady) return
+        if (!plugin.isCharacterRegistryReady) return
 
         data class Candidate(val charId: String, val name: String, val entity: LivingEntity)
 

@@ -26,4 +26,6 @@ data class LocationDocument(
     val allowedNPCs: List<String> = emptyList(),
     val hideTitle: Boolean = false,
     val randomPathingAction: String? = null,
+    val radius: Double = 8.0,
+    val tags: List<String> = emptyList(),
 )

@@ -1,5 +1,6 @@
 package com.canefe.story.bridge
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 // ── Outbound domain events (Plugin → Go) ─────────────────────────────
@@ -398,6 +399,14 @@ enum class RejectionReason {
     INVALID_PRIMITIVE,
     UNSUPPORTED_BACKEND,
     EXECUTION_ERROR,
+
+    /**
+     * Pathfinding could not reach the destination: the NPC stopped making
+     * progress (stuck) or the arrival watcher timed out before getting within
+     * range. Sim's `navigate_to` arrival watcher emits this so behaviors can
+     * re-plan instead of believing they arrived. See [IntentExecutor].
+     */
+    UNREACHABLE,
 }
 
 /**
@@ -512,4 +521,97 @@ data class FrontendPauseEvent(
     val world: String,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "frontend.pause"
+}
+
+// ── Sim-authoring intents (Plugin → Go → story-sim) ──────────────────
+
+/**
+ * Plugin → Go → sim: register a named location entity in the sim world.
+ */
+@Serializable
+data class LocationSpawnIntent(
+    val id: String,
+    @SerialName("instance_name") val instanceName: String,
+    val x: Double,
+    val y: Double,
+    val z: Double,
+    val radius: Double = 8.0,
+    val tags: String = "", // comma-joined
+) : SerializableStoryEvent {
+    override val eventType: String get() = "location.spawn"
+}
+
+/**
+ * Plugin → Go → sim: set the trade offers available from a merchant NPC.
+ * `offers` is a JSON array string forwarded verbatim to the sim.
+ */
+@Serializable
+data class NpcSetOffersIntent(
+    @SerialName("character_id") val characterId: String,
+    val name: String,
+    val offers: String, // JSON array string
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.set_offers"
+}
+
+/**
+ * Plugin → Go → sim: give an item to an NPC's inventory.
+ */
+@Serializable
+data class NpcGiveItemIntent(
+    @SerialName("character_id") val characterId: String,
+    val name: String,
+    val item: String,
+    val qty: Int,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.give_item"
+}
+
+/**
+ * Plugin → Go → sim: add a personality / skill trait to an NPC.
+ */
+@Serializable
+data class NpcGiveTraitIntent(
+    @SerialName("character_id") val characterId: String,
+    val name: String,
+    val trait: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.give_trait"
+}
+
+/**
+ * Plugin → Go → sim: set a named need value for an NPC (e.g. hunger, rest).
+ */
+@Serializable
+data class NpcSetNeedIntent(
+    @SerialName("character_id") val characterId: String,
+    val name: String,
+    val need: String,
+    val value: Double,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.set_need"
+}
+
+/**
+ * Plugin → Go → sim: set a named stat value for an NPC (e.g. strength, agility).
+ */
+@Serializable
+data class NpcSetStatIntent(
+    @SerialName("character_id") val characterId: String,
+    val name: String,
+    val stat: String,
+    val value: Double,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.set_stat"
+}
+
+/**
+ * Plugin → Go → sim: tell an NPC about a location (adds it to their known-locations set).
+ */
+@Serializable
+data class NpcKnowIntent(
+    @SerialName("character_id") val characterId: String,
+    @SerialName("location_id") val locationId: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.know"
 }

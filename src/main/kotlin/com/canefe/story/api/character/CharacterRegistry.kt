@@ -64,6 +64,8 @@ class CharacterRegistry(
 
     fun getById(id: String): CharacterRecord? = byId[id]
 
+    fun allIds(): Set<String> = byId.keys
+
     fun getByName(name: String): CharacterRecord? = byNameLower[name.lowercase()]?.let { byId[it] }
 
     fun getByPlayer(player: Player): CharacterRecord? = byMinecraftUuid[player.uniqueId]?.let { byId[it] }

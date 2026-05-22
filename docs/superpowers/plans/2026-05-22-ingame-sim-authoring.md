@@ -13,6 +13,8 @@
 - story-go: `/Users/canefe/Projects/personal/story-go`
 - story-sim: `/Users/canefe/Projects/personal/story-sim`
 
+> **SCOPE CHANGE (2026-05-22, during execution):** `home` / `assign_home` is **DROPPED** from this feature. Reason: story-sim's `assign_home_location` apply is a log-only stub (no `HomeLocation` component exists; behaviors don't consume it). Do NOT implement any `home`/`assign_home`/`homeLocation` piece in any task — skip the `assign_home` stream handler, the `ForwardHome` forwarder, the `NpcHome`/`npc.home` constant+intent, the `homeLocation` field in `character_data`/`CharacterDataDocument`, the re-seed `assign_home` emit, and the `/story npc home` subcommand. Wherever a task lists "...know, home..." treat it as "...know..." only. Task 7 covers `know_location` only.
+
 **Build/test per repo:**
 - Plugin: `export JAVA_HOME="$HOME/.sdkman/candidates/java/current" && ./gradlew compileKotlin` / `./gradlew test`
 - story-go: `cd /Users/canefe/Projects/personal/story-go && go build ./... && go test ./...`

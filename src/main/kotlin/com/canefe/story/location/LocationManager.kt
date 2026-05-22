@@ -194,6 +194,8 @@ class LocationManager(
 
         location.randomPathingAction = doc.randomPathingAction
         location.hideTitle = doc.hideTitle
+        location.radius = doc.radius
+        location.tags.addAll(doc.tags)
 
         // Reconstruct Bukkit Location
         if (doc.world != null) {
@@ -221,6 +223,8 @@ class LocationManager(
             allowedNPCs = location.allowedNPCs,
             hideTitle = location.hideTitle,
             randomPathingAction = location.randomPathingAction,
+            radius = location.radius,
+            tags = location.tags.toList(),
         )
     }
 }

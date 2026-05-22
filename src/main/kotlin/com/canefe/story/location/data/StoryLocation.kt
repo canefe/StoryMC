@@ -11,6 +11,8 @@ data class StoryLocation(
     val allowedNPCs: MutableList<String> = mutableListOf(),
     var hideTitle: Boolean = false,
     var randomPathingAction: String? = null, // Action to perform when NPCs randomly move here (sit, sleep, work, idle)
+    var radius: Double = 8.0,
+    val tags: MutableList<String> = mutableListOf(),
 ) {
     fun hasParent(): Boolean = !parentLocationName.isNullOrEmpty()
 

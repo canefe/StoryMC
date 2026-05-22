@@ -25,6 +25,115 @@ object IntentExecutor {
     @Volatile private var lastMissingReconcileGlobal: Long = 0L
     private const val MISSING_RECONCILE_GLOBAL_INTERVAL_MS = 1_500L
 
+    // --- navigate_to arrival watcher ---
+    //
+    // navigate_to is fire-and-forget at the pathing layer (Citizens' navigator
+    // and MythicMobs' GoToMechanic both just kick off async Mojang AI pathing).
+    // The sim treats intent.completed as "you arrived" — so acking inline at
+    // dispatch time was a lie: the NPC hadn't moved yet, which let the sim
+    // believe a travel step finished while the NPC stood still. This watcher
+    // polls position after dispatch and only acks on real arrival (within
+    // `arriveRange` of the target) — or rejects UNREACHABLE if the NPC stops
+    // making progress (stuck) or the deadline passes.
+
+    /** How close (blocks) to the target counts as arrived. */
+    private const val NAV_ARRIVE_RANGE = 2.5
+
+    /** Poll cadence in server ticks (10 = twice per second). */
+    private const val NAV_POLL_TICKS = 10L
+
+    /** Hard deadline before giving up, in poll samples. 600 samples × 10t ≈ 5 min. */
+    private const val NAV_MAX_SAMPLES = 600
+
+    /**
+     * Consecutive no-progress samples before declaring "stuck". A frontend that
+     * stops short of the target republishes the same position; this catches it.
+     */
+    private const val NAV_STALL_SAMPLES = 6
+
+    /** Minimum closing distance (blocks) per sample to count as progress. */
+    private const val NAV_PROGRESS_EPS = 0.15
+
+    /** Active arrival watchers keyed by characterId, so a new nav supersedes the old. */
+    private val navWatchers = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /**
+     * Start (or replace) an arrival watcher for [characterId] heading to [target].
+     * Calls [onArrive] once it gets within [NAV_ARRIVE_RANGE], or [onFail] on
+     * stuck / timeout / despawn. Exactly one terminal callback fires.
+     */
+    private fun startNavWatcher(
+        plugin: Story,
+        characterId: String,
+        target: Location,
+        onArrive: () -> Unit,
+        onFail: (RejectionReason) -> Unit,
+    ) {
+        // Supersede any in-flight watcher for this NPC (a fresh navigate_to wins).
+        navWatchers.remove(characterId)?.let { Bukkit.getScheduler().cancelTask(it) }
+
+        val state = NavWatchState()
+        val taskId =
+            Bukkit.getScheduler().runTaskTimer(
+                plugin,
+                Runnable {
+                    val npc = resolveNPC(plugin, characterId)
+                    val loc = npc?.location
+                    if (npc == null || loc == null || !npc.isSpawned) {
+                        finishNavWatcher(characterId)
+                        onFail(RejectionReason.NPC_NOT_FOUND)
+                        return@Runnable
+                    }
+                    // Different world than the target → can't path there.
+                    if (loc.world != target.world) {
+                        finishNavWatcher(characterId)
+                        onFail(RejectionReason.UNREACHABLE)
+                        return@Runnable
+                    }
+
+                    val dist = loc.distance(target)
+                    if (dist <= NAV_ARRIVE_RANGE) {
+                        finishNavWatcher(characterId)
+                        onArrive()
+                        return@Runnable
+                    }
+
+                    // Progress / stall tracking.
+                    if (dist < state.lastDist - NAV_PROGRESS_EPS) {
+                        state.lastDist = dist
+                        state.stalledSamples = 0
+                    } else {
+                        state.stalledSamples++
+                    }
+
+                    state.samples++
+                    val stuck = state.stalledSamples >= NAV_STALL_SAMPLES
+                    val timedOut = state.samples >= NAV_MAX_SAMPLES
+                    if (stuck || timedOut) {
+                        plugin.logger.info(
+                            "[FrontendIntent] navigate_to UNREACHABLE char=$characterId " +
+                                "dist=${"%.1f".format(dist)} ${if (stuck) "stuck" else "timeout"}",
+                        )
+                        finishNavWatcher(characterId)
+                        onFail(RejectionReason.UNREACHABLE)
+                    }
+                },
+                NAV_POLL_TICKS,
+                NAV_POLL_TICKS,
+            ).taskId
+        navWatchers[characterId] = taskId
+    }
+
+    private fun finishNavWatcher(characterId: String) {
+        navWatchers.remove(characterId)?.let { Bukkit.getScheduler().cancelTask(it) }
+    }
+
+    private class NavWatchState {
+        var lastDist = Double.MAX_VALUE
+        var stalledSamples = 0
+        var samples = 0
+    }
+
     /**
      * If story-go sends an intent for a characterId we don't have spawned, ask the sim
      * to reconcile around the nearest player. Two debounces:
@@ -380,8 +489,18 @@ object IntentExecutor {
                     if (world == null) {
                         rejectIntent(plugin, intent, RejectionReason.EXECUTION_ERROR); return
                     }
-                    npc.navigateTo(Location(world, intent.x, intent.y, intent.z))
-                    completeIntent(plugin, intent)
+                    val target = Location(world, intent.x, intent.y, intent.z)
+                    npc.navigateTo(target)
+                    // Do NOT ack inline — navigateTo only kicks off async pathing.
+                    // Watch position and ack on real arrival (or reject if the
+                    // NPC can't reach it). One terminal outcome per intent.
+                    startNavWatcher(
+                        plugin,
+                        intent.characterId,
+                        target,
+                        onArrive = { completeIntent(plugin, intent) },
+                        onFail = { reason -> rejectIntent(plugin, intent, reason) },
+                    )
                 }
                 "flee_from" -> {
                     plugin.logger.info("[FrontendIntent] flee_from from=(${intent.fromX},${intent.fromZ}) min=${intent.minDist} max=${intent.maxDist}")
@@ -517,6 +636,9 @@ object IntentExecutor {
                     }
                 }
                 "clear_target" -> {
+                    // Stop any in-flight arrival watcher: the nav it was tracking
+                    // is being cancelled, so its target is moot.
+                    finishNavWatcher(intent.characterId)
                     npc.cancelNavigation()
                     completeIntent(plugin, intent)
                 }

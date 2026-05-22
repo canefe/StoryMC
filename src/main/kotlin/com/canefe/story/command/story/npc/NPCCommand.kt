@@ -72,6 +72,7 @@ class NPCCommand(
             .withSubcommand(getSelCommand())
             .withSubcommand(getTpHereCommand())
             .withSubcommand(getTpToCommand())
+            .also { cmd -> NpcAuthorCommand(plugin).subcommands().forEach { cmd.withSubcommand(it) } }
 
     /** Per-player selected NPC name for follow-up commands like /story npc tphere. */
     private val selectedNpc = java.util.concurrent.ConcurrentHashMap<java.util.UUID, String>()

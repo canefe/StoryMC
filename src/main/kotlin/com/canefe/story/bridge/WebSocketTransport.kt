@@ -192,6 +192,13 @@ class WebSocketTransport(
             is SessionStartEvent -> json.encodeToJsonElement(event)
             is SessionEndEvent -> json.encodeToJsonElement(event)
             is SessionAddPlayerEvent -> json.encodeToJsonElement(event)
+            is LocationSpawnIntent -> json.encodeToJsonElement(event)
+            is NpcSetOffersIntent -> json.encodeToJsonElement(event)
+            is NpcGiveItemIntent -> json.encodeToJsonElement(event)
+            is NpcGiveTraitIntent -> json.encodeToJsonElement(event)
+            is NpcSetNeedIntent -> json.encodeToJsonElement(event)
+            is NpcSetStatIntent -> json.encodeToJsonElement(event)
+            is NpcKnowIntent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
