@@ -369,6 +369,37 @@ object IntentExecutor {
         }
     }
 
+    /**
+     * Resolves both NPCs of a sim item transfer and relays a story:item_transfer
+     * packet to nearby players, who render the floating-item arc. Renders nothing
+     * server-side. Skips when either NPC is unresolved or no player is in range.
+     */
+    fun executeItemTransferIntent(plugin: Story, intent: NpcItemTransferIntent) {
+        if (!plugin.isNpcRegistryReady) return
+        val from = resolveNPC(plugin, intent.fromCharacterId)?.entity ?: return
+        val to = resolveNPC(plugin, intent.toCharacterId)?.entity ?: return
+        val spec = plugin.itemMapService.renderSpecFor(intent.item)
+        val materialId = "minecraft:" + spec.material.name.lowercase()
+        val cmd = spec.customModelData ?: -1
+
+        val renderDist = 64.0
+        val renderDistSq = renderDist * renderDist
+        val audience = org.bukkit.Bukkit.getOnlinePlayers().filter { p ->
+            (p.world == from.world && p.location.distanceSquared(from.location) <= renderDistSq) ||
+                (p.world == to.world && p.location.distanceSquared(to.location) <= renderDistSq)
+        }
+        if (audience.isEmpty()) return
+        plugin.itemTransferBridge.send(
+            audience,
+            from.entityId,
+            to.entityId,
+            materialId,
+            cmd,
+            intent.qty,
+            intent.reason,
+        )
+    }
+
     fun executeEmoteIntent(
         plugin: Story,
         intent: NPCEmoteIntent,

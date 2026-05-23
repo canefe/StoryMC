@@ -103,6 +103,7 @@ open class Story :
     // Plugin configuration
     val configService = ConfigService(this)
     val itemMapService = com.canefe.story.config.ItemMapService()
+    val itemTransferBridge by lazy { com.canefe.story.bridge.ItemTransferPacketBridge(this) }
     lateinit var promptService: PromptService
     lateinit var appearanceTemplateCache: AppearanceTemplateCache
     val isAppearanceTemplateCacheReady: Boolean get() = ::appearanceTemplateCache.isInitialized
@@ -744,6 +745,7 @@ relationshipManager.updateStorage(storageFactory.relationshipStorage)
         }
         eventBus.on<NpcSpawnIntent> { IntentExecutor.executeNpcSpawnIntent(this, it) }
         eventBus.on<NpcStateIntent> { IntentExecutor.executeNpcStateIntent(this, it) }
+        eventBus.on<NpcItemTransferIntent> { IntentExecutor.executeItemTransferIntent(this, it) }
         eventBus.on<FrontendIntentEvent> { IntentExecutor.executeFrontendIntent(this, it) }
         reconciliationService.start()
 
