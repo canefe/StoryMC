@@ -102,6 +102,7 @@ open class Story :
 
     // Plugin configuration
     val configService = ConfigService(this)
+    val itemMapService = com.canefe.story.config.ItemMapService()
     lateinit var promptService: PromptService
     lateinit var appearanceTemplateCache: AppearanceTemplateCache
     val isAppearanceTemplateCacheReady: Boolean get() = ::appearanceTemplateCache.isInitialized

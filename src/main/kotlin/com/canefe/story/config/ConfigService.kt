@@ -159,6 +159,8 @@ class ConfigService(
             plugin.relationshipManager.load()
             plugin.sessionManager.load()
             plugin.voiceManager.load()
+            plugin.saveResource("items.yml", false)
+            plugin.itemMapService.loadFromFile(java.io.File(plugin.dataFolder, "items.yml"))
             try {
                 plugin.characterRegistry.reload()
             } catch (_: UninitializedPropertyAccessException) {
