@@ -1,0 +1,205 @@
+syntax = "proto3";
+package story.v1;
+
+option go_package = "github.com/canefe/story-go/gen/story/v1;storyv1";
+option java_package = "com.canefe.storyproto.v1";
+option java_multiple_files = true;
+
+import "story/v1/intelligence.proto";
+import "story/v1/query.proto";
+
+// ── Intents (Go → Plugin) ────────────────────────────────────────────
+
+message CharacterSpeakIntent {
+  string character_id = 1;
+  string message = 2;
+  string target = 3;
+  optional int32 conversation_id = 4;
+}
+
+message CharacterMoveIntent {
+  string character_id = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+  double speed = 5;
+}
+
+message CharacterAttackIntent {
+  string character_id = 1;
+  string target_id = 2;
+}
+
+message CharacterTeleportIntent {
+  string character_id = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+}
+
+message CharacterSpawnIntent {
+  string character_id = 1;
+  string name = 2;
+  double x = 3;
+  double y = 4;
+  double z = 5;
+  string skin = 6;
+}
+
+message CharacterDespawnIntent {
+  string character_id = 1;
+}
+
+message CharacterKillIntent {
+  string character_id = 1;
+}
+
+message CharacterReviveIntent {
+  string character_id = 1;
+  float health = 2;
+}
+
+message QuestAssignIntent {
+  string player_name = 1;
+  string quest_id = 2;
+}
+
+message QuestUpdateIntent {
+  string player_name = 1;
+  string quest_id = 2;
+  optional string objective_type = 3;
+  optional string target = 4;
+  int32 progress = 5;
+}
+
+message QuestCompleteIntent {
+  string player_name = 1;
+  string quest_id = 2;
+}
+
+message CharacterUpdateIntent {
+  string character_id = 1;
+}
+
+message CharacterRegisterIntent {
+  string character_id = 1;
+  string name = 2;
+  string type = 3;
+}
+
+message PlayerBindIntent {
+  string player_uuid = 1;
+  string character_id = 2;
+}
+
+message IntelligenceCapabilities {
+  repeated string methods = 1;
+}
+
+// ── Union wrapper for bidirectional stream (Go → Plugin) ─────────────
+
+message OrchestratorIntent {
+  oneof intent {
+    CharacterSpeakIntent character_speak = 1;
+    QuestAssignIntent quest_assign = 2;
+    QuestUpdateIntent quest_update = 3;
+    QuestCompleteIntent quest_complete = 4;
+    CharacterUpdateIntent character_update = 5;
+    CharacterRegisterIntent character_register = 6;
+    PlayerBindIntent player_bind = 7;
+    IntelligenceCapabilities intelligence_capabilities = 8;
+    IntelligenceResponse intelligence_response = 9;
+    WorldStateRequest world_state_request = 10;
+    CharacterStateRequest character_state_request = 11;
+    CharacterMoveIntent character_move = 12;
+    CharacterAttackIntent character_attack = 13;
+    CharacterTeleportIntent character_teleport = 14;
+    CharacterSpawnIntent character_spawn = 15;
+    CharacterDespawnIntent character_despawn = 16;
+    CharacterKillIntent character_kill = 17;
+    CharacterReviveIntent character_revive = 18;
+    LocationByNameRequest location_by_name_request = 19;
+  }
+}
+
+// ── Frontend intents (Sim → Plugin, JSON wire) ───────────────────────
+// These carry intent_id + expect an IntentOutcome back.
+
+enum TargetKind {
+  TARGET_KIND_UNSPECIFIED = 0;
+  TARGET_KIND_PLAYER = 1;
+  TARGET_KIND_NPC = 2;
+}
+
+enum SwingDir {
+  SWING_DIR_UNSPECIFIED = 0;
+  SWING_DIR_OVERHEAD = 1;
+  SWING_DIR_LEFT = 2;
+  SWING_DIR_RIGHT = 3;
+  SWING_DIR_THRUST = 4;
+}
+
+enum AnimationKind {
+  ANIMATION_KIND_NONE = 0;
+  ANIMATION_KIND_EAT = 1;
+  ANIMATION_KIND_DRINK = 2;
+  ANIMATION_KIND_REST = 3;
+  ANIMATION_KIND_SOCIALIZE = 4;
+  ANIMATION_KIND_TRADE = 5;
+}
+
+// Unified movement intent: replaces navigate_to + npc.move.
+message GoToIntent {
+  string character_id = 1;
+  string intent_id = 2;
+  double x = 3;
+  double y = 4;
+  double z = 5;
+  string world = 6;
+  double arrival_range = 7;
+  double stall_timeout = 8;
+  double max_duration = 9;
+}
+
+message BehaviorSetIntent {
+  string character_id = 1;
+  string behavior_id = 2;
+  AnimationKind animation = 3;
+  optional string label = 4;
+}
+message BehaviorClearIntent { string character_id = 1; }
+
+message FleeIntent {
+  string character_id = 1;
+  string intent_id = 2;
+  double x = 3;
+  double z = 4;
+  string world = 5;
+}
+message AttackIntent {
+  string character_id = 1;
+  string intent_id = 2;
+  string target = 3;
+  TargetKind target_kind = 4;
+  SwingDir swing = 5;
+}
+message LookAtIntent {
+  string character_id = 1;
+  string intent_id = 2;
+  optional string target = 3;
+  optional double x = 4;
+  optional double y = 5;
+  optional double z = 6;
+  double max_yaw = 7;
+  double max_pitch = 8;
+}
+message SetTargetIntent {
+  string character_id = 1;
+  string intent_id = 2;
+  string target = 3;
+  TargetKind target_kind = 4;
+}
+message ClearTargetIntent {
+  string character_id = 1;
+  string intent_id = 2;
+}

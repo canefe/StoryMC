@@ -1,0 +1,70 @@
+syntax = "proto3";
+package story.v1;
+
+option go_package = "github.com/canefe/story-go/gen/story/v1;storyv1";
+option java_package = "com.canefe.storyproto.v1";
+option java_multiple_files = true;
+
+message PerceptionEvent {
+  string character_name = 1;
+  string source = 2;
+  double distance = 3;
+  int64 timestamp = 4;
+
+  oneof details {
+    CombatDetails combat = 10;
+    DeathDetails death = 11;
+    WeatherDetails weather = 12;
+    MovementDetails movement = 13;
+    DownedDetails downed = 14;
+    RevivedDetails revived = 15;
+    CarriedDetails carried = 16;
+    DroppedDetails dropped = 17;
+    GenericDetails generic = 18;
+  }
+}
+
+message CombatDetails {
+  string attacker = 1;
+  string victim = 2;
+  double damage = 3;
+}
+
+message DeathDetails {
+  string deceased = 1;
+  string killer = 2;
+}
+
+message WeatherDetails {
+  string state = 1;
+}
+
+message MovementDetails {
+  string entity = 1;
+  string action = 2;
+  string area = 3;
+}
+
+message DownedDetails {
+  string character = 1;
+  string attacker = 2;
+}
+
+message RevivedDetails {
+  string character = 1;
+  string reviver = 2;
+}
+
+message CarriedDetails {
+  string character = 1;
+  string carrier = 2;
+}
+
+message DroppedDetails {
+  string character = 1;
+  string carrier = 2;
+}
+
+message GenericDetails {
+  string description = 1;
+}

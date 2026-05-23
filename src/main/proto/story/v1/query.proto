@@ -1,0 +1,86 @@
+syntax = "proto3";
+package story.v1;
+
+option go_package = "github.com/canefe/story-go/gen/story/v1;storyv1";
+option java_package = "com.canefe.storyproto.v1";
+option java_multiple_files = true;
+
+// ── Query messages ───────────────────────────────────────────────────
+
+message WorldStateRequest {
+  string request_id = 1;
+}
+
+message WorldStateResponse {
+  string request_id = 1;
+  repeated PlayerInfo online_players = 2;
+  repeated NPCInfo spawned_npcs = 3;
+  string error = 4;
+}
+
+message CharacterStateRequest {
+  string request_id = 1;
+  string character_id = 2;
+  double radius = 3;
+}
+
+message CharacterStateResponse {
+  string request_id = 1;
+  string type = 2;
+  string character_id = 3;
+  string name = 4;
+  string uuid = 5;
+  Location location = 6;
+  float health = 7;
+  float max_health = 8;
+  string current_action = 9;
+  repeated NearbyCharacter nearby_characters = 10;
+  string error = 11;
+}
+
+// ── Shared types ─────────────────────────────────────────────────────
+
+message PlayerInfo {
+  string character_id = 1;
+  string name = 2;
+  string uuid = 3;
+  double x = 4;
+  double y = 5;
+  double z = 6;
+}
+
+message NPCInfo {
+  string character_id = 1;
+  string name = 2;
+  string uuid = 3;
+  double x = 4;
+  double y = 5;
+  double z = 6;
+  string current_action = 7;
+}
+
+message Location {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  string world = 4;
+}
+
+message NearbyCharacter {
+  string character_id = 1;
+  string name = 2;
+  string type = 3;
+  double distance = 4;
+}
+
+message LocationByNameRequest {
+  string request_id = 1;
+  string name = 2;
+}
+
+message LocationByNameResponse {
+  string request_id = 1;
+  string name = 2;
+  Location location = 3;
+  string error = 4;
+}

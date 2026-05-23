@@ -40,6 +40,7 @@ plugins {
     id("com.gradleup.shadow") version "8.3.3"
     id("org.jlleitschuh.gradle.ktlint") version "13.1.0"
     id("jacoco")
+    id("com.google.protobuf") version "0.9.4"
 }
 
 group = "com.canefe"
@@ -146,6 +147,15 @@ dependencies {
 
     // Add Mockito-Kotlin for tests
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+
+    // Protobuf (generated wire types + canonical-JSON via JsonFormat)
+    implementation("com.google.protobuf:protobuf-java:3.25.5")
+    implementation("com.google.protobuf:protobuf-java-util:3.25.5")
+    implementation("com.google.protobuf:protobuf-kotlin:3.25.5")
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:3.25.5" }
 }
 
 val targetJavaVersion = 21
@@ -295,7 +305,10 @@ sourceSets {
 
     main {
         java {
-            setSrcDirs(listOf("src/main/java", "src/main/kotlin"))
+            // NOTE: the explicit setSrcDirs replaces the default source dirs, which also
+            // drops the dir the protobuf plugin injects for generated Java. Re-add it so
+            // compileJava emits the generated proto classes into the main output (needed by tests).
+            setSrcDirs(listOf("src/main/java", "src/main/kotlin", "build/generated/source/proto/main/java"))
         }
 
         compileClasspath += stubs.output

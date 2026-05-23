@@ -1,0 +1,155 @@
+syntax = "proto3";
+package story.v1;
+
+option go_package = "github.com/canefe/story-go/gen/story/v1;storyv1";
+option java_package = "com.canefe.storyproto.v1";
+option java_multiple_files = true;
+
+import "story/v1/perception.proto";
+import "story/v1/intelligence.proto";
+import "story/v1/query.proto";
+
+// ── Domain events (Plugin → Go) ──────────────────────────────────────
+
+message CharacterSaveEvent {
+  string character_id = 1;
+  string name = 2;
+  string role = 3;
+  string context = 4;
+  string appearance = 5;
+  string avatar = 6;
+  optional string location_name = 7;
+}
+
+message CharacterDeleteEvent {
+  string character_id = 1;
+  string name = 2;
+}
+
+message MemoryObservedEvent {
+  string character_id = 1;
+  string content = 2;
+  double significance = 3;
+}
+
+message RumorObservedEvent {
+  string content = 1;
+  string location = 2;
+  double significance = 3;
+  int64 game_created_at = 4;
+}
+
+message QuestAssignEvent {
+  string player_name = 1;
+  string quest_id = 2;
+}
+
+message QuestAssignFromIntentEvent {
+  string player_name = 1;
+  string quest_id = 2;
+  string quest_title = 3;
+  string quest_description = 4;
+  string npc_name = 5;
+}
+
+message QuestProgressEvent {
+  string player_name = 1;
+  string quest_id = 2;
+  optional string objective_type = 3;
+  optional string target = 4;
+  int32 progress = 5;
+}
+
+message QuestCompleteEvent {
+  string player_name = 1;
+  string quest_id = 2;
+}
+
+message SessionFeedEvent {
+  string text = 1;
+  bool force = 2;
+}
+
+// ── Game events (Plugin → Go) ────────────────────────────────────────
+
+message PlayerProximityEvent {
+  string character_id = 1;
+  repeated string nearby_character_ids = 2;
+}
+
+message PlayerJoinedEvent {
+  string player_uuid = 1;
+}
+
+message PlayerMessageEvent {
+  string character_id = 1;
+  string message = 2;
+}
+
+message GMSpeakEvent {
+  string gm_name = 1;
+  string npc_name = 2;
+  string message = 3;
+  int32 conversation_id = 4;
+}
+
+message CharacterSpokeEvent {
+  string character_name = 1;
+  string message = 2;
+  int32 conversation_id = 3;
+}
+
+// ── Union wrapper for bidirectional stream (Plugin → Go) ─────────────
+
+message PluginEvent {
+  oneof event {
+    PerceptionEvent perception = 1;
+    CharacterSaveEvent character_save = 2;
+    CharacterDeleteEvent character_delete = 3;
+    MemoryObservedEvent memory_observed = 4;
+    RumorObservedEvent rumor_observed = 5;
+    QuestAssignEvent quest_assign = 6;
+    QuestAssignFromIntentEvent quest_assign_from_intent = 7;
+    QuestProgressEvent quest_progress = 8;
+    QuestCompleteEvent quest_complete = 9;
+    SessionFeedEvent session_feed = 10;
+    PlayerProximityEvent player_proximity = 11;
+    PlayerJoinedEvent player_joined = 12;
+    PlayerMessageEvent player_message = 13;
+    GMSpeakEvent gm_speak = 14;
+    CharacterSpokeEvent character_spoke = 15;
+    IntelligenceRequest intelligence_request = 16;
+    WorldStateResponse world_state_response = 17;
+    CharacterStateResponse character_state_response = 18;
+    LocationByNameResponse location_by_name_response = 19;
+  }
+}
+
+// ── Intent outcomes (Plugin → Sim, JSON wire) ────────────────────────
+
+enum RejectReason {
+  REJECT_REASON_UNSPECIFIED = 0;
+  REJECT_REASON_NPC_NOT_FOUND = 1;
+  REJECT_REASON_TARGET_NOT_FOUND = 2;
+  REJECT_REASON_OUT_OF_RANGE = 3;
+  REJECT_REASON_NPC_DEAD = 4;
+  REJECT_REASON_NPC_BUSY = 5;
+  REJECT_REASON_INVALID_PRIMITIVE = 6;
+  REJECT_REASON_UNSUPPORTED_BACKEND = 7;
+  REJECT_REASON_EXECUTION_ERROR = 8;
+  REJECT_REASON_UNREACHABLE = 9;
+  REJECT_REASON_TIMEOUT = 10;
+  REJECT_REASON_SUPERSEDED = 11;
+}
+
+message IntentCompleted {
+  string character_id = 1;
+  string intent_id = 2;
+  string primitive = 3;
+}
+message IntentRejected {
+  string character_id = 1;
+  string intent_id = 2;
+  string primitive = 3;
+  RejectReason reason = 4;
+}

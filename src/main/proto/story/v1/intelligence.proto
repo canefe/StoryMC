@@ -1,0 +1,24 @@
+syntax = "proto3";
+package story.v1;
+
+option go_package = "github.com/canefe/story-go/gen/story/v1;storyv1";
+option java_package = "com.canefe.storyproto.v1";
+option java_multiple_files = true;
+
+message IntelligenceRequest {
+  string request_id = 1;
+  string method = 2;
+  string character_id = 3;
+  repeated ConversationMessage history = 4;
+  string draft_message = 5;
+}
+
+message ConversationMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message IntelligenceResponse {
+  string request_id = 1;
+  string result = 2;
+}
