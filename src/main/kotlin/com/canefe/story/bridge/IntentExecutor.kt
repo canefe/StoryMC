@@ -21,6 +21,17 @@ object IntentExecutor {
     private val lastMissingReconcile = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private const val MISSING_RECONCILE_COOLDOWN_MS = 5_000L
 
+    /** Per-characterId last action label sent to the client, for change-diffing. */
+    private val lastActionLabel = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Returns true if [label] differs from the last sent for [characterId] (and records it). */
+    fun shouldSendActionLabel(characterId: String, label: String): Boolean {
+        val prev = lastActionLabel.put(characterId, label)
+        return prev != label
+    }
+
+    fun resetActionLabelCacheForTest() = lastActionLabel.clear()
+
     /** Global floor between any two missing-NPC reconciliation requests. */
     @Volatile private var lastMissingReconcileGlobal: Long = 0L
     private const val MISSING_RECONCILE_GLOBAL_INTERVAL_MS = 1_500L
@@ -366,6 +377,12 @@ object IntentExecutor {
         if (intent.health > 0 && entity is LivingEntity) {
             val maxHp = entity.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH)?.value ?: 20.0
             entity.health = intent.health.coerceIn(0.0, maxHp)
+        }
+
+        // Action label: only push when it changed for this NPC (empty = clear).
+        val label = intent.actionLabel?.takeIf { it.isNotBlank() } ?: ""
+        if (shouldSendActionLabel(intent.characterId, label)) {
+            entity.uniqueId.let { plugin.perceptionBroadcaster.sendActionPopup(it, label) }
         }
     }
 

@@ -224,7 +224,16 @@ class PerceptionBroadcaster(private val plugin: Story) {
     }
 
     enum class PopupType(val id: Byte) {
-        PERCEPTION(0), COMBAT_ATTACK(1), COMBAT_ATTACKED(2), MOOD(3), AGGRESSION(4)
+        PERCEPTION(0), COMBAT_ATTACK(1), COMBAT_ATTACKED(2), MOOD(3), AGGRESSION(4), ACTION(5)
+    }
+
+    /**
+     * Sends the NPC's current sim action as a fading head-text via the perception
+     * popup path. An empty label is an explicit clear (the client drops the
+     * current ACTION popup for that NPC).
+     */
+    fun sendActionPopup(npcUuid: java.util.UUID, label: String) {
+        broadcastPerceptionPopup(npcUuid, label, PopupType.ACTION)
     }
 
     fun broadcastPerceptionPopup(npcUuid: java.util.UUID, perceivedLabel: String, type: PopupType = PopupType.PERCEPTION) {
