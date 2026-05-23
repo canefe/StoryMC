@@ -530,6 +530,18 @@ data class CombatHitOutcomeEvent(
 }
 
 /**
+ * Plugin → Go: the DM grabbed or released an NPC for live puppeteering. story-go
+ * updates its GrabRegistry; while grabbed, it drops that NPC's sim go_to/npc.speak.
+ */
+@Serializable
+data class DMControlToggleEvent(
+    val characterId: String,
+    val grabbed: Boolean,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "dm.control.toggle"
+}
+
+/**
  * Plugin → Go: ask story-go for alive NPCs near a point. Response carries
  * `NpcSpawnIntent`s for each character that should be in-world.
  */
