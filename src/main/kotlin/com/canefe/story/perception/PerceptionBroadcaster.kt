@@ -3,6 +3,7 @@ package com.canefe.story.perception
 import com.canefe.story.Story
 import com.canefe.story.bridge.PerceptionStimulusEvent
 import com.canefe.story.util.characterId
+import java.util.UUID
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPluginMessage
 import org.bukkit.Bukkit
@@ -232,11 +233,11 @@ class PerceptionBroadcaster(private val plugin: Story) {
      * popup path. An empty label is an explicit clear (the client drops the
      * current ACTION popup for that NPC).
      */
-    fun sendActionPopup(npcUuid: java.util.UUID, label: String) {
+    fun sendActionPopup(npcUuid: UUID, label: String) {
         broadcastPerceptionPopup(npcUuid, label, PopupType.ACTION)
     }
 
-    fun broadcastPerceptionPopup(npcUuid: java.util.UUID, perceivedLabel: String, type: PopupType = PopupType.PERCEPTION) {
+    fun broadcastPerceptionPopup(npcUuid: UUID, perceivedLabel: String, type: PopupType = PopupType.PERCEPTION) {
         val baos = ByteArrayOutputStream()
         DataOutputStream(baos).use { out ->
             out.writeLong(npcUuid.mostSignificantBits)

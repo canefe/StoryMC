@@ -1,6 +1,7 @@
 package com.canefe.story.config
 
 import org.bukkit.Material
+import org.yaml.snakeyaml.Yaml
 import java.io.File
 
 data class ItemRenderSpec(val material: Material, val customModelData: Int?)
@@ -37,7 +38,7 @@ class ItemMapService {
             default = ItemRenderSpec(Material.PAPER, null)
             return
         }
-        val yaml = org.yaml.snakeyaml.Yaml()
+        val yaml = Yaml()
         val root = file.inputStream().use { yaml.load<Map<String, Any?>>(it) } ?: emptyMap()
         loadFromMap(root)
     }

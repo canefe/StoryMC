@@ -11,6 +11,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Executes inbound intents from the sim/LLM service by translating them
@@ -22,7 +23,7 @@ object IntentExecutor {
     private const val MISSING_RECONCILE_COOLDOWN_MS = 5_000L
 
     /** Per-characterId last action label sent to the client, for change-diffing. */
-    private val lastActionLabel = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val lastActionLabel = ConcurrentHashMap<String, String>()
 
     /** Returns true if [label] differs from the last sent for [characterId] (and records it). */
     fun shouldSendActionLabel(characterId: String, label: String): Boolean {
@@ -401,7 +402,7 @@ object IntentExecutor {
 
         val renderDist = 64.0
         val renderDistSq = renderDist * renderDist
-        val audience = org.bukkit.Bukkit.getOnlinePlayers().filter { p ->
+        val audience = Bukkit.getOnlinePlayers().filter { p ->
             (p.world == from.world && p.location.distanceSquared(from.location) <= renderDistSq) ||
                 (p.world == to.world && p.location.distanceSquared(to.location) <= renderDistSq)
         }

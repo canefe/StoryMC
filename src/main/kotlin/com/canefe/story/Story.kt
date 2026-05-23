@@ -17,6 +17,7 @@ import com.canefe.story.combat.packet.CombatPacketBridge
 import com.canefe.story.combat.stimulus.CombatStimulusEmitter
 import com.canefe.story.command.base.CommandManager
 import com.canefe.story.config.ConfigService
+import com.canefe.story.config.ItemMapService
 import com.canefe.story.config.PromptService
 import com.canefe.story.context.ContextExtractor
 import com.canefe.story.conversation.ConversationManager
@@ -102,8 +103,8 @@ open class Story :
 
     // Plugin configuration
     val configService = ConfigService(this)
-    val itemMapService = com.canefe.story.config.ItemMapService()
-    val itemTransferBridge by lazy { com.canefe.story.bridge.ItemTransferPacketBridge(this) }
+    val itemMapService = ItemMapService()
+    val itemTransferBridge by lazy { ItemTransferPacketBridge(this) }
     lateinit var promptService: PromptService
     lateinit var appearanceTemplateCache: AppearanceTemplateCache
     val isAppearanceTemplateCacheReady: Boolean get() = ::appearanceTemplateCache.isInitialized

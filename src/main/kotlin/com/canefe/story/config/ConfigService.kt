@@ -2,6 +2,7 @@ package com.canefe.story.config
 
 import com.canefe.story.Story
 import org.bukkit.configuration.file.FileConfiguration
+import java.io.File
 
 @Suppress("MagicNumber")
 class ConfigService(
@@ -160,7 +161,7 @@ class ConfigService(
             plugin.sessionManager.load()
             plugin.voiceManager.load()
             plugin.saveResource("items.yml", false)
-            plugin.itemMapService.loadFromFile(java.io.File(plugin.dataFolder, "items.yml"))
+            plugin.itemMapService.loadFromFile(File(plugin.dataFolder, "items.yml"))
             try {
                 plugin.characterRegistry.reload()
             } catch (_: UninitializedPropertyAccessException) {
