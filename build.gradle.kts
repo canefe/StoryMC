@@ -328,6 +328,12 @@ tasks.build {
     dependsOn(tasks.shadowJar)
 }
 
+tasks.processTestResources {
+    // sourceSets re-adds the default src/test/resources dir, so every test resource is
+    // registered twice; keep the last copy instead of failing the build.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
 tasks.processResources {
     val commit = if (version.toString().endsWith("SNAPSHOT")) gitCommitHash() else ""
     val props =
