@@ -219,6 +219,7 @@ class WebSocketTransport(
                 "sim.affordance_registry" -> json.decodeFromString<SimAffordanceRegistryEvent>(data)
                 "npc.spawn" -> json.decodeFromString<NpcSpawnIntent>(data)
                 "npc.state" -> json.decodeFromString<NpcStateIntent>(data)
+                "npc.item_transfer" -> json.decodeFromString<NpcItemTransferIntent>(data)
                 "frontend.intent" -> json.decodeFromString<FrontendIntentEvent>(data)
                 "npc.spawn_query" -> json.decodeFromString<NpcSpawnQueryEvent>(data)
                 "npc.spawn_query_response" -> json.decodeFromString<NpcSpawnQueryResponseEvent>(data)

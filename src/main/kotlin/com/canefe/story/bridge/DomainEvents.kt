@@ -237,8 +237,26 @@ data class NpcStateIntent(
     val z: Double,
     val world: String = "",
     val health: Double = -1.0,
+    val actionId: String? = null,
+    val actionLabel: String? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.state"
+}
+
+/**
+ * Go → Plugin: an item changed hands between two sim characters (trade/gift/give).
+ * Emitted by the sim's transfer chokepoint; the plugin resolves both entities and
+ * relays a story:item_transfer packet for the client to visualize.
+ */
+@Serializable
+data class NpcItemTransferIntent(
+    val fromCharacterId: String,
+    val toCharacterId: String,
+    val item: String,
+    val qty: Int,
+    val reason: String = "give",
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.item_transfer"
 }
 
 /**
