@@ -1,0 +1,7 @@
+# sim item id -> Minecraft rendering. Unknown ids fall back to `default`.
+items:
+  bread:  { material: BREAD }
+  coin:   { material: GOLD_NUGGET }
+  wheat:  { material: WHEAT }
+  apple:  { material: APPLE }
+default: { material: PAPER }
