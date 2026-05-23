@@ -121,50 +121,94 @@ phantom `target` field (sent by neither producer) is removed.
 intent.completed { char, intentId, primitive }
 intent.rejected  { char, intentId, primitive, reason: RejectReason }
 ```
-- `RejectReason { UNREACHABLE, TARGET_NOT_FOUND, INVALID, TIMEOUT, SUPERSEDED }`
-  (proto enum). `SUPERSEDED` = a newer intent for the same NPC replaced this one
-  before it resolved (see Section 4, watcher contention).
+- Reject reason is a proto enum. StoryMC ALREADY has a Kotlin `RejectionReason`
+  enum (`DomainEvents.kt:411-429`: `NPC_NOT_FOUND, TARGET_NOT_FOUND, OUT_OF_RANGE,
+  NPC_DEAD, NPC_BUSY, INVALID_PRIMITIVE, UNSUPPORTED_BACKEND, EXECUTION_ERROR,
+  UNREACHABLE`). The proto enum is the **superset** of that, with `SUPERSEDED`
+  and `TIMEOUT` added; the generated type REPLACES the hand-written
+  `RejectionReason`. `SUPERSEDED` = a newer intent for the same NPC replaced this
+  one before it resolved (see Section 4 Phase 3, watcher contention).
 
 ---
 
 ## Section 3 — Schema SoT, Codegen & Wire
 
-**Source of truth:** `story-proto/story/v1/` — revived and made real. The entire
-vocabulary above is defined in `.proto`. Adding/renaming a field = edit `.proto` +
-regen → all three repos fail to **compile** on drift.
+**Source of truth:** `story-proto/story/v1/` — a real git repo, consumed by
+story-go as the `proto/` **git submodule** (`.gitmodules`, commit `d8a811d`).
+story-go already runs codegen via `make proto` (raw `protoc` + `protoc-gen-go`,
+output committed to `gen/story/v1/*.pb.go`). "Revive and make real" therefore
+means: (a) ADD the missing vocabulary to the `.proto` (none of `go_to`,
+`navigate_to`, `npc.move`, `intent.completed/rejected` exist in proto today —
+they live only as hand-JSON), and (b) EXTEND codegen to the two repos that have
+none. Adding/renaming a field = edit `.proto` + regen → all three repos fail to
+**compile** on drift.
 
 **Codegen (3 targets):**
-- **Rust (story-sim):** `prost` via `build.rs` → replaces every `json!` / `format!`
-  emit site (including the raw-string `npc.move` template in `movement.rs`).
-- **Go (story-go):** `protoc-gen-go` → replaces the hand-kept structs and the
-  snake_case↔camelCase re-key in `handler.go`.
-- **Kotlin (StoryMC):** `protoc` Kotlin/Java → replaces the `@Serializable` DTOs
-  in `DomainEvents.kt`.
+- **Go (story-go):** *pipeline EXISTS.* Bump the `proto/` submodule, `make proto`,
+  commit `gen/`. Replace the hand-kept `events.go` structs + the
+  snake_case↔camelCase re-key in `handler.go` with generated types.
+- **Rust (story-sim):** *NET-NEW.* Add `prost` + `prost-build` deps, a `build.rs`
+  that compiles the vendored/submoduled `.proto`, and replace every `json!` /
+  raw-`format!` emit site (incl. the `npc.move` template in `movement.rs`).
+- **Kotlin (StoryMC):** *NET-NEW.* Add a protobuf Gradle plugin
+  (`com.google.protobuf` or Wire) generating Kotlin/Java types, replacing the
+  `@Serializable` DTOs in `DomainEvents.kt` / `StoryEvent.kt`.
 
 **Wire format:** **proto3 canonical JSON** over the existing WebSocket + NATS. We
 do **not** rip out WebSocket or switch to gRPC binary. The envelope
 `{type, data, timestamp, source}` stays; `data` becomes proto-JSON of a generated
-type. Lowest-risk path: same transports, typed payloads.
+type. Lowest-risk path: same transports, typed payloads. (The Go `gen/` proto
+types currently feed ONLY the gRPC path via `convert.go`; this project makes them
+feed the JSON path too.)
 
-**Dead gRPC server removed:** story-go's `internal/grpc` server
-(`server.go:116-117`, running on a port with no client) and the `MultiSender`
-gRPC branch (`server.go:158-159`) and the `StoryBridge.EventStream` service def
-are deleted. The *message* protos are kept (now used by the JSON path); only the
-unused transport service goes.
+**gRPC server removed + queries re-homed.** CORRECTION to an earlier assumption:
+the gRPC server is **not** dead — it is wired into the `MultiSender`
+(`server.go:158-159`), serves a live listener (`server.go:520-521`), and is the
+sole consumer of the generated proto types via `internal/grpc/convert.go`. It
+also backs `QueryWorldState` / `QueryCharacterState` (`server.go:325, 345`).
+Removing it therefore requires **re-homing those two queries onto the WebSocket
+request/response path** before deleting the `StoryBridge` service, the
+`MultiSender` gRPC branch, the listener, and `convert.go`. The *message* protos
+are kept (now used by the JSON path); the `service StoryBridge` def and the gRPC
+transport go. This is Phase 2 and is independent of the movement feature.
 
 ---
 
-## Section 4 — Migration: Design-All, Migrate-A-Slice
+## Section 4 — Migration: One Plan, Three Phases
 
-**This project freezes the COMPLETE proto vocabulary** (Section 2) and migrates
-**one vertical slice end-to-end** to prove the proto→Rust/Go/Kotlin pipeline.
+**This project freezes the COMPLETE proto vocabulary** (Section 2) and delivers it
+as **one phased plan**. The three phases are independently testable but executed
+in order in a single plan document.
 
-**Slice = the movement path** — chosen because it is (a) the only intent you can
-*see* working in-game (the NPC walks, arrives, or fails) and (b) the only slice
-that exercises the **full outcome round-trip** (sim issues → Kotlin executes →
-`intent.completed`/`intent.rejected` back), which is the harder half of the
-pipeline. The behavior/animation path is one-directional by comparison.
+The **movement path** is the proving slice for the pipeline (Phase 3) because it
+is (a) the only intent you can *see* working in-game (the NPC walks, arrives, or
+fails) and (b) the only slice that exercises the **full outcome round-trip** (sim
+issues → Kotlin executes → `intent.completed`/`intent.rejected` back).
 
+### Phase 1 — Proto pipeline + codegen (foundation, no behavior change)
+1. **story-proto:** add the full frozen vocabulary (Section 2) to `story/v1/`,
+   including `go_to`, the outcome messages, and the movement enums. (The other
+   vocabulary messages are added to proto now but only `go_to` is wired this
+   project.)
+2. **story-go (pipeline EXISTS):** bump the `proto/` submodule to the new commit,
+   `make proto`, commit `gen/story/v1/*.pb.go`.
+3. **story-sim (NET-NEW):** add `prost` + `prost-build`, a `build.rs` compiling
+   the `.proto` (vendored or submoduled), and confirm generated Rust types build.
+4. **StoryMC (NET-NEW):** add a protobuf Gradle plugin generating Kotlin/Java
+   types from the `.proto`; confirm they build.
+5. **Pipeline proof:** a `go_to` value round-trips proto-JSON encode/decode
+   identically through prost (Rust), protoc-gen-go (Go), and the Gradle plugin
+   (Kotlin) — a cross-repo golden-JSON test.
+
+### Phase 2 — gRPC removal + query re-home (independent of movement)
+6. Re-home `QueryWorldState` / `QueryCharacterState` (`server.go:325, 345`) onto
+   the WebSocket request/response path (they currently traverse the gRPC server).
+7. Remove the `StoryBridge` gRPC service: delete the `MultiSender` gRPC branch
+   (`server.go:158-159`), the listener (`server.go:520-521`), `internal/grpc/`
+   (incl. `convert.go`), and the `service StoryBridge` def in proto. Keep the
+   message protos.
+
+### Phase 3 — go_to movement feature (the visible slice)
 **`go_to` unifies BOTH current movement lanes** (full unify, kills A#11 now):
 - `navigate_to` — the Lua `char:navigateTo()` frontend.intent. *Already* mints an
   intentId, has a `PendingIntents` entry, and expects an outcome.
@@ -173,35 +217,31 @@ pipeline. The behavior/animation path is one-directional by comparison.
   and NO outcome.** Folding it into `go_to` is the largest behavioral change: the
   ECS system must start minting intentIds + pushing `PendingIntents` entries.
 
-Slice steps:
-1. Stand up proto + codegen for all 3 repos. *The pipeline itself is the hard
-   part — proving it once de-risks every later slice.*
-2. Define `go_to` in proto (Section 2) and codegen it.
-3. **story-sim:** make `char:navigateTo()` emit `go_to` (was `navigate_to`); make
+8. **story-sim:** make `char:navigateTo()` emit `go_to` (was `navigate_to`); make
    the ECS `publish_movement_intents_system` emit `go_to` *with a minted intentId
    + PendingIntents entry* (was the raw-`format!` `npc.move`, no outcome). Remove
-   the `npc.move` and `navigate_to` emit sites.
-4. **Lua:** rename the primitive-string lookup in
+   the `npc.move` and `navigate_to` emit sites. (`PendingIntents` method is
+   `last_for_primitive` / `push` / `resolve`, not `lastFor`.)
+9. **Lua:** rename the primitive-string lookup in
    `head_to_known_location.lua:148` from `"navigate_to"` to `"go_to"` (else
-   UNREACHABLE detection silently breaks — see Risk 2).
-5. **story-go:** add `go_to` to `IsSimEvent` so it routes via
-   `broadcastToFrontends` like the old frontend.intent (the outcome lane already
-   needs zero Go change — Go forwards it verbatim).
-6. **StoryMC:** single `go_to` handler that builds the target Location and runs
-   the existing `NavWatchState` watcher (arrival/stall/timeout/re-issue —
-   unchanged, it's target/intent-agnostic). Emit `intent.completed`/
-   `intent.rejected` with the `go_to`'s intentId. Delete `executeMoveIntent` and
-   the old `navigate_to` branch.
-7. **Watcher contention (Risk 3):** the single `navWatchers` map is keyed by
-   characterId. When a new `go_to` arrives for an NPC with a live watcher, emit
-   `intent.rejected(SUPERSEDED)` for the *old* intentId, cancel the old watcher,
-   then start the new one. No leaked `PendingIntents` on the sim side.
-   `RejectReason` gains `SUPERSEDED`.
-8. **Unify world-resolution (Risk 5):** `go_to` carries a `world`. Today
-   `navigate_to` ignores it (uses first world, `IntentExecutor.kt:647`) while
-   `npc.move` honors `intent.world` (`:325-328`). `go_to` honors the supplied
-   world — this also addresses the world-mismatch UNREACHABLE bug (obs 6590).
-9. Delete the dead gRPC server (Section 3).
+   UNREACHABLE detection silently breaks — Risk 2).
+10. **story-go:** add `go_to` to `IsSimEvent` (`internal/sim/events.go`) so it
+    routes via `broadcastToFrontends` like the old frontend.intent. The outcome
+    lane already needs zero Go change (forwarded verbatim, `handler.go:275-288`).
+11. **StoryMC:** single `go_to` handler that builds the target Location (honoring
+    the supplied `world`) and runs the existing `NavWatchState` watcher
+    (arrival/stall/timeout/re-issue — unchanged, it's target/intent-agnostic).
+    Emit `intent.completed`/`intent.rejected` with the `go_to`'s intentId. Delete
+    `executeMoveIntent` and the old `navigate_to` branch.
+12. **Watcher contention (Risk 3):** the single `navWatchers` map is keyed by
+    characterId. When a new `go_to` arrives for an NPC with a live watcher, emit
+    `intent.rejected(SUPERSEDED)` for the *old* intentId, cancel the old watcher,
+    then start the new one. No leaked `PendingIntents` on the sim side.
+    `RejectReason` gains `SUPERSEDED`.
+13. **Unify world-resolution (Risk 5):** `go_to` carries `world`. Today
+    `navigate_to` ignores it (first world, `IntentExecutor.kt:647`) while
+    `npc.move` honors `intent.world` (`:325-328`). `go_to` honors the supplied
+    world — also fixes the world-mismatch UNREACHABLE bug (obs 6590).
 
 **Out of scope this project (migrated in follow-ups against the frozen schema):**
 `behavior.set`/`behavior.clear` (and the npc.state action-field strip), `flee`,
@@ -225,8 +265,9 @@ sim stops emitting the old types entirely. No big-bang elsewhere.
 - **story-go is pure pass-through** for both `frontend.intent`/`navigate_to`
   (`handler.go:128-129`) and `npc.move` (generic NATS fan-out, `nats.go:53-72`),
   and for the outcome lane (`handler.go:275-288`, re-publishes verbatim). It
-  parses no intentId/coords/outcome. **Only Go change:** add `go_to` to
-  `IsSimEvent` (`events.go:6-12`) + gRPC deletion.
+  parses no intentId/coords/outcome. **Phase 3 Go change:** add `go_to` to
+  `IsSimEvent` (`internal/sim/events.go`). (gRPC removal + query re-home is the
+  separate Phase 2.)
 - **StoryMC consumers:** `npc.move`→`executeMoveIntent`
   (`IntentExecutor.kt:313-332`, fire-and-forget, no watcher/outcome — to be
   deleted); `navigate_to`→`when` branch (`:646-663`) + `NavWatchState` machine
