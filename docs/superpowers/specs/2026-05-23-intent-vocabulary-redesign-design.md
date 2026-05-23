@@ -89,7 +89,7 @@ npc.emote         { char, emote }
 
 ### Frontend intents (carry `intentId`, expect an outcome back)
 ```
-go_to       { char, intentId, x, y, z, arrivalRange=3.5, stallTimeout=30, maxDuration=300 }
+go_to       { char, intentId, x, y, z, world, arrivalRange=3.5, stallTimeout=30, maxDuration=300 }
 flee        { char, intentId, x, z }
 attack      { char, intentId, target, targetKind: TargetKind, swing: SwingDir }
 look_at     { char, intentId, target?, x?, y?, z?, maxYaw, maxPitch }
@@ -97,8 +97,9 @@ set_target  { char, intentId, target, targetKind: TargetKind }
 clear_target{ char, intentId }
 ```
 - **`go_to` unifies the old `npc.move` + `navigate_to`** (kills A#11 dual movement
-  lanes). Carries sim-tunable nav thresholds with sane defaults; Kotlin owns the
-  re-issue *mechanism*, sim owns the *numbers*.
+  lanes). Carries the target `world` (honored — see Section 4 Risk 5) and
+  sim-tunable nav thresholds with sane defaults; Kotlin owns the re-issue
+  *mechanism*, sim owns the *numbers*.
 - **`flee` sends a final destination**, not an anchor+band. The sim does the
   away-vector math (kills A#5 Kotlin flee-math). Kotlin walks + re-paths only.
 - **`attack`** carries `swing: SwingDir` chosen by the sim (kills A#6 Kotlin
@@ -120,7 +121,9 @@ phantom `target` field (sent by neither producer) is removed.
 intent.completed { char, intentId, primitive }
 intent.rejected  { char, intentId, primitive, reason: RejectReason }
 ```
-- `RejectReason { UNREACHABLE, TARGET_NOT_FOUND, INVALID, TIMEOUT }` (proto enum).
+- `RejectReason { UNREACHABLE, TARGET_NOT_FOUND, INVALID, TIMEOUT, SUPERSEDED }`
+  (proto enum). `SUPERSEDED` = a newer intent for the same NPC replaced this one
+  before it resolved (see Section 4, watcher contention).
 
 ---
 
@@ -156,65 +159,117 @@ unused transport service goes.
 **This project freezes the COMPLETE proto vocabulary** (Section 2) and migrates
 **one vertical slice end-to-end** to prove the proto→Rust/Go/Kotlin pipeline.
 
-**Slice = the behavior/animation path** (freshest pain, worst hacks):
+**Slice = the movement path** — chosen because it is (a) the only intent you can
+*see* working in-game (the NPC walks, arrives, or fails) and (b) the only slice
+that exercises the **full outcome round-trip** (sim issues → Kotlin executes →
+`intent.completed`/`intent.rejected` back), which is the harder half of the
+pipeline. The behavior/animation path is one-directional by comparison.
+
+**`go_to` unifies BOTH current movement lanes** (full unify, kills A#11 now):
+- `navigate_to` — the Lua `char:navigateTo()` frontend.intent. *Already* mints an
+  intentId, has a `PendingIntents` entry, and expects an outcome.
+- `npc.move` — emitted by the **ECS** `publish_movement_intents_system`
+  (`movement.rs:14-124`), driven by action-target state. **Today has NO intentId
+  and NO outcome.** Folding it into `go_to` is the largest behavioral change: the
+  ECS system must start minting intentIds + pushing `PendingIntents` entries.
+
+Slice steps:
 1. Stand up proto + codegen for all 3 repos. *The pipeline itself is the hard
    part — proving it once de-risks every later slice.*
-2. Migrate **only** `npc.state` (strip action + stats fields → position/health
-   only) and add `behavior.set` / `behavior.clear`.
-3. Delete the corresponding Kotlin hacks: anim map (A#1), lua_hook reliance (A#2),
-   fire-once diffing (A#3), label stickiness (A#4).
-4. Add the late-join `currentIntent[npc]` replay cache (write-on-receive,
-   replay-on-viewer-join). This is a *small* render cache, not transition
-   inference.
-5. Delete the dead gRPC server (Section 3).
+2. Define `go_to` in proto (Section 2) and codegen it.
+3. **story-sim:** make `char:navigateTo()` emit `go_to` (was `navigate_to`); make
+   the ECS `publish_movement_intents_system` emit `go_to` *with a minted intentId
+   + PendingIntents entry* (was the raw-`format!` `npc.move`, no outcome). Remove
+   the `npc.move` and `navigate_to` emit sites.
+4. **Lua:** rename the primitive-string lookup in
+   `head_to_known_location.lua:148` from `"navigate_to"` to `"go_to"` (else
+   UNREACHABLE detection silently breaks — see Risk 2).
+5. **story-go:** add `go_to` to `IsSimEvent` so it routes via
+   `broadcastToFrontends` like the old frontend.intent (the outcome lane already
+   needs zero Go change — Go forwards it verbatim).
+6. **StoryMC:** single `go_to` handler that builds the target Location and runs
+   the existing `NavWatchState` watcher (arrival/stall/timeout/re-issue —
+   unchanged, it's target/intent-agnostic). Emit `intent.completed`/
+   `intent.rejected` with the `go_to`'s intentId. Delete `executeMoveIntent` and
+   the old `navigate_to` branch.
+7. **Watcher contention (Risk 3):** the single `navWatchers` map is keyed by
+   characterId. When a new `go_to` arrives for an NPC with a live watcher, emit
+   `intent.rejected(SUPERSEDED)` for the *old* intentId, cancel the old watcher,
+   then start the new one. No leaked `PendingIntents` on the sim side.
+   `RejectReason` gains `SUPERSEDED`.
+8. **Unify world-resolution (Risk 5):** `go_to` carries a `world`. Today
+   `navigate_to` ignores it (uses first world, `IntentExecutor.kt:647`) while
+   `npc.move` honors `intent.world` (`:325-328`). `go_to` honors the supplied
+   world — this also addresses the world-mismatch UNREACHABLE bug (obs 6590).
+9. Delete the dead gRPC server (Section 3).
 
 **Out of scope this project (migrated in follow-ups against the frozen schema):**
-`go_to`, `flee`, `attack`, `look_at`, `set_target`, `clear_target`, `npc.speak`,
-`npc.item_transfer`, `npc.emote`, and the outcome lane. These stay on the old
-hand-JSON path during this project.
+`behavior.set`/`behavior.clear` (and the npc.state action-field strip), `flee`,
+`attack`, `look_at`, `set_target`, `clear_target`, `npc.speak`,
+`npc.item_transfer`, `npc.emote`. These stay on the old hand-JSON path during
+this project.
 
-**Coexistence:** new proto-JSON types and old hand-JSON types travel the same
-WebSocket side by side, dispatched by `type` string. No big-bang cutover.
+**Coexistence:** new proto-JSON `go_to` and any remaining old hand-JSON types
+travel the same WebSocket side by side, dispatched by `type` string. Because
+`go_to` *replaces* both old movement types at their emit sites, there is no period
+where old `navigate_to`/`npc.move` and new `go_to` race for the same NPC — the
+sim stops emitting the old types entirely. No big-bang elsewhere.
 
 ### Confirmed consumer impact (verified in code, all 3 repos)
-- **Only one production consumer** of npc.state's action fields:
-  `IntentExecutor.executeNpcStateIntent` (`IntentExecutor.kt:480, 493`). No other
-  listener, analytics, or persistence.
-- **`actionId` is already dead** on the consumer side — nothing reads it.
-- **story-go is forward-only** for these fields (opaque `map` passthrough, no
-  typed binding) — **zero Go change** needed for npc.state to keep working after
-  the strip. Go changes are only: new `behavior.set` handling (forward),
-  snake/camel re-key cleanup, gRPC deletion.
-- **`stats` on npc.state has no consumer** — purifying npc.state is free.
-- **Tests to update:** `ItemTransferWireTest.kt` (asserts `NpcStateIntent` decodes
-  actionId/actionLabel), `ActionLabelDiffTest.kt`, `AnimationDiffTest.kt`.
+- **EMIT (sim):** `navigate_to` via the frontend.intent Descriptor
+  (`frontend_intent.rs:137-149`), single publish point `:245-296`; caller is the
+  Lua `char:navigateTo()` bind (`execution.rs:1129-1144`), only Lua caller is
+  `head_to_known_location.lua:132`. `npc.move` is a lone raw `format!`
+  (`movement.rs:116-122`) from the ECS system, **disjoint** caller surface
+  (action-target state, `target_finding.rs`). No other emit sites.
+- **story-go is pure pass-through** for both `frontend.intent`/`navigate_to`
+  (`handler.go:128-129`) and `npc.move` (generic NATS fan-out, `nats.go:53-72`),
+  and for the outcome lane (`handler.go:275-288`, re-publishes verbatim). It
+  parses no intentId/coords/outcome. **Only Go change:** add `go_to` to
+  `IsSimEvent` (`events.go:6-12`) + gRPC deletion.
+- **StoryMC consumers:** `npc.move`→`executeMoveIntent`
+  (`IntentExecutor.kt:313-332`, fire-and-forget, no watcher/outcome — to be
+  deleted); `navigate_to`→`when` branch (`:646-663`) + `NavWatchState` machine
+  (`:89-239`); outcomes emitted via `completeIntent`/`rejectIntent`
+  (`:816-835`)→`IntentCompletedEvent`/`IntentRejectedEvent`
+  (`DomainEvents.kt:447-470`), encoded `WebSocketTransport.kt:190-191`.
+- **NavWatchState is target/intent-agnostic** (`:232-239`): reads only live NPC
+  position + the captured target Location, nothing from the intent. It works
+  unchanged for `go_to` as long as `go_to` carries `x/y/z` + `world` + `intentId`.
+- **Tests to update / add:** existing `AuthoringIntentWireTest.kt`,
+  `ActionLabelDiffTest.kt`, `AnimationDiffTest.kt` unaffected by movement; add
+  `go_to` wire round-trip test (decode + outcome emit), supersede-reject test.
 
 ### Verification (in-game)
-Drive an NPC's need (`/story npc need <char> thirst 20`); confirm:
-- the drink animation + label fire once per action **with the anim map deleted**,
-- a late-joining player sees the in-flight animation/label (cache replay),
-- npc.state still drives position correctly with action fields stripped.
+- Drive an NPC to a known location (Lua `navigateTo` path) and via the ECS
+  action-target path; confirm both now travel as `go_to` and both report an
+  outcome (arrival → `intent.completed`; blocked → `intent.rejected`).
+- Issue a second `go_to` to a walking NPC; confirm the first intent gets
+  `intent.rejected(SUPERSEDED)` and no `PendingIntents` "lost mint" eviction
+  log appears on the sim side.
+- Cross-world target resolves correctly (no spurious UNREACHABLE from the old
+  first-world assumption).
 
 ---
 
 ## Appendix A — The 11 "Kotlin implements meaning" smells (from inventory)
 
-Resolution column marks which are fixed by THIS project's slice (★) vs. a later
-slice against the frozen schema (·).
+Resolution column marks which are fixed by THIS project's slice (★, the movement
+path) vs. a later slice against the frozen schema (·).
 
 | # | Smell | file:line | Resolution |
 |---|---|---|---|
-| 1 | `behaviorId → animation` hardcoded map | IntentExecutor.kt:57-63, :493 | ★ `AnimationKind` enum in `behavior.set` |
-| 2 | `actionId == "lua_hook"` collapse forces #1 | entity_state_broadcast.rs:75; IntentExecutor.kt:490 | ★ semantic `behavior.set` |
-| 3 | animation fire-once diffing + cache | IntentExecutor.kt:48, :77-81 | ★ edge-triggered intent |
-| 4 | action-label stickiness / empty-suppress | IntentExecutor.kt:26, :38-43 | ★ explicit `behavior.clear` |
+| 1 | `behaviorId → animation` hardcoded map | IntentExecutor.kt:57-63, :493 | · `AnimationKind` enum in `behavior.set` |
+| 2 | `actionId == "lua_hook"` collapse forces #1 | entity_state_broadcast.rs:75; IntentExecutor.kt:490 | · semantic `behavior.set` |
+| 3 | animation fire-once diffing + cache | IntentExecutor.kt:48, :77-81 | · edge-triggered intent |
+| 4 | action-label stickiness / empty-suppress | IntentExecutor.kt:26, :38-43 | · explicit `behavior.clear` |
 | 5 | `flee_from` destination math in Kotlin | IntentExecutor.kt:664-716 | · `flee` sends dest |
 | 6 | `attempt_hit` random swing default | IntentExecutor.kt:785 | · `swing: SwingDir` |
-| 7 | navigate_to arrival/stall/re-issue loop | IntentExecutor.kt:89-239 | · mechanism stays Kotlin; thresholds in `go_to` |
+| 7 | navigate_to arrival/stall/re-issue loop | IntentExecutor.kt:89-239 | ★ mechanism stays Kotlin (correct per Hybrid line); thresholds now in `go_to`; watcher reused |
 | 8 | set_target Player-only constraint | IntentExecutor.kt:638 | · `targetKind` |
 | 9 | look_at exists only in Kotlin | IntentExecutor.kt:717-759 | · real `look_at` intent |
 | 10 | item_transfer `reason` opaque string | lua_world_api.rs:3028; IntentExecutor.kt:527 | · `TransferReason` enum |
-| 11 | two unmodeled movement lanes | movement.rs:118 vs frontend.intent | · unified `go_to` |
+| 11 | two unmodeled movement lanes | movement.rs:118 vs frontend.intent | ★ unified `go_to` (ECS lane gains intentId+outcome) |
 
 ## Appendix B — Notable wire bugs the redesign fixes
 - `npc.speak` two-producers-one-type schema split
