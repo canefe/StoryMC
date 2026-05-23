@@ -162,7 +162,7 @@ class WebSocketTransport(
         }
     }
 
-    private fun serializeEvent(event: SerializableStoryEvent): kotlinx.serialization.json.JsonElement =
+    internal fun serializeEvent(event: SerializableStoryEvent): kotlinx.serialization.json.JsonElement =
         when (event) {
             is PlayerMessageEvent -> json.encodeToJsonElement(event)
             is NPCDamagedEvent -> json.encodeToJsonElement(event)
@@ -198,6 +198,7 @@ class WebSocketTransport(
             is NpcSetNeedIntent -> json.encodeToJsonElement(event)
             is NpcSetStatIntent -> json.encodeToJsonElement(event)
             is NpcKnowIntent -> json.encodeToJsonElement(event)
+            is DMControlToggleEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
