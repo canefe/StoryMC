@@ -2,6 +2,8 @@ package com.canefe.story.npc
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
+import com.canefe.story.bridge.DMControlToggleEvent
+import com.canefe.story.bridge.IntentExecutor
 import com.canefe.story.util.characterId
 import com.github.retrooper.packetevents.event.PacketListener
 import com.github.retrooper.packetevents.event.PacketReceiveEvent
@@ -27,6 +29,7 @@ import java.io.DataInputStream
  *   0x04 TOGGLE      UTF characterId
  *   0x05 CLEAR
  *   0x06 SPEAK_AT    UTF targetCharacterId, UTF text   (move group to target then say text)
+ *   0x07 DM_CONTROL  UTF characterId, byte grabbed(1/0)   (grab/release NPC for live DM control)
  *
  * All commands are gated on `story.dm` permission server-side. Targeting is by
  * characterId rather than display name so puppet ops keep working when a DM
@@ -104,6 +107,20 @@ class PuppetCommandListener(
                             .resolveGroup(player)
                             .firstOrNull()
                             ?.let { plugin.npcMessageService.broadcastNPCMessage(text, it) }
+                    }
+                    0x07 -> {
+                        val charId = input.readUTF()
+                        val grabbed = input.readByte().toInt() != 0
+                        // On grab: supersede any in-flight go_to (clean SUPERSEDED
+                        // outcome to the sim) and stop the arrival watcher. The
+                        // story-go grab gate suppresses *future* sim intents.
+                        if (grabbed) {
+                            IntentExecutor.supersedeAndStopForGrab(plugin, charId)
+                        }
+                        // Tell story-go to start/stop gating sim intents for this NPC.
+                        plugin.eventBus.emit(
+                            DMControlToggleEvent(characterId = charId, grabbed = grabbed),
+                        )
                     }
                     else -> plugin.logger.warning("[PuppetCommand] unknown opcode $op from ${player.name}")
                 }
