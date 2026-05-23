@@ -443,6 +443,29 @@ object IntentExecutor {
         activeGoTo[characterId] = intentId to "go_to"
     }
 
+    /**
+     * DM grabbed [characterId] for live puppeteering. If a go_to is in flight, reject
+     * it as SUPERSEDED (so the sim's PendingIntents entry is cleared) and stop its
+     * arrival watcher. No-op if nothing is in flight. The story-go grab gate handles
+     * suppressing *future* sim intents; this only resolves the one already running.
+     */
+    fun supersedeAndStopForGrab(plugin: Story, characterId: String) {
+        val current = activeGoTo[characterId] ?: return
+        val inFlightIntentId = current.first
+        // claim+clear guards against double-emit if a watcher callback races us.
+        if (claimAndClearActiveGoTo(characterId, inFlightIntentId)) {
+            plugin.eventBus.emit(
+                IntentRejectedEvent(
+                    intentId = inFlightIntentId,
+                    characterId = characterId,
+                    primitive = "go_to",
+                    reason = RejectionReason.SUPERSEDED,
+                ),
+            )
+        }
+        finishNavWatcher(characterId)
+    }
+
     private fun completeGoTo(plugin: Story, intent: GoToExecIntent) {
         if (!claimAndClearActiveGoTo(intent.characterId, intent.intentId)) return
         plugin.eventBus.emit(
