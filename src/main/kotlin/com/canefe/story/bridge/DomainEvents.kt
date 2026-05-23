@@ -452,6 +452,21 @@ enum class RejectionReason {
      * re-plan instead of believing they arrived. See [IntentExecutor].
      */
     UNREACHABLE,
+
+    /**
+     * A newer intent for the same NPC superseded this one before it finished.
+     * Emitted for the OLD intentId when a second go_to arrives while the first
+     * is still walking, so the sim gets an outcome instead of leaking the old
+     * PendingIntents entry. See [IntentExecutor.executeGoTo].
+     */
+    SUPERSEDED,
+
+    /**
+     * The intent's deadline elapsed before it could complete. Included for
+     * parity with the sim's rejection-reason superset; the navigate_to watcher
+     * currently maps timeouts to [UNREACHABLE].
+     */
+    TIMEOUT,
 }
 
 /**

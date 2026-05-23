@@ -148,6 +148,26 @@ object IntentExecutor {
     private val navWatchers = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /**
+     * characterId -> (intentId, primitive) of the currently-watched go_to, so a
+     * superseding go_to can emit intent.rejected(SUPERSEDED) for the OLD intentId
+     * before [startNavWatcher] cancels its watcher. Also gates completeGoTo /
+     * rejectGoTo: they only emit when they're still the active intent for the
+     * character, so a superseded watcher's stray terminal callback can't double-emit.
+     */
+    private val activeGoTo = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+    /**
+     * Pure supersede decision (see GoToSupersedeTest): given the previously-active
+     * go_to record [prev] for an NPC and the [newIntentId] now arriving, returns
+     * the old intentId that must be rejected as SUPERSEDED, or null if there is no
+     * distinct in-flight intent to reject (no prior, or it's the same intentId).
+     */
+    fun supersededIntentId(prev: Pair<String, String>?, newIntentId: String): String? =
+        if (prev != null && prev.first != newIntentId) prev.first else null
+
+    fun resetActiveGoToForTest() = activeGoTo.clear()
+
+    /**
      * Start (or replace) an arrival watcher for [characterId] heading to [target].
      * Calls [onArrive] once it gets within [NAV_ARRIVE_RANGE], or [onFail] on
      * stuck / timeout / despawn. Exactly one terminal callback fires.
@@ -333,6 +353,17 @@ object IntentExecutor {
         plugin: Story,
         intent: GoToExecIntent,
     ) {
+        // Supersede any live go_to for this NPC: emit intent.rejected(SUPERSEDED)
+        // for the OLD intentId, then register THIS intent as the active one. Done
+        // up front (before resolveNPC / world checks) so the prior intent always
+        // gets an outcome even when the new go_to itself bails early — and so the
+        // early-return reject paths below pass rejectGoTo's active-intent guard
+        // (and clean up) instead of leaving a stale activeGoTo entry. For the live
+        // success path, startNavWatcher cancels the old Bukkit task (which never
+        // invokes the old onFail), so the SUPERSEDED emit is the old intent's only
+        // outcome — we do not double-cancel here.
+        beginActiveGoTo(plugin, intent.characterId, intent.intentId)
+
         val npc = resolveNPC(plugin, intent.characterId)
         if (npc == null) {
             plugin.logger.warning("[GoTo] NPC not found for characterId=${intent.characterId}")
@@ -379,7 +410,41 @@ object IntentExecutor {
         )
     }
 
+    /**
+     * Clears [activeGoTo] for [characterId] iff it still maps to [intentId], and
+     * reports whether this intent is the active one. Returns false (without
+     * clearing) when a newer go_to has already taken over — so a superseded
+     * watcher's stray terminal callback is dropped instead of double-emitting an
+     * outcome or evicting the newer intent's record.
+     */
+    private fun claimAndClearActiveGoTo(characterId: String, intentId: String): Boolean {
+        val current = activeGoTo[characterId]
+        if (current == null || current.first != intentId) return false
+        activeGoTo.remove(characterId, current)
+        return true
+    }
+
+    /**
+     * Makes [intentId] the active go_to for [characterId], superseding any prior
+     * one: emits intent.rejected(SUPERSEDED) for the OLD intentId (so the sim
+     * never leaks its PendingIntents entry) before overwriting the record.
+     */
+    private fun beginActiveGoTo(plugin: Story, characterId: String, intentId: String) {
+        supersededIntentId(activeGoTo[characterId], intentId)?.let { oldIntentId ->
+            plugin.eventBus.emit(
+                IntentRejectedEvent(
+                    intentId = oldIntentId,
+                    characterId = characterId,
+                    primitive = "go_to",
+                    reason = RejectionReason.SUPERSEDED,
+                ),
+            )
+        }
+        activeGoTo[characterId] = intentId to "go_to"
+    }
+
     private fun completeGoTo(plugin: Story, intent: GoToExecIntent) {
+        if (!claimAndClearActiveGoTo(intent.characterId, intent.intentId)) return
         plugin.eventBus.emit(
             IntentCompletedEvent(
                 intentId = intent.intentId,
@@ -390,6 +455,7 @@ object IntentExecutor {
     }
 
     private fun rejectGoTo(plugin: Story, intent: GoToExecIntent, reason: RejectionReason) {
+        if (!claimAndClearActiveGoTo(intent.characterId, intent.intentId)) return
         plugin.eventBus.emit(
             IntentRejectedEvent(
                 intentId = intent.intentId,
