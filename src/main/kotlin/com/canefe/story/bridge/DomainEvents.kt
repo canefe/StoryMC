@@ -264,6 +264,32 @@ data class NpcItemTransferIntent(
  * Plugin → Go → story-sim: inject a perception stimulus into a character's StimulusBuffer.
  * perceiverCharId sees/hears targetCharId (or a static affordance).
  */
+/**
+ * Sim -> Go -> Plugin: walk an NPC to a world position and report the outcome.
+ *
+ * The single movement primitive: replaces the old `npc.move` (fire-and-forget,
+ * no outcome) and the `navigate_to` frontend primitive. The plugin resolves the
+ * NPC, kicks off pathing, and watches arrival -- emitting IntentCompletedEvent on
+ * arrival or IntentRejectedEvent on stuck/timeout/missing-NPC, echoing intentId.
+ *
+ * `world` may be blank (fall back to the NPC's current world) and the thresholds
+ * may be 0.0 (fall back to the watcher's built-in defaults).
+ */
+@Serializable
+data class GoToExecIntent(
+    val characterId: String,
+    val intentId: String = "",
+    val x: Double = 0.0,
+    val y: Double = 0.0,
+    val z: Double = 0.0,
+    val world: String = "",
+    val arrivalRange: Double = 0.0,
+    val stallTimeout: Double = 0.0,
+    val maxDuration: Double = 0.0,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "go_to"
+}
+
 @Serializable
 data class PerceptionStimulusEvent(
     val perceiverCharId: String,

@@ -158,8 +158,11 @@ object IntentExecutor {
         target: Location,
         onArrive: () -> Unit,
         onFail: (RejectionReason) -> Unit,
+        arriveRange: Double = NAV_ARRIVE_RANGE,
+        stallSamples: Int = NAV_STALL_SAMPLES,
+        maxSamples: Int = NAV_MAX_SAMPLES,
     ) {
-        // Supersede any in-flight watcher for this NPC (a fresh navigate_to wins).
+        // Supersede any in-flight watcher for this NPC (a fresh navigate wins).
         navWatchers.remove(characterId)?.let { Bukkit.getScheduler().cancelTask(it) }
 
         val state = NavWatchState()
@@ -182,7 +185,7 @@ object IntentExecutor {
                     }
 
                     val dist = loc.distance(target)
-                    if (dist <= NAV_ARRIVE_RANGE) {
+                    if (dist <= arriveRange) {
                         finishNavWatcher(characterId)
                         onArrive()
                         return@Runnable
@@ -197,8 +200,8 @@ object IntentExecutor {
                     }
 
                     state.samples++
-                    val stuck = state.stalledSamples >= NAV_STALL_SAMPLES
-                    val timedOut = state.samples >= NAV_MAX_SAMPLES
+                    val stuck = state.stalledSamples >= stallSamples
+                    val timedOut = state.samples >= maxSamples
                     if (stuck || timedOut) {
                         plugin.logger.info(
                             "[FrontendIntent] navigate_to UNREACHABLE char=$characterId " +
@@ -310,25 +313,91 @@ object IntentExecutor {
         }
     }
 
-    fun executeMoveIntent(
+    /**
+     * World to path into for a go_to: the intent's [intentWorld] wins when
+     * non-blank, otherwise the NPC's current world [npcWorld]. Pure + testable.
+     */
+    fun resolveGoToWorld(intentWorld: String, npcWorld: String): String =
+        intentWorld.ifBlank { npcWorld }
+
+    /**
+     * The single movement primitive. Resolves the NPC, kicks off pathing, and
+     * watches arrival — emitting exactly one outcome (intent.completed on arrival,
+     * intent.rejected on missing-NPC / stuck / timeout) echoing intent.intentId.
+     *
+     * Optional wire thresholds override the watcher defaults when non-zero:
+     *   - arrivalRange (blocks),
+     *   - stallTimeout / maxDuration (seconds → poll samples at NAV_POLL_TICKS).
+     */
+    fun executeGoTo(
         plugin: Story,
-        intent: NPCMoveIntent,
+        intent: GoToExecIntent,
     ) {
         val npc = resolveNPC(plugin, intent.characterId)
         if (npc == null) {
-            plugin.logger.warning("[MoveIntent] NPC not found for characterId=${intent.characterId}")
-            requestReconcileForMissing(plugin, intent.characterId, source = "move_intent")
+            plugin.logger.warning("[GoTo] NPC not found for characterId=${intent.characterId}")
+            requestReconcileForMissing(plugin, intent.characterId, source = "go_to")
+            rejectGoTo(plugin, intent, RejectionReason.NPC_NOT_FOUND)
             return
         }
-        plugin.logger.info("[MoveIntent] ${npc.name} → (${intent.x}, ${intent.y}, ${intent.z})")
 
-        val world =
-            intent.world?.let { Bukkit.getWorld(it) }
-                ?: npc.entity?.world
-                ?: return
+        val npcWorldName = npc.entity?.world?.name ?: ""
+        val worldName = resolveGoToWorld(intent.world, npcWorldName)
+        val world = Bukkit.getWorld(worldName) ?: npc.entity?.world
+        if (world == null) {
+            plugin.logger.warning("[GoTo] world '$worldName' not found for characterId=${intent.characterId}")
+            rejectGoTo(plugin, intent, RejectionReason.EXECUTION_ERROR)
+            return
+        }
 
         val target = Location(world, intent.x, intent.y, intent.z)
+        plugin.logger.info("[GoTo] ${npc.name} -> (${intent.x}, ${intent.y}, ${intent.z}) @${world.name}")
+
+        // Apply per-intent thresholds when supplied (>0); otherwise the watcher
+        // keeps its built-in constants. stall/max are seconds on the wire.
+        val secondsPerSample = NAV_POLL_TICKS / 20.0
+        val arriveRange = if (intent.arrivalRange > 0.0) intent.arrivalRange else NAV_ARRIVE_RANGE
+        val stallSamples =
+            if (intent.stallTimeout > 0.0) (intent.stallTimeout / secondsPerSample).toInt().coerceAtLeast(1)
+            else NAV_STALL_SAMPLES
+        val maxSamples =
+            if (intent.maxDuration > 0.0) (intent.maxDuration / secondsPerSample).toInt().coerceAtLeast(1)
+            else NAV_MAX_SAMPLES
+
         npc.navigateTo(target)
+        // Do NOT ack inline — navigateTo only kicks off async pathing. Watch
+        // position and ack on real arrival (or reject if unreachable).
+        startNavWatcher(
+            plugin,
+            intent.characterId,
+            target,
+            onArrive = { completeGoTo(plugin, intent) },
+            onFail = { reason -> rejectGoTo(plugin, intent, reason) },
+            arriveRange = arriveRange,
+            stallSamples = stallSamples,
+            maxSamples = maxSamples,
+        )
+    }
+
+    private fun completeGoTo(plugin: Story, intent: GoToExecIntent) {
+        plugin.eventBus.emit(
+            IntentCompletedEvent(
+                intentId = intent.intentId,
+                characterId = intent.characterId,
+                primitive = "go_to",
+            ),
+        )
+    }
+
+    private fun rejectGoTo(plugin: Story, intent: GoToExecIntent, reason: RejectionReason) {
+        plugin.eventBus.emit(
+            IntentRejectedEvent(
+                intentId = intent.intentId,
+                characterId = intent.characterId,
+                primitive = "go_to",
+                reason = reason,
+            ),
+        )
     }
 
     fun executeQuestAssignIntent(
@@ -642,24 +711,6 @@ object IntentExecutor {
                     }
                     npc.setTarget(target)
                     completeIntent(plugin, intent)
-                }
-                "navigate_to" -> {
-                    val world = Bukkit.getWorlds().firstOrNull()
-                    if (world == null) {
-                        rejectIntent(plugin, intent, RejectionReason.EXECUTION_ERROR); return
-                    }
-                    val target = Location(world, intent.x, intent.y, intent.z)
-                    npc.navigateTo(target)
-                    // Do NOT ack inline — navigateTo only kicks off async pathing.
-                    // Watch position and ack on real arrival (or reject if the
-                    // NPC can't reach it). One terminal outcome per intent.
-                    startNavWatcher(
-                        plugin,
-                        intent.characterId,
-                        target,
-                        onArrive = { completeIntent(plugin, intent) },
-                        onFail = { reason -> rejectIntent(plugin, intent, reason) },
-                    )
                 }
                 "flee_from" -> {
                     plugin.logger.info("[FrontendIntent] flee_from from=(${intent.fromX},${intent.fromZ}) min=${intent.minDist} max=${intent.maxDist}")

@@ -91,17 +91,6 @@ data class NPCSpeakIntent(
 }
 
 @Serializable
-data class NPCMoveIntent(
-    val characterId: String,
-    val x: Double,
-    val y: Double,
-    val z: Double,
-    val world: String? = null,
-) : SerializableStoryEvent {
-    override val eventType: String get() = "npc.move"
-}
-
-@Serializable
 data class NPCEmoteIntent(
     val characterId: String,
     val action: String,
