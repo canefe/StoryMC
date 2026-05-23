@@ -238,6 +238,7 @@ data class NpcStateIntent(
     val world: String = "",
     val health: Double = -1.0,
     val actionId: String? = null,
+    val behaviorId: String? = null,
     val actionLabel: String? = null,
 ) : SerializableStoryEvent {
     override val eventType: String get() = "npc.state"
@@ -550,6 +551,9 @@ data class FrontendPauseEvent(
 data class LocationSpawnIntent(
     val id: String,
     @SerialName("instance_name") val instanceName: String,
+    // Optional location-def id the sim uses to initialize tags/radius when this
+    // instance omits them (template-as-initializer). Empty = no template.
+    val template: String = "",
     val x: Double,
     val y: Double,
     val z: Double,

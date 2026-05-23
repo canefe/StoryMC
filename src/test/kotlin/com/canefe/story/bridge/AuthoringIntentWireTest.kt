@@ -16,8 +16,23 @@ class AuthoringIntentWireTest {
 
     @Test
     fun locationSpawnUsesSnakeCaseInstanceName() {
-        val j = Json.encodeToString(LocationSpawnIntent("loc1", "inn_cellar", 0.0, 64.0, 0.0))
+        val j = Json.encodeToString(
+            LocationSpawnIntent(id = "loc1", instanceName = "inn_cellar", x = 0.0, y = 64.0, z = 0.0),
+        )
         assertTrue(j.contains("\"instance_name\""), "expected instance_name, got: $j")
+    }
+
+    @Test
+    fun locationSpawnCarriesTemplate() {
+        val j = Json.encodeToString(
+            LocationSpawnIntent(
+                id = "The Prancing Pony",
+                instanceName = "The Prancing Pony",
+                template = "tavern_common_room",
+                x = 0.0, y = 64.0, z = 0.0,
+            ),
+        )
+        assertTrue(j.contains("\"template\":\"tavern_common_room\""), "expected template, got: $j")
     }
 
     @Test

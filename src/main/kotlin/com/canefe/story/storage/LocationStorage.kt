@@ -28,4 +28,5 @@ data class LocationDocument(
     val randomPathingAction: String? = null,
     val radius: Double = 8.0,
     val tags: List<String> = emptyList(),
+    val template: String = "",
 )

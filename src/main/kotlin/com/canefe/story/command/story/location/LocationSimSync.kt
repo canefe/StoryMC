@@ -11,6 +11,7 @@ fun emitLocationToSim(plugin: Story, loc: StoryLocation) {
         LocationSpawnIntent(
             id = loc.name,
             instanceName = loc.name,
+            template = loc.template,
             x = bl.x,
             y = bl.y,
             z = bl.z,

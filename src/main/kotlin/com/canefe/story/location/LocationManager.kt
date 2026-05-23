@@ -86,6 +86,7 @@ class LocationManager(
     fun createLocation(
         name: String,
         bukkitLocation: Location?,
+        template: String = "",
     ): StoryLocation? {
         return try {
             if (locations.containsKey(name)) {
@@ -94,6 +95,9 @@ class LocationManager(
             }
 
             val location = StoryLocation(name, "", bukkitLocation, null)
+            // template is a sim location-def id; the sim initializes tags/radius
+            // from it when this instance omits them (template-as-initializer).
+            location.template = template
             locations[name] = location
             saveLocation(location)
             location
@@ -196,6 +200,7 @@ class LocationManager(
         location.hideTitle = doc.hideTitle
         location.radius = doc.radius
         location.tags.addAll(doc.tags)
+        location.template = doc.template
 
         // Reconstruct Bukkit Location
         if (doc.world != null) {
@@ -225,6 +230,7 @@ class LocationManager(
             randomPathingAction = location.randomPathingAction,
             radius = location.radius,
             tags = location.tags.toList(),
+            template = location.template,
         )
     }
 }

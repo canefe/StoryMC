@@ -272,6 +272,17 @@ open class MythicMobStoryNPC(
         active.signalMob(src, name)
     }
 
+    // -- Animation --
+
+    override fun playActionAnimation(actionKey: String) {
+        // Route through the same signal bus the squad/combat/AI presentation uses
+        // (~onSignal:AI_Action_<Key> in the mob YAML drives holo/particles/anim).
+        // No source — the action originates from the NPC itself. Key is PascalCase
+        // on the wire to match the existing AI_/Squad signal convention.
+        val name = actionKey.replaceFirstChar { it.uppercase() }
+        signal("AI_Action_$name")
+    }
+
     // -- Source access --
 
     @Suppress("UNCHECKED_CAST")

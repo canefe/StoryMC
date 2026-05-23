@@ -25,13 +25,62 @@ object IntentExecutor {
     /** Per-characterId last action label sent to the client, for change-diffing. */
     private val lastActionLabel = ConcurrentHashMap<String, String>()
 
-    /** Returns true if [label] differs from the last sent for [characterId] (and records it). */
-    fun shouldSendActionLabel(characterId: String, label: String): Boolean {
+    /**
+     * Decides what action label to push for [characterId] given the sim's current
+     * [rawLabel]. Returns the label to send, or null to send nothing.
+     *
+     * The client ACTION popup is sticky, so we simply never forward empty labels:
+     * the sim emits empty during the gaps between idle behaviors (cooldowns), and
+     * forwarding those as clears would flicker the sticky label off. A real label
+     * always overwrites the previous one; an empty one means "nothing new" and is
+     * ignored. Non-empty labels are still de-duplicated so we only send on change.
+     */
+    fun actionLabelToSend(characterId: String, rawLabel: String): String? {
+        val label = rawLabel.trim()
+        if (label.isEmpty()) return null
         val prev = lastActionLabel.put(characterId, label)
-        return prev != label
+        return if (prev != label) label else null
     }
 
     fun resetActionLabelCacheForTest() = lastActionLabel.clear()
+
+    /** Per-characterId last behaviorId we played an animation for, for change-diffing. */
+    private val lastAnimationBehavior = ConcurrentHashMap<String, String>()
+
+    /**
+     * Maps a sim behaviorId to the animation action key passed to
+     * [StoryNPC.playActionAnimation] (skill `StoryAnim_<key>`). Behaviors with no
+     * visible body animation (e.g. walking, which pathing already shows) are
+     * absent and yield null — no animation fires. Unknown ids are also null
+     * (forgiving, like the location-template default).
+     */
+    private val behaviorAnimationKeys: Map<String, String> = mapOf(
+        "eat_bread" to "eat",
+        "seek_water" to "drink",
+        "seek_rest" to "rest",
+        "socialize" to "socialize",
+        "buy_item" to "trade",
+    )
+
+    /**
+     * Decides which animation key to play for [characterId] given the sim's
+     * current [behaviorId]. Returns the key (e.g. "eat") to fire once, or null to
+     * play nothing.
+     *
+     * npc.state arrives ~every 2s while an action runs, so animations must fire
+     * ONCE per action, not every tick. This change-diffs on behaviorId exactly
+     * like [actionLabelToSend]: an unmapped/unknown/empty behaviorId is ignored
+     * (returns null) and — like empty labels — does NOT reset the diff, so a brief
+     * idle gap between two runs of the same behavior won't replay the animation.
+     * A mapped behavior fires only when it differs from the last one we played.
+     */
+    fun animationToPlay(characterId: String, behaviorId: String): String? {
+        val key = behaviorAnimationKeys[behaviorId.trim()] ?: return null
+        val prev = lastAnimationBehavior.put(characterId, key)
+        return if (prev != key) key else null
+    }
+
+    fun resetAnimationCacheForTest() = lastAnimationBehavior.clear()
 
     /** Global floor between any two missing-NPC reconciliation requests. */
     @Volatile private var lastMissingReconcileGlobal: Long = 0L
@@ -48,8 +97,13 @@ object IntentExecutor {
     // `arriveRange` of the target) — or rejects UNREACHABLE if the NPC stops
     // making progress (stuck) or the deadline passes.
 
-    /** How close (blocks) to the target counts as arrived. */
-    private const val NAV_ARRIVE_RANGE = 2.5
+    /**
+     * How close (blocks) to the target counts as arrived. Kept >= the largest
+     * location radius (temple_grounds is 3.0) so MythicMobs pathing, which stops
+     * short of the exact center, still registers as "arrived" instead of stalling
+     * just outside the ring.
+     */
+    private const val NAV_ARRIVE_RANGE = 3.5
 
     /** Poll cadence in server ticks (10 = twice per second). */
     private const val NAV_POLL_TICKS = 10L
@@ -60,11 +114,35 @@ object IntentExecutor {
     /**
      * Consecutive no-progress samples before declaring "stuck". A frontend that
      * stops short of the target republishes the same position; this catches it.
+     * 60 samples × 10t ≈ 30s of zero progress. MythicMobs' GoToMechanic cuts the
+     * path short and stops, and the sim re-issues navigate_to on a ~1s cadence to
+     * re-path it — so there are brief no-progress gaps between nudges that must
+     * NOT trip the stall detector. 30s is generous enough to ride out those gaps
+     * while still catching a genuinely wedged NPC before the 5-min hard timeout.
      */
-    private const val NAV_STALL_SAMPLES = 6
+    private const val NAV_STALL_SAMPLES = 60
 
     /** Minimum closing distance (blocks) per sample to count as progress. */
     private const val NAV_PROGRESS_EPS = 0.15
+
+    /**
+     * Poll samples between navigate_to re-issues. StoryMC owns the keep-walking
+     * loop (mirroring NPCFollowTracker): the sim issues navigate_to ONCE per walk
+     * and this watcher re-calls npc.navigateTo on a steady cadence so MythicMobs'
+     * GoToMechanic — which cuts the path short partway and stops — keeps re-pathing
+     * toward the target. At NAV_POLL_TICKS (0.5s) per sample, 2 samples ≈ 1s, the
+     * same cadence NPCFollowTracker/SquadOrderTracker use. Re-issuing every poll
+     * would restart pathing before the NPC could step (the original freeze), so we
+     * nudge once per interval, not every sample.
+     */
+    const val NAV_REISSUE_SAMPLES = 2
+
+    /**
+     * Pure cadence decision, kept tiny + testable (see NavReissueTest): re-issue
+     * navigate_to when this many poll samples have elapsed since the last re-issue.
+     */
+    fun shouldReissueNav(samplesSinceReissue: Int, intervalSamples: Int): Boolean =
+        samplesSinceReissue >= intervalSamples
 
     /** Active arrival watchers keyed by characterId, so a new nav supersedes the old. */
     private val navWatchers = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -128,6 +206,17 @@ object IntentExecutor {
                         )
                         finishNavWatcher(characterId)
                         onFail(RejectionReason.UNREACHABLE)
+                        return@Runnable
+                    }
+
+                    // Keep-walking loop (StoryMC-owned, mirrors NPCFollowTracker):
+                    // MythicMobs' GoToMechanic cuts the path short and stops, so we
+                    // re-issue navigateTo on a steady ~1s cadence to re-path the NPC
+                    // toward the target. The sim sends navigate_to only once per walk.
+                    state.samplesSinceReissue++
+                    if (shouldReissueNav(state.samplesSinceReissue, NAV_REISSUE_SAMPLES)) {
+                        npc.navigateTo(target)
+                        state.samplesSinceReissue = 0
                     }
                 },
                 NAV_POLL_TICKS,
@@ -144,6 +233,9 @@ object IntentExecutor {
         var lastDist = Double.MAX_VALUE
         var stalledSamples = 0
         var samples = 0
+
+        /** Poll samples since the last navigate_to re-issue (keep-walking loop). */
+        var samplesSinceReissue = 0
     }
 
     /**
@@ -366,7 +458,6 @@ object IntentExecutor {
     fun executeNpcStateIntent(plugin: Story, intent: NpcStateIntent) {
         if (!plugin.isNpcRegistryReady) return
         val npc = resolveNPC(plugin, intent.characterId) ?: return
-
         val entity = npc.entity ?: return
         val world = entity.world
         val newLoc = Location(world, intent.x, intent.y, intent.z, entity.location.yaw, entity.location.pitch)
@@ -380,10 +471,29 @@ object IntentExecutor {
             entity.health = intent.health.coerceIn(0.0, maxHp)
         }
 
-        // Action label: only push when it changed for this NPC (empty = clear).
-        val label = intent.actionLabel?.takeIf { it.isNotBlank() } ?: ""
-        if (shouldSendActionLabel(intent.characterId, label)) {
-            entity.uniqueId.let { plugin.perceptionBroadcaster.sendActionPopup(it, label) }
+        // Action label: push on change; empty labels are ignored so the sim's
+        // inter-action gaps don't flicker the sticky client label off. Use the
+        // client-facing UUID (the display entity the client can resolve in-world),
+        // exactly as the perception-popup path does — the backing entity.uniqueId
+        // is invisible to the client for MythicMob-backed NPCs.
+        val clientUuid = npc.clientFacingUuid ?: entity.uniqueId
+        val toSend = actionLabelToSend(intent.characterId, intent.actionLabel ?: "")
+        if (toSend != null) {
+            // Pass the backing entity id: the disguise UUID never matches a
+            // client-side entity, so the client resolves the NPC by entity id.
+            // [DBG actionLabel] TEMP — remove after live verification.
+            plugin.logger.info("[DBG npcState] LABEL cid=${intent.characterId} send='$toSend' clientUuid=$clientUuid entityId=${entity.entityId}")
+            plugin.perceptionBroadcaster.sendActionPopup(clientUuid, toSend, entity.entityId)
+        }
+
+        // Body animation: behaviorId is the distinct behavior (eat_bread/seek_water
+        // /…) — actionId is "lua_hook" for every hook primitive, so it can't drive
+        // animation. Change-diffed so the animation fires once per action, not
+        // every ~2s state tick. Unknown/unmapped/empty behaviors play nothing.
+        val animKey = animationToPlay(intent.characterId, intent.behaviorId ?: "")
+        if (animKey != null) {
+            plugin.logger.info("[npcState] ANIM cid=${intent.characterId} behavior='${intent.behaviorId}' key='$animKey'")
+            npc.playActionAnimation(animKey)
         }
     }
 

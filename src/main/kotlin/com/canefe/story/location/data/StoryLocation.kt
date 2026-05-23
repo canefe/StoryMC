@@ -13,6 +13,9 @@ data class StoryLocation(
     var randomPathingAction: String? = null, // Action to perform when NPCs randomly move here (sit, sleep, work, idle)
     var radius: Double = 8.0,
     val tags: MutableList<String> = mutableListOf(),
+    // Optional sim location-def id this instance was created from. The sim uses it
+    // to initialize tags/radius when they're omitted (template-as-initializer).
+    var template: String = "",
 ) {
     fun hasParent(): Boolean = !parentLocationName.isNullOrEmpty()
 

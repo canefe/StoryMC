@@ -161,6 +161,24 @@ interface StoryNPC {
      */
     fun signal(name: String, source: Entity? = null) {}
 
+    // -- Animation --
+
+    /**
+     * Play a one-shot body animation for a sim behavior (no-op for backends
+     * without one).
+     *
+     * [actionKey] is a short animation intent ("eat", "drink", "rest",
+     * "socialize", "trade") derived from the sim's behaviorId. The MythicMobs
+     * adapter sends it as the signal `AI_Action_<Key>` (e.g. `AI_Action_Eat`),
+     * which the mob's YAML reacts to via `~onSignal:` — the same presentation bus
+     * the squad/combat/AI motor signals use (holo/particles/playanimation).
+     * Callers fire this once per action (change-diffed upstream), not every state
+     * tick.
+     *
+     * For Citizens: no-op (animations are driven through MythicMobs signals).
+     */
+    fun playActionAnimation(actionKey: String) {}
+
     // -- Source access --
 
     /**

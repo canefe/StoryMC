@@ -3,6 +3,7 @@ package com.canefe.story.command.story.location
 import com.canefe.story.util.Msg.sendError
 import com.canefe.story.util.Msg.sendSuccess
 import dev.jorel.commandapi.CommandAPICommand
+import dev.jorel.commandapi.arguments.ArgumentSuggestions
 import dev.jorel.commandapi.arguments.GreedyStringArgument
 import dev.jorel.commandapi.arguments.TextArgument
 import dev.jorel.commandapi.executors.ConsoleCommandExecutor
@@ -12,22 +13,36 @@ import org.bukkit.Location
 class CreateLocationCommand(
     private val commandUtils: LocationCommandUtils,
 ) {
+    // Known sim location-def ids usable as templates. These are authored in the
+    // story-sim pack (packs/BaseGame/lua/defs/locations); the sim initializes a
+    // new instance's tags/radius from the named template. Suggestion-only — any
+    // string is accepted, and an unknown template just means no inheritance.
+    private val templateSuggestions =
+        arrayOf("market_square", "tavern_common_room", "temple_grounds")
+
     fun getCommand(): CommandAPICommand {
         return CommandAPICommand("create")
-            // usage: /story location create <location_name> [context]
+            // usage: /story location create <location_name> [template] [context]
             .withArguments(TextArgument("location_name"))
+            .withOptionalArguments(
+                TextArgument("template").replaceSuggestions(
+                    ArgumentSuggestions.strings(*templateSuggestions),
+                ),
+            )
             .withOptionalArguments(GreedyStringArgument("context"))
             .withUsage(
-                "/story location create <location_name>",
+                "/story location create <location_name> [template] [context]",
             ).executesPlayer(
                 PlayerCommandExecutor { player, args ->
                     val locationName = args["location_name"] as String
+                    val template = (args["template"] as? String).orEmpty()
                     val playerLocation: Location = player.location
 
                     val location =
                         commandUtils.locationManager.createLocation(
                             locationName,
                             playerLocation,
+                            template,
                         )
                             ?: run {
                                 player.sendError(
@@ -36,8 +51,15 @@ class CreateLocationCommand(
                                 return@PlayerCommandExecutor
                             }
 
+                    // Push the new instance to the live sim now (createLocation
+                    // doesn't auto-emit). The sim resolves the template's tags/
+                    // radius — see resolve_location_spawn in story-sim.
+                    emitLocationToSim(commandUtils.story, location)
+
+                    val templateNote =
+                        if (template.isNotBlank()) " from template <gold>'$template'</gold>" else ""
                     player.sendSuccess(
-                        "Location <gold>'$locationName'</gold> created successfully at your current location.",
+                        "Location <gold>'$locationName'</gold> created successfully$templateNote at your current location.",
                     )
 
                     // If an optional context was provided, ask the AI to generate fuller
@@ -89,8 +111,9 @@ class CreateLocationCommand(
                 ConsoleCommandExecutor { sender, args ->
                     // Only create location without location
                     val locationName = args["location_name"] as String
+                    val template = (args["template"] as? String).orEmpty()
                     val location =
-                        commandUtils.locationManager.createLocation(locationName, null)
+                        commandUtils.locationManager.createLocation(locationName, null, template)
                             ?: run {
                                 sender.sendError(
                                     "Failed to create location. The location name may already exist.",
