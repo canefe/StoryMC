@@ -71,10 +71,16 @@ class CharacterRegistry(
     fun getByPlayer(player: Player): CharacterRecord? = byMinecraftUuid[player.uniqueId]?.let { byId[it] }
 
     fun getByStoryNPC(npc: StoryNPC): CharacterRecord? =
-        byCitizensUuid[npc.uniqueId]?.let { byId[it] }
+        npc.characterId?.let { byId[it] }
+            ?: byCitizensUuid[npc.uniqueId]?.let { byId[it] }
             ?: byCitizensNpcId[npc.id]?.let { byId[it] }
             ?: byId[npc.uniqueId.toString()]
-            ?: byNameLower[npc.name.lowercase()]?.let { byId[it] }
+            ?: byNameLower[npc.name.lowercase()]?.let { byId[it] }?.also {
+                logger.warning(
+                    "[CharacterRegistry] resolved NPC '${npc.name}' by NAME fallback " +
+                        "— identity index miss, investigate (characterId=${npc.characterId})",
+                )
+            }
 
     // ── Convenience ─────────────────────────────────────────────────────
 
