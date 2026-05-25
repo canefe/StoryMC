@@ -777,9 +777,12 @@ object IntentExecutor {
                 if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
             }
 
-            // Name match in Citizens
+            // Name match in Citizens (warned: identity index miss)
             val citizenNpc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == record.name }
-            if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
+            if (citizenNpc != null) {
+                plugin.logger.warning("[resolveNPC] '${record.name}' resolved by Citizens NAME fallback — investigate (characterId=$characterId)")
+                return CitizensStoryNPC(citizenNpc)
+            }
         }
 
         // Unified registry: scan for any StoryNPC whose characterId matches
@@ -793,13 +796,19 @@ object IntentExecutor {
                     }
                 if (id == characterId) return storyNpc
             }
-            // Last resort: treat characterId as a name in the unified registry
-            plugin.npcRegistry.getByName(characterId)?.let { return it }
+            // Last resort: treat characterId as a name in the unified registry (warned)
+            plugin.npcRegistry.getByName(characterId)?.let {
+                plugin.logger.warning("[resolveNPC] characterId '$characterId' resolved by registry NAME fallback — investigate")
+                return it
+            }
         }
 
         // Legacy fallback: treat characterId as a name in Citizens
         val citizenNpc = CitizensAPI.getNPCRegistry().firstOrNull { it.name == characterId }
-        if (citizenNpc != null) return CitizensStoryNPC(citizenNpc)
+        if (citizenNpc != null) {
+            plugin.logger.warning("[resolveNPC] characterId '$characterId' resolved by legacy Citizens NAME fallback — investigate")
+            return CitizensStoryNPC(citizenNpc)
+        }
 
         return null
     }
