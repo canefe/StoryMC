@@ -55,6 +55,10 @@ open class MythicMobStoryNPC(
 
     override val clientFacingUuid: UUID? get() = disguiseUuid ?: backingEntity.uniqueId
 
+    override val characterId: String?
+        get() = backingEntity.persistentDataContainer
+            .get(MythicMobNPCKeys.CHARACTER_ID, MythicMobNPCKeys.STRING)
+
     private val mm get() = MythicBukkit.inst()
 
     private fun activeMob(): ActiveMob? =

@@ -32,6 +32,13 @@ interface StoryNPC {
      */
     val clientFacingUuid: UUID? get() = entity?.uniqueId
 
+    /**
+     * The persistent Mongo character id for this NPC, if known. Source of truth
+     * for routing sim intents (go_to, npc.speak) to the right NPC. Null for NPCs
+     * with no Mongo backing (e.g. decorative Citizens NPCs).
+     */
+    val characterId: String? get() = null
+
     /** Whether this NPC is currently spawned in the world. */
     val isSpawned: Boolean
 
