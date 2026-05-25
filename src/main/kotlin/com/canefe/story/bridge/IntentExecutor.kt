@@ -562,11 +562,38 @@ object IntentExecutor {
     }
 
     /**
+     * Returns a refusal reason if a sim spawn for [characterId] must be rejected,
+     * or null if it may proceed. Policy: characterId MUST be a canonical UUID and
+     * MUST have a CharacterRecord — otherwise we refuse rather than mint a random
+     * registry key (which produces an unroutable ghost NPC). See spec
+     * 2026-05-25-npc-identity-canonicalization.
+     */
+    fun npcSpawnRefusalReason(characterId: String, hasRecord: Boolean): String? {
+        val isUuid = try { java.util.UUID.fromString(characterId); true } catch (_: IllegalArgumentException) { false }
+        return when {
+            !isUuid -> "characterId is not a canonical UUID"
+            !hasRecord -> "no CharacterRecord for characterId"
+            else -> null
+        }
+    }
+
+    /**
      * Spawns a MythicMob-backed NPC if one with this characterId isn't already in-world.
      * Only fires when the Bevy sim is active and sends a spawn request.
      */
     fun executeNpcSpawnIntent(plugin: Story, intent: NpcSpawnIntent) {
         if (!plugin.isNpcRegistryReady) return
+
+        // Identity gate: refuse rather than mint a random key (ghost NPC).
+        val hasRecord = try {
+            plugin.characterRegistry.getById(intent.characterId) != null
+        } catch (_: UninitializedPropertyAccessException) {
+            false
+        }
+        npcSpawnRefusalReason(intent.characterId, hasRecord)?.let { reason ->
+            plugin.logger.warning("[NpcSpawn] refusing spawn of '${intent.name}' — $reason (characterId='${intent.characterId}')")
+            return
+        }
 
         // Never spawn a stand-in for a player who is currently online
         val onlinePlayer = Bukkit.getOnlinePlayers().firstOrNull { it.characterId == intent.characterId }
@@ -605,7 +632,7 @@ object IntentExecutor {
             mobTemplate = intent.mobTemplate,
             location = loc,
             displayName = intent.name,
-            stableUniqueId = try { java.util.UUID.fromString(intent.characterId) } catch (_: Exception) { java.util.UUID.randomUUID() },
+            stableUniqueId = java.util.UUID.fromString(intent.characterId),
             characterId = intent.characterId,
         )
     }
