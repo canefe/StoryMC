@@ -1,8 +1,43 @@
 # Intent Vocabulary Redesign — Design Spec
 
 **Date:** 2026-05-23
-**Status:** Approved design, ready for implementation planning
+**Status:** ✅ IMPLEMENTED (2026-05-25). All three phases landed; the `go_to`
+proving slice is live, compiling, and passing wire round-trip tests in all four
+repos. The out-of-scope vocabulary (behavior.set/clear, flee, attack, look_at,
+set_target, clear_target, npc.speak, item_transfer, emote) is frozen in proto
+and migrated in follow-ups as originally planned. See the **Implementation status**
+section below for the per-phase commit trail. (Original status: "Approved design,
+ready for implementation planning.")
 **Repos touched:** story-proto (SoT), story-sim (Rust), story-go (Go), Story / StoryMC (Kotlin)
+
+> **Implementation status (added 2026-05-25).** This spec is built. The proving
+> slice (`go_to` movement with full outcome round-trip + supersede) works
+> end-to-end across the wire; `npc.move` and `navigate_to` are removed at their
+> emit sites. Verified: clean `compileKotlin`/`compileTestKotlin` and green
+> `GoToWireTest` / `ItemTransferWireTest` / `AuthoringIntentWireTest` in StoryMC.
+> NOT yet verified: live in-game walk (an NPC physically arriving/stalling on a
+> real server) — that is the remaining manual check.
+>
+> **Phase 1 (proto SoT + codegen):**
+> - story-proto: `5bc6640` add go_to + frontend-intent vocabulary and intent outcomes; `c7f50a0` cross-repo go_to golden json.
+> - story-go: `e36a751` bump submodule + regen go types; `c1c5583` go_to golden decode.
+> - story-sim: `73a154f` add prost codegen + serde camelCase json round-trip; `1e11d0a` go_to golden decode.
+> - StoryMC: `e0a8ef5` add protobuf gradle codegen + go_to canonical-json round-trip test; `a5c8509` go_to golden decode.
+> - Plan doc: `67aa130` "go_to slice implementation plan (3 phases)".
+>
+> **Phase 2 (gRPC removal + query re-home):**
+> - story-go: `2e86853` delete dead gRPC server + dead sim worldStateQuerier; `75ef030` regen without grpc service stub.
+> - story-proto: `a4d2754` remove StoryBridge gRPC service (submodule pin `069268a`).
+>
+> **Phase 3 (go_to movement feature, the visible slice):**
+> - story-sim: `0397c3b` navigate_to lua path emits go_to envelope with world; `9e3b281` ECS movement emits tracked go_to (mints intentId + PendingIntents, was untracked npc.move); `df804f8` head_to_known_location reads go_to outcome.
+> - story-go: `792b52c` route go_to to frontends as sim event; `a3e1cd2` forward intent outcome events to NATS.
+> - StoryMC: `f30ff2a` go_to handler with outcome round-trip, remove npc.move + navigate_to paths; `7413757` supersede prior go_to with SUPERSEDED reject.
+>
+> The remaining `navigate_to` references in StoryMC `IntentExecutor.kt` are the
+> Bukkit-side re-issue *mechanism* (`npc.navigateTo(target)`) and its comments —
+> this is correct per the Hybrid line: Kotlin owns the re-path mechanism, the sim
+> owns the thresholds carried on `go_to`.
 
 ## Problem
 

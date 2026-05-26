@@ -14,6 +14,7 @@ class LocationCommandUtils {
     val story: Story = Story.instance
     val mm: MiniMessage = story.miniMessage
     val locationManager: LocationManager = story.locationManager
+    val locationBridge: LocationBridge = LocationBridge(story, story.eventBus)
     private val gson: Gson = Gson()
 
     data class LocationContextResponse(

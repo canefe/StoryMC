@@ -192,6 +192,7 @@ class WebSocketTransport(
             is SessionEndEvent -> json.encodeToJsonElement(event)
             is SessionAddPlayerEvent -> json.encodeToJsonElement(event)
             is LocationSpawnIntent -> json.encodeToJsonElement(event)
+            is LocationCreateRequest -> json.encodeToJsonElement(event)
             is NpcSetOffersIntent -> json.encodeToJsonElement(event)
             is NpcGiveItemIntent -> json.encodeToJsonElement(event)
             is NpcGiveTraitIntent -> json.encodeToJsonElement(event)
