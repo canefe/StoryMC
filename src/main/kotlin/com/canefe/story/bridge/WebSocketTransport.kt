@@ -1,5 +1,7 @@
 package com.canefe.story.bridge
 
+import com.google.protobuf.Message
+import com.google.protobuf.util.JsonFormat
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
@@ -105,6 +107,41 @@ class WebSocketTransport(
             socket.sendText(serialized, true)
         } catch (e: Exception) {
             plugin.logger.warning("WS send failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Send a protobuf-generated [Message] over the wire as a typed, schema-enforced
+     * payload.
+     *
+     * The envelope's `type` discriminator is derived from the message's proto
+     * descriptor (`message.descriptorForType.fullName`, e.g.
+     * `story.v1.LocationSightingStimulus`) — there is no separate string to
+     * keep in sync. Go and Rust consumers dispatch on the same FQN.
+     *
+     * The payload is serialized as proto canonical JSON via [JsonFormat]: proto
+     * field names (snake_case) become JSON keys (camelCase), repeated fields
+     * become JSON arrays, int64 fields become JSON strings per proto3 JSON spec.
+     * This matches what story-sim's prost-generated structs and story-go's
+     * protojson decoders expect.
+     *
+     * This path intentionally bypasses [StoryEventBus] / [StoryEvent]: wire-only
+     * messages have no business pretending to be in-process Bukkit events. If a
+     * future plugin needs to react to such a message, the right shape is to add
+     * a real Bukkit Event class and fire it from the inbound handler, NOT to
+     * route the wire message through [StoryEventBus].
+     */
+    fun sendProto(message: Message) {
+        val socket = ws ?: return
+        val eventType = message.descriptorForType.fullName
+        val raw = PROTO_JSON_PRINTER.print(message)
+        val dataObj = json.parseToJsonElement(raw).jsonObject
+        val envelope = BridgeMessage(type = eventType, data = dataObj, source = "story")
+        val serialized = json.encodeToString(envelope)
+        try {
+            socket.sendText(serialized, true)
+        } catch (e: Exception) {
+            plugin.logger.warning("WS sendProto($eventType) failed: ${e.message}")
         }
     }
 
@@ -286,5 +323,18 @@ class WebSocketTransport(
             ws = null
             scheduleReconnect()
         }
+    }
+
+    companion object {
+        /**
+         * Single shared printer for [sendProto]. Configured for proto canonical JSON:
+         * omitting insignificant whitespace (smaller frames) and including default
+         * values (so the receiving prost struct doesn't have to distinguish
+         * missing-vs-zero on optional numeric fields).
+         */
+        private val PROTO_JSON_PRINTER: JsonFormat.Printer =
+            JsonFormat.printer()
+                .omittingInsignificantWhitespace()
+                .includingDefaultValueFields()
     }
 }
