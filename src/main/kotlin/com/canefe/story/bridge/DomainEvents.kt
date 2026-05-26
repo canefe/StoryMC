@@ -598,6 +598,31 @@ data class FrontendPauseEvent(
 // ── Sim-authoring intents (Plugin → Go → story-sim) ──────────────────
 
 /**
+ * Plugin → Go: request that story-go create a new location.
+ * story-go resolves the template via the sim, merges defaults, writes mongo,
+ * publishes spawn_location to the sim, and replies with [LocationCreateResponse].
+ *
+ * Field semantics:
+ * - `radius == 0.0` means "no override" (use template's DefaultRadius).
+ * - `tags == ""` means "no override" (use template's DefaultTags).
+ * - `template == ""` means a bare instance (no template lookup).
+ */
+@Serializable
+data class LocationCreateRequest(
+    @SerialName("requestId") val requestId: String,
+    val name: String,
+    val template: String = "",
+    val world: String = "",
+    val x: Double = 0.0,
+    val y: Double = 0.0,
+    val z: Double = 0.0,
+    val radius: Double = 0.0,
+    val tags: String = "", // comma-joined; empty = inherit from template
+) : SerializableStoryEvent {
+    override val eventType: String get() = "location.create.request"
+}
+
+/**
  * Plugin → Go → sim: register a named location entity in the sim world.
  */
 @Serializable
