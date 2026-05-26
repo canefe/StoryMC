@@ -111,9 +111,11 @@ class StoryEventBus {
      * Shutdown all transports.
      */
     fun shutdown() {
+        // Listeners are owned by their registrants (e.g. LocationBridge, DecisionRelay)
+        // which register once at plugin enable. ConfigService.reload() calls this to
+        // rebuild transports against possibly-new config; clearing listeners here would
+        // strand registrants permanently.
         transports.forEach { it.shutdown() }
         transports.clear()
-        listeners.clear()
-        classListeners.clear()
     }
 }
