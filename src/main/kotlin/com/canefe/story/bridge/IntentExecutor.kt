@@ -891,46 +891,36 @@ object IntentExecutor {
                     completeIntent(plugin, intent)
                 }
                 "look_at" -> {
-                    val entity = npc.entity as? LivingEntity
-                    if (entity == null) {
-                        rejectIntent(plugin, intent, RejectionReason.UNSUPPORTED_BACKEND); return
+                    // Persistent head-lock via the MythicMobs `look` mechanic
+                    // (StorySocializeLookAt skill). Replaces the previous
+                    // teleport-snap so the lock survives the mob's own AI for
+                    // the skill's configured duration. ClearLookAt is a no-op
+                    // since the mechanic auto-expires.
+                    val targetId = intent.targetCharId
+                    if (targetId == null) {
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
                     }
-                    val from = if (intent.useEyeLocation) entity.eyeLocation else entity.location
-                    val to: Location = if (intent.targetCharId != null) {
-                        val target = resolveTarget(plugin, intent.targetCharId) as? LivingEntity
-                        if (target == null) {
-                            rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
-                        }
-                        target.eyeLocation
+                    val target = resolveTarget(plugin, targetId) as? LivingEntity
+                    if (target == null) {
+                        plugin.logger.warning("[FrontendIntent] look_at: target not found for $targetId")
+                        rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
+                    }
+                    val mythicNpc = npc as? com.canefe.story.npc.mythicmobs.MythicMobStoryNPC
+                    if (mythicNpc != null) {
+                        mythicNpc.lookAtViaSkill(target)
                     } else {
-                        val world = entity.world
-                        Location(world, intent.x, intent.y, intent.z)
+                        // Citizens / stub fallback: one-shot snap.
+                        npc.lookAt(target)
                     }
-
-                    val dx = to.x - from.x
-                    val dy = to.y - from.y
-                    val dz = to.z - from.z
-                    val horizDist = Math.sqrt(dx * dx + dz * dz)
-                    var targetYaw = (Math.toDegrees(Math.atan2(-dx, dz)).toFloat())
-                    var targetPitch = (Math.toDegrees(-Math.atan2(dy, horizDist)).toFloat())
-
-                    val currentYaw = entity.location.yaw
-                    val currentPitch = entity.location.pitch
-
-                    val finalYaw = if (intent.maxYaw > 0f) {
-                        val diff = wrapAngle(targetYaw - currentYaw)
-                        currentYaw + diff.coerceIn(-intent.maxYaw, intent.maxYaw)
-                    } else targetYaw
-
-                    val finalPitch = if (intent.maxPitch > 0f) {
-                        val diff = wrapAngle(targetPitch - currentPitch)
-                        currentPitch + diff.coerceIn(-intent.maxPitch, intent.maxPitch)
-                    } else targetPitch
-
-                    val newLoc = entity.location.clone()
-                    newLoc.yaw = finalYaw
-                    newLoc.pitch = finalPitch
-                    entity.teleport(newLoc)
+                    completeIntent(plugin, intent)
+                }
+                "clear_look_at" -> {
+                    // The MythicMobs `look` mechanic has a baked-in duration;
+                    // cancellation is a no-op on the plugin side. Logged so the
+                    // protocol stays observable. If a future use-case needs
+                    // early cancellation we can mark the skill as toggleable
+                    // and emit a cancel here.
+                    plugin.logger.fine("[FrontendIntent] clear_look_at for ${intent.characterId} (no-op — mechanic auto-expires)")
                     completeIntent(plugin, intent)
                 }
                 "attempt_hit" -> {

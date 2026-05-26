@@ -205,6 +205,36 @@ open class MythicMobStoryNPC(
         living.teleport(living.location.setDirection(direction))
     }
 
+    /**
+     * Persistent head-lock onto [target] via the MythicMobs `look` mechanic.
+     * Casts the `StorySocializeLookAt` skill with [target] as the @Target.
+     * The skill's `duration` field controls how long the lock holds (currently
+     * ~7s in StorySocialize.yml); afterwards MythicMobs releases the head and
+     * normal AI rotation resumes. Falls back to the one-shot [lookAt] if the
+     * skill isn't configured.
+     */
+    fun lookAtViaSkill(target: Entity) {
+        val skill = mm.skillManager.getSkill("StorySocializeLookAt").orElse(null) ?: run {
+            lookAt(target)
+            return
+        }
+        val active = activeMob() ?: return
+        val abstLoc = BukkitAdapter.adapt(target.location)
+        val targetAbst: AbstractEntity = BukkitAdapter.adapt(target)
+        val targets = mutableListOf<AbstractEntity>(targetAbst)
+        val metadata =
+            SkillMetadataImpl(
+                SkillTrigger.create("API"),
+                active as SkillCaster,
+                targetAbst,
+                abstLoc,
+                targets,
+                mutableListOf<AbstractLocation>(),
+                1f,
+            )
+        skill.execute(metadata)
+    }
+
     override fun rotateTo(
         yaw: Float,
         pitch: Float,
