@@ -749,7 +749,7 @@ object IntentExecutor {
             return
         }
 
-        val bytes = encodeEmoteIconPayload(entity.entityId, intent.emoteId)
+        val bytes = encodeEmoteIconPayload(npc.clientFacingUuid, entity.entityId, intent.emoteId)
         val packet = WrapperPlayServerPluginMessage("story:npc_emote_icon", bytes)
         for (player in Bukkit.getOnlinePlayers()) {
             try {
@@ -760,9 +760,19 @@ object IntentExecutor {
         }
     }
 
-    internal fun encodeEmoteIconPayload(entityId: Int, emoteId: String): ByteArray {
+    /**
+     * Wire format: `[long uuidMostSig][long uuidLeastSig][int entityId][UTF emoteId]`.
+     *
+     * The uuid is the NPC's `clientFacingUuid` — for disguised NPCs (MythicMobs)
+     * this is the disguise uuid the client actually sees, NOT the backing entity
+     * uuid. Null uuid is encoded as `(0, 0)` longs; the client treats that as
+     * "no uuid available, fall back to entity-id keying".
+     */
+    internal fun encodeEmoteIconPayload(uuid: java.util.UUID?, entityId: Int, emoteId: String): ByteArray {
         val baos = ByteArrayOutputStream()
         DataOutputStream(baos).use { out ->
+            out.writeLong(uuid?.mostSignificantBits ?: 0L)
+            out.writeLong(uuid?.leastSignificantBits ?: 0L)
             out.writeInt(entityId)
             out.writeUTF(emoteId)
         }
