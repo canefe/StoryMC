@@ -206,6 +206,7 @@ class WebSocketTransport(
             is NPCInteractionEvent -> json.encodeToJsonElement(event)
             is NPCSpeakIntent -> json.encodeToJsonElement(event)
             is NPCEmoteIntent -> json.encodeToJsonElement(event)
+            is NPCEmoteIconIntent -> json.encodeToJsonElement(event)
             is NPCActionIntent -> json.encodeToJsonElement(event)
             is PlayerProximityEvent -> json.encodeToJsonElement(event)
             is GMSpeakEvent -> json.encodeToJsonElement(event)
@@ -246,6 +247,7 @@ class WebSocketTransport(
             when (message.type) {
                 "npc.speak" -> json.decodeFromString<NPCSpeakIntent>(data)
                 "npc.emote" -> json.decodeFromString<NPCEmoteIntent>(data)
+                "npc.emote_icon" -> json.decodeFromString<NPCEmoteIconIntent>(data)
                 "go_to" -> json.decodeFromString<GoToExecIntent>(data)
                 "npc.action" -> json.decodeFromString<NPCActionIntent>(data)
                 "npc.signal" -> json.decodeFromString<NPCSignalIntent>(data)

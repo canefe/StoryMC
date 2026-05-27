@@ -99,6 +99,23 @@ data class NPCEmoteIntent(
 }
 
 /**
+ * Floating emoji-style icon above an NPC's head (visual reaction).
+ *
+ * Free-form [emoteId] on the wire; StoryClient holds the allowlist and silently
+ * ignores unknown IDs. v1 stock IDs: cry, anger, pain, laugh, shock.
+ *
+ * Coexists with [NPCEmoteIntent] (which renders `*action*` text in chat). The
+ * two are independent channels — emitting one does NOT emit the other.
+ */
+@Serializable
+data class NPCEmoteIconIntent(
+    val characterId: String,
+    val emoteId: String,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "npc.emote_icon"
+}
+
+/**
  * Shows or clears a transient action label on an NPC's chat bubble (e.g. "Thinking...",
  * "Searching...", "Listening..."). Pass a blank/null [action] to clear.
  *
