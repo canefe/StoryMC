@@ -3,10 +3,14 @@ package com.canefe.story.perception
 import com.canefe.story.Story
 import com.canefe.story.bridge.PerceptionStimulusEvent
 import com.canefe.story.util.characterId
+import com.canefe.storyproto.v1.AffordanceSightingStimulus
+import com.canefe.storyproto.v1.LocationSightingStimulus
+import com.google.protobuf.Message
 import java.util.UUID
 import com.github.retrooper.packetevents.PacketEvents
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPluginMessage
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -16,10 +20,80 @@ import org.bukkit.util.Vector
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import kotlin.math.acos
-import kotlin.math.sqrt
+
+/* -------------------------------------------------------------------------- */
+/*  PerceptionContext — testable surface for the pure spatial-perception pass */
+/* -------------------------------------------------------------------------- */
 
 /**
- * Periodically scans the MC world and emits [PerceptionStimulusEvent]s so story-sim
+ * Snapshot of a perceiver NPC at tick time. Uses Bukkit's own [Location]/[Vector]
+ * types — same shapes the live `tickCharacters()` path uses, no parallel coordinate
+ * fields to keep in sync.
+ */
+data class NpcSnapshot(
+    val charId: String,
+    /** Body position. `position.world?.name` is the comparison key for cross-world filtering. */
+    val position: Location,
+    /** Eye position used for FOV ray origin and LOS. */
+    val eye: Vector,
+    /** Unit forward vector from the head's yaw+pitch. */
+    val facing: Vector,
+    val consciousness: Double,
+    val sightRange: Double,
+    /** Half-angle in degrees. `>= 180` disables FOV gating. */
+    val fovHalfDeg: Double,
+)
+
+/** Snapshot of a registered StoryLocation instance. */
+data class LocationSnapshot(
+    /** Instance name (`Old Well`). Goes into `target_location_id`. */
+    val instanceName: String,
+    /** Sim location-def id (`village_well`). Goes into `target_location_def`. */
+    val templateId: String,
+    /** Center of the location instance. World is read off this. */
+    val center: Location,
+    val radius: Double,
+    val tags: List<String>,
+)
+
+/** Snapshot of a placed affordance instance. */
+data class AffordanceSnapshot(
+    val id: String,
+    val position: Location,
+    val tags: List<String>,
+)
+
+/**
+ * Pure interface the broadcaster's per-tick logic runs against. Tests supply
+ * a `FakePerceptionContext`; production wires `PluginPerceptionContext`.
+ */
+interface PerceptionContext {
+    fun npcs(): List<NpcSnapshot>
+    fun locations(): List<LocationSnapshot>
+    fun affordances(): List<AffordanceSnapshot>
+
+    /** Block-light level at the given world position. 0–15. */
+    fun lightLevelAt(at: Location): Int
+
+    /** Bukkit-style line-of-sight check from the perceiver's eyes. */
+    fun hasLineOfSight(perceiverCharId: String, to: Location): Boolean
+
+    /** Monotonic game time in milliseconds — stamped onto outgoing stimuli. */
+    fun gameTimeMs(): Long
+
+    /** When true, the broadcaster is a no-op (sim disabled / paused). */
+    fun simPaused(): Boolean
+
+    /** Wire-only proto emit. Bypasses [StoryEventBus]. */
+    fun sendProto(message: Message)
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Broadcaster                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Periodically scans the MC world and emits perception stimuli so story-sim
  * can update each NPC's StimulusBuffer without owning spatial logic itself.
  *
  * Per-perceiver checks applied (in order, short-circuit on fail):
@@ -33,6 +107,13 @@ import kotlin.math.sqrt
  * always "perceivable" when within range and conscious.
  *
  * Tick: every 2 seconds (40 ticks).
+ *
+ * Emit paths:
+ *   - **Characters**: legacy [PerceptionStimulusEvent] via the in-process bus
+ *     (Bukkit-coupled because it also drives PERCEPTION popups). Handled by
+ *     [tickCharacters], NOT [runOnce].
+ *   - **Locations**: typed [LocationSightingStimulus] via `ctx.sendProto`.
+ *   - **Affordances**: typed [AffordanceSightingStimulus] via `ctx.sendProto`.
  */
 class PerceptionBroadcaster(private val plugin: Story) : Listener {
     private var taskId: Int = -1
@@ -59,6 +140,87 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
         private const val BASE_STRENGTH = 50.0f
         private const val MIN_LIGHT_LEVEL = 4       // below this penalises strength
         private const val DEFAULT_FOV_DEG = 90.0    // half-angle each side = 180° total cone
+
+        /**
+         * Pure per-tick pass over locations and affordances. No Bukkit access:
+         * every spatial fact comes from [ctx]. Used by both the production
+         * scheduler tick and the unit tests.
+         */
+        fun runOnce(ctx: PerceptionContext) {
+            if (ctx.simPaused()) return
+            val now = ctx.gameTimeMs()
+
+            val locations = ctx.locations()
+            val affordances = ctx.affordances()
+            if (locations.isEmpty() && affordances.isEmpty()) return
+
+            for (npc in ctx.npcs()) {
+                if (npc.consciousness < MIN_CONSCIOUSNESS) continue
+                if (npc.sightRange <= 0.0) continue
+                val npcWorld = npc.position.world ?: continue
+
+                // ----- locations: ranged + FOV + LOS + light -----
+                for (loc in locations) {
+                    if (loc.center.world != npcWorld) continue
+                    val dist = npc.position.distance(loc.center)
+                    if (dist > npc.sightRange) continue
+
+                    if (!inFov(npc.facing, npc.eye, loc.center.toVector(), npc.fovHalfDeg)) continue
+
+                    if (!ctx.hasLineOfSight(npc.charId, loc.center)) continue
+
+                    val lightLevel = ctx.lightLevelAt(loc.center)
+                    val lightFactor = if (lightLevel < MIN_LIGHT_LEVEL) {
+                        (lightLevel.toFloat() / MIN_LIGHT_LEVEL).coerceAtLeast(0.1f)
+                    } else 1.0f
+                    val strength = (BASE_STRENGTH * (1.0 - dist / npc.sightRange) * lightFactor * npc.consciousness).toFloat()
+
+                    val msg = LocationSightingStimulus.newBuilder()
+                        .setPerceiverCharId(npc.charId)
+                        .setTargetLocationId(loc.instanceName)
+                        .setTargetLocationDef(loc.templateId)
+                        .setStrength(strength)
+                        .setX(loc.center.x.toFloat())
+                        .setY(loc.center.y.toFloat())
+                        .setZ(loc.center.z.toFloat())
+                        .also { b -> loc.tags.forEach { b.addTags(it) } }
+                        .setTimestampMs(now)
+                        .build()
+                    ctx.sendProto(msg)
+                }
+
+                // ----- affordances: ambient (no FOV / no LOS) -----
+                for (aff in affordances) {
+                    if (aff.position.world != npcWorld) continue
+                    val dist = npc.position.distance(aff.position)
+                    if (dist > npc.sightRange) continue
+
+                    val strength = (BASE_STRENGTH * (1.0 - dist / npc.sightRange) * npc.consciousness).toFloat()
+
+                    val msg = AffordanceSightingStimulus.newBuilder()
+                        .setPerceiverCharId(npc.charId)
+                        .setTargetAffordanceId(aff.id)
+                        .setStrength(strength)
+                        .setX(aff.position.x.toFloat())
+                        .setY(aff.position.y.toFloat())
+                        .setZ(aff.position.z.toFloat())
+                        .also { b -> aff.tags.forEach { b.addTags(it) } }
+                        .setTimestampMs(now)
+                        .build()
+                    ctx.sendProto(msg)
+                }
+            }
+        }
+
+        internal fun inFov(facing: Vector, from: Vector, to: Vector, halfAngleDeg: Double): Boolean {
+            if (halfAngleDeg >= 180.0) return true
+            val dir = to.clone().subtract(from)
+            if (dir.lengthSquared() < 1.0e-9) return true  // co-located → trivially "in fov"
+            dir.normalize()
+            val dot = facing.dot(dir).coerceIn(-1.0, 1.0)
+            val angleDeg = Math.toDegrees(acos(dot))
+            return angleDeg <= halfAngleDeg
+        }
     }
 
     fun start() {
@@ -98,7 +260,16 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
     private fun tick() {
         if (!plugin.isNpcRegistryReady) return
         if (!plugin.isCharacterRegistryReady) return
+        tickCharacters()
+        runOnce(PluginPerceptionContext(plugin))
+    }
 
+    /**
+     * Character-target perception. Stays Bukkit-coupled because it both
+     * drives [PerceptionStimulusEvent] AND the PERCEPTION popup packet,
+     * and tracks per-perceiver perceivedSets for popup edge-detection.
+     */
+    private fun tickCharacters() {
         val onlinePlayers = Bukkit.getOnlinePlayers()
         val onlineCharIds = onlinePlayers
             .mapNotNull { try { it.characterId } catch (_: Exception) { null } }
@@ -122,10 +293,6 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
             targets += Target(charId, player, true)
         }
 
-        // Load registered affordances once per tick
-        val affordances = loadAffordances()
-
-        // For each NPC perceiver, evaluate candidates
         for (npc in plugin.npcRegistry.all()) {
             val perceiverEntity = npc.entity as? LivingEntity ?: continue
             val perceiverCharId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
@@ -141,7 +308,6 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
             val perceiverEyeLoc = perceiverEntity.eyeLocation
             val perceiverWorld = perceiverLoc.world ?: continue
 
-            // --- Character targets ---
             val perceivedNow = mutableSetOf<String>()
             val knownSet = perceivedSets.getOrPut(perceiverCharId) { java.util.concurrent.CopyOnWriteArraySet() }
 
@@ -153,14 +319,11 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
                 val dist = perceiverLoc.distance(targetLoc)
                 if (dist > sightRange) continue
 
-                // FOV check — ray from eye position using head's actual yaw+pitch
                 val targetEyeLoc = target.entity.eyeLocation
                 if (!inFov(perceiverEyeLoc.direction, perceiverEyeLoc.toVector(), targetEyeLoc.toVector(), fovHalfDeg)) continue
 
-                // Line-of-sight check (Bukkit internally uses eye positions)
                 if (!perceiverEntity.hasLineOfSight(target.entity)) continue
 
-                // Light level — attenuate strength in darkness
                 val lightLevel = targetLoc.block.lightLevel.toInt()
                 val lightFactor = if (lightLevel < MIN_LIGHT_LEVEL) {
                     (lightLevel.toFloat() / MIN_LIGHT_LEVEL).coerceAtLeast(0.1f)
@@ -170,7 +333,6 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
 
                 perceivedNow += target.charId
                 if (knownSet.add(target.charId)) {
-                    val perceiverName = npc.name
                     val targetName = if (target.isPlayer)
                         target.entity.name
                     else
@@ -199,59 +361,6 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
             if (lost.isNotEmpty()) {
                 knownSet -= lost
             }
-
-            // --- Affordance targets (no FOV/LOS — ambient perception) ---
-            for (aff in affordances) {
-                if (aff.world != perceiverWorld.name) continue
-                val dx = aff.x - perceiverLoc.x
-                val dy = aff.y - perceiverLoc.y
-                val dz = aff.z - perceiverLoc.z
-                val dist = sqrt(dx * dx + dy * dy + dz * dz)
-                if (dist > sightRange) continue
-
-                val strength = (BASE_STRENGTH * (1.0 - dist / sightRange) * stats.consciousness).toFloat()
-
-                plugin.eventBus.emit(PerceptionStimulusEvent(
-                    perceiverCharId = perceiverCharId,
-                    targetCharId = null,
-                    targetAffordanceId = aff.id,
-                    stimulusType = "proximity",
-                    strength = strength,
-                    x = aff.x,
-                    y = aff.y,
-                    z = aff.z,
-                    tags = aff.tags,
-                ))
-            }
-        }
-    }
-
-    private data class AffordanceTarget(
-        val id: String,
-        val x: Double,
-        val y: Double,
-        val z: Double,
-        val world: String,
-        val tags: List<String>,
-    )
-
-    private fun loadAffordances(): List<AffordanceTarget> {
-        val mongo = plugin.storageFactory.mongoClient ?: return emptyList()
-        return try {
-            val storage = com.canefe.story.affordance.AffordanceStorage(mongo)
-            storage.findAll().map { r ->
-                val typeDef = plugin.affordanceTypeRegistry.getById(r.affordanceTypeId)
-                AffordanceTarget(
-                    id = r.id,
-                    x = r.x,
-                    y = r.y,
-                    z = r.z,
-                    world = r.world,
-                    tags = typeDef?.tags ?: emptyList(),
-                )
-            }
-        } catch (_: Exception) {
-            emptyList()
         }
     }
 
@@ -320,11 +429,6 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
         }
     }
 
-    private fun inFov(facing: Vector, from: Vector, to: Vector, halfAngleDeg: Double): Boolean {
-        if (halfAngleDeg >= 180.0) return true
-        val dir = to.subtract(from).normalize()
-        val dot = facing.dot(dir).coerceIn(-1.0, 1.0)
-        val angleDeg = Math.toDegrees(acos(dot))
-        return angleDeg <= halfAngleDeg
-    }
+    private fun inFov(facing: Vector, from: Vector, to: Vector, halfAngleDeg: Double): Boolean =
+        Companion.inFov(facing, from, to, halfAngleDeg)
 }

@@ -201,8 +201,14 @@ open class MythicMobStoryNPC(
 
     override fun lookAt(target: Entity) {
         val living = backingEntity as? LivingEntity ?: return
-        val direction = target.location.toVector().subtract(living.location.toVector())
-        living.teleport(living.location.setDirection(direction))
+        // Set facing without teleporting: teleport(setDirection(...)) would
+        // also pin XYZ to the cached location, which freezes the entity in
+        // mid-air and cancels in-flight pathing. setRotation writes only
+        // yaw/pitch, leaving position and velocity untouched.
+        val facing = living.location.clone().setDirection(
+            target.location.toVector().subtract(living.location.toVector()),
+        )
+        living.setRotation(facing.yaw, facing.pitch)
     }
 
     /**

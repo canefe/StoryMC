@@ -2,7 +2,6 @@ package com.canefe.story.npc
 
 import com.canefe.story.Story
 import com.canefe.story.api.StoryNPC
-import com.canefe.story.npc.mythicmobs.MythicMobStoryNPC
 import org.bukkit.Bukkit
 import org.bukkit.entity.Entity
 import java.util.UUID
@@ -99,23 +98,17 @@ class NPCTaskTracker(
     fun cancelFollow(followerId: UUID) = cancel(followerId, KIND_FOLLOW)
 
     /**
-     * Sticky head-lock: re-casts the MythicMobs `StorySocializeLookAt` skill on a
-     * cadence shorter than its baked-in duration, so the head stays locked on
-     * [target] until [cancelLookAt] / [cancel] is called, or [target] becomes
-     * invalid / leaves the world. Non-MythicMob NPCs get one rotate via
-     * [StoryNPC.lookAt] and no tracked tick.
+     * Sticky head-lock: re-applies [StoryNPC.lookAt] (teleport-rotate toward
+     * [target]) every tick interval, so the NPC's facing tracks the target until
+     * [cancelLookAt] / [cancel] is called, or the target becomes invalid /
+     * leaves the world.
      */
     fun lookAt(npc: StoryNPC, target: Entity) {
-        val mythic = npc as? MythicMobStoryNPC
-        if (mythic == null) {
-            npc.lookAt(target)
-            return
-        }
         start(npc, KIND_LOOK_AT, LOOK_AT_PERIOD_TICKS) {
             if (!target.isValid) return@start false
             val npcLoc = npc.location ?: return@start true
             if (npcLoc.world != target.world) return@start false
-            mythic.lookAtViaSkill(target)
+            npc.lookAt(target)
             true
         }
     }
@@ -131,10 +124,11 @@ class NPCTaskTracker(
         private const val FOLLOW_ARRIVE_RANGE_SQ = 9.0
 
         /**
-         * Re-cast cadence for look_at. StorySocializeLookAt has a ~7s baked-in
-         * duration; 5s (100 ticks) is comfortably under it so the lock never
-         * lapses between casts.
+         * Re-apply cadence for look_at. Teleport-rotate is instantaneous and
+         * doesn't survive MythicMobs' AI rotating the head between ticks, so we
+         * re-set the facing every 2 ticks (~10Hz) to keep the lock visually
+         * smooth as the target moves.
          */
-        private const val LOOK_AT_PERIOD_TICKS = 100L
+        private const val LOOK_AT_PERIOD_TICKS = 2L
     }
 }
