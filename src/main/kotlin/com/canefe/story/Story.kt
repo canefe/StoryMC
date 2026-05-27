@@ -728,6 +728,7 @@ relationshipManager.updateStorage(storageFactory.relationshipStorage)
         eventBus.on<NPCSpeakIntent> { IntentExecutor.executeSpeakIntent(this, it) }
         eventBus.on<GoToExecIntent> { IntentExecutor.executeGoTo(this, it) }
         eventBus.on<NPCEmoteIntent> { IntentExecutor.executeEmoteIntent(this, it) }
+        eventBus.on<NPCEmoteIconIntent> { IntentExecutor.executeEmoteIconIntent(this, it) }
         eventBus.on<NPCActionIntent> { IntentExecutor.executeActionIntent(this, it) }
         eventBus.on<NPCSignalIntent> { IntentExecutor.executeSignalIntent(this, it) }
         eventBus.on<QuestAssignIntent> { IntentExecutor.executeQuestAssignIntent(this, it) }

@@ -6,11 +6,15 @@ import com.canefe.story.combat.SwingDir
 import com.canefe.story.combat.adapter.NpcCombatant
 import com.canefe.story.npc.CitizensStoryNPC
 import com.canefe.story.util.characterId
+import com.github.retrooper.packetevents.PacketEvents
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPluginMessage
 import net.citizensnpcs.api.CitizensAPI
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Entity
 import org.bukkit.entity.LivingEntity
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -729,6 +733,40 @@ object IntentExecutor {
             npc = npc,
             streaming = true,
         )
+    }
+
+    fun executeEmoteIconIntent(
+        plugin: Story,
+        intent: NPCEmoteIconIntent,
+    ) {
+        val npc = resolveNPC(plugin, intent.characterId)
+        if (npc == null) {
+            plugin.logger.warning("Emote icon intent: character '${intent.characterId}' not found")
+            return
+        }
+        val entity = npc.entity ?: run {
+            plugin.logger.warning("Emote icon intent: character '${intent.characterId}' has no live entity")
+            return
+        }
+
+        val bytes = encodeEmoteIconPayload(entity.entityId, intent.emoteId)
+        val packet = WrapperPlayServerPluginMessage("story:npc_emote_icon", bytes)
+        for (player in Bukkit.getOnlinePlayers()) {
+            try {
+                PacketEvents.getAPI().playerManager.getUser(player).sendPacket(packet)
+            } catch (_: Exception) {
+                // Match PerceptionBroadcaster: swallow per-player send failures.
+            }
+        }
+    }
+
+    internal fun encodeEmoteIconPayload(entityId: Int, emoteId: String): ByteArray {
+        val baos = ByteArrayOutputStream()
+        DataOutputStream(baos).use { out ->
+            out.writeInt(entityId)
+            out.writeUTF(emoteId)
+        }
+        return baos.toByteArray()
     }
 
     private fun wrapAngle(angle: Float): Float {
