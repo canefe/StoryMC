@@ -63,7 +63,7 @@ class PuppetManager(
         for (id in ids) {
             val npc = plugin.npcRegistry.get(id) ?: continue
             // Cancel any followchar loop targeting this NPC so it doesn't override.
-            plugin.npcFollowTracker.cancel(id)
+            plugin.npcTaskTracker.cancelFollow(id)
             npc.navigateTo(location)
         }
     }

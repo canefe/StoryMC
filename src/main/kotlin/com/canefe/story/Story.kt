@@ -33,7 +33,7 @@ import com.canefe.story.intelligence.StoryIntelligence
 import com.canefe.story.location.LocationManager
 import com.canefe.story.lore.LoreBookManager
 import com.canefe.story.npc.ChunkLoadReconciler
-import com.canefe.story.npc.NPCFollowTracker
+import com.canefe.story.npc.NPCTaskTracker
 import com.canefe.story.npc.NPCManager
 import com.canefe.story.npc.NearbyNPCBroadcaster
 import com.canefe.story.npc.PositionBroadcaster
@@ -306,8 +306,8 @@ open class Story :
     val affordanceTypeRegistry = com.canefe.story.affordance.AffordanceTypeRegistry()
     val characterStatsCache = com.canefe.story.perception.CharacterStatsCache()
 
-    // Per-NPC follow loop for entity targets (NPCs / players)
-    lateinit var npcFollowTracker: NPCFollowTracker
+    // Per-NPC repeating-task registry for sticky behaviors (follow, look-at, ...)
+    lateinit var npcTaskTracker: NPCTaskTracker
 
     // Puppet mode: per-player NPC group, commands via right-click in StoryClient
     lateinit var puppetManager: PuppetManager
@@ -486,7 +486,7 @@ open class Story :
         gazeBroadcaster.start()
         server.pluginManager.registerEvents(com.canefe.story.perception.CombatPerceptionListener(this), this)
 
-        npcFollowTracker = NPCFollowTracker(this)
+        npcTaskTracker = NPCTaskTracker(this)
 
         puppetGroupBroadcaster = PuppetGroupBroadcaster(this)
         puppetManager = PuppetManager(this)

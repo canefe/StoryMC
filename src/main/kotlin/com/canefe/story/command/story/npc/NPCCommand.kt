@@ -255,7 +255,7 @@ class NPCCommand(
                     }
                     if (npc.isFollowing) {
                         npc.stopFollowing()
-                        plugin.npcFollowTracker.cancel(npc.uniqueId)
+                        plugin.npcTaskTracker.cancelFollow(npc.uniqueId)
                         // Mythic templates may listen for the inverse signal to stop following.
                         npc.signal("CommanderStop", player)
                         player.sendSuccess("${npc.name} stopped following.")
@@ -292,7 +292,7 @@ class NPCCommand(
                         sender.sendError("No NPC or online player matching '$targetArg'.")
                         return@CommandExecutor
                     }
-                    plugin.npcFollowTracker.follow(npc, targetEntity)
+                    plugin.npcTaskTracker.follow(npc, targetEntity)
                     sender.sendSuccess("${npc.name.stripLegacy()} is now following ${targetEntity.name.stripLegacy()}.")
                 },
             )

@@ -891,11 +891,11 @@ object IntentExecutor {
                     completeIntent(plugin, intent)
                 }
                 "look_at" -> {
-                    // Persistent head-lock via the MythicMobs `look` mechanic
-                    // (StorySocializeLookAt skill). Replaces the previous
-                    // teleport-snap so the lock survives the mob's own AI for
-                    // the skill's configured duration. ClearLookAt is a no-op
-                    // since the mechanic auto-expires.
+                    // Sticky head-lock via NPCTaskTracker: re-casts the MythicMobs
+                    // StorySocializeLookAt skill on a cadence shorter than its
+                    // baked-in duration, so the lock holds until clear_look_at or
+                    // the target becomes invalid. Citizens / stub fallback is a
+                    // one-shot rotate (no tracked tick).
                     val targetId = intent.targetCharId
                     if (targetId == null) {
                         rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
@@ -905,22 +905,11 @@ object IntentExecutor {
                         plugin.logger.warning("[FrontendIntent] look_at: target not found for $targetId")
                         rejectIntent(plugin, intent, RejectionReason.TARGET_NOT_FOUND); return
                     }
-                    val mythicNpc = npc as? com.canefe.story.npc.mythicmobs.MythicMobStoryNPC
-                    if (mythicNpc != null) {
-                        mythicNpc.lookAtViaSkill(target)
-                    } else {
-                        // Citizens / stub fallback: one-shot snap.
-                        npc.lookAt(target)
-                    }
+                    plugin.npcTaskTracker.lookAt(npc, target)
                     completeIntent(plugin, intent)
                 }
                 "clear_look_at" -> {
-                    // The MythicMobs `look` mechanic has a baked-in duration;
-                    // cancellation is a no-op on the plugin side. Logged so the
-                    // protocol stays observable. If a future use-case needs
-                    // early cancellation we can mark the skill as toggleable
-                    // and emit a cancel here.
-                    plugin.logger.fine("[FrontendIntent] clear_look_at for ${intent.characterId} (no-op — mechanic auto-expires)")
+                    plugin.npcTaskTracker.cancelLookAt(npc.uniqueId)
                     completeIntent(plugin, intent)
                 }
                 "attempt_hit" -> {

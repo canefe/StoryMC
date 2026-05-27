@@ -186,12 +186,12 @@ open class MythicMobStoryNPC(
         followingTarget = target
         // MythicMobs has no built-in "follow this entity" goal selector exposed here;
         // route through the shared tracker which polls and re-targets each second.
-        Story.instance.npcFollowTracker.follow(this, target)
+        Story.instance.npcTaskTracker.follow(this, target)
     }
 
     override fun stopFollowing() {
         followingTarget = null
-        Story.instance.npcFollowTracker.cancel(stableUniqueId)
+        Story.instance.npcTaskTracker.cancelFollow(stableUniqueId)
         cancelNavigation()
     }
 

@@ -89,7 +89,7 @@ class SquadOrderTracker(
         val squad = plugin.squadRegistry.getById(squadId) ?: return
         for (npc in plugin.squadRegistry.resolveLiveMembers(squad)) {
             if (!npc.isSpawned) continue
-            plugin.npcFollowTracker.cancel(npc.uniqueId)
+            plugin.npcTaskTracker.cancelFollow(npc.uniqueId)
             when (order) {
                 is SquadOrder.HoldPosition -> {
                     npc.cancelNavigation()
@@ -130,7 +130,7 @@ class SquadOrderTracker(
                     val slotLoc = slots.getOrNull(i) ?: order.location
                     val loc = npc.location ?: return@forEachIndexed
                     if (loc.distanceSquared(slotLoc) > 4.0) {
-                        plugin.npcFollowTracker.cancel(npc.uniqueId)
+                        plugin.npcTaskTracker.cancelFollow(npc.uniqueId)
                         npc.navigateTo(slotLoc)
                     }
                 }
@@ -151,7 +151,7 @@ class SquadOrderTracker(
                     val slotLoc = slots.getOrNull(i) ?: anchor
                     val loc = npc.location ?: return@forEachIndexed
                     if (loc.distanceSquared(slotLoc) > 4.0) {
-                        plugin.npcFollowTracker.cancel(npc.uniqueId)
+                        plugin.npcTaskTracker.cancelFollow(npc.uniqueId)
                         npc.navigateTo(slotLoc)
                     }
                 }
@@ -181,7 +181,7 @@ class SquadOrderTracker(
                 }
                 for (npc in liveMembers) {
                     if (!npc.isSpawned) continue
-                    plugin.npcFollowTracker.cancel(npc.uniqueId)
+                    plugin.npcTaskTracker.cancelFollow(npc.uniqueId)
                     // Mythic templates handle their own combat behavior via signals
                     // (melee charges, ranged stays still and shoots, shielders raise
                     // shield, etc). Citizens NPCs no-op on signal and fall through to
