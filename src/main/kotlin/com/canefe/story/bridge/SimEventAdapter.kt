@@ -114,6 +114,65 @@ internal fun adaptSimEvent(sim: SimEvent): StoryEvent? = when (sim.eventCase) {
         )
     }
 
+    SimEvent.EventCase.FRONTEND_INTENT -> {
+        val fi = sim.frontendIntent
+        when (fi.intentCase) {
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.SET_TARGET -> FrontendIntentEvent(
+                primitive = "set_target",
+                characterId = fi.characterId,
+                intentId = fi.intentId,
+                targetCharId = fi.setTarget.targetCharId.ifEmpty { null },
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.FLEE_FROM -> {
+                val f = fi.fleeFrom
+                FrontendIntentEvent(
+                    primitive = "flee_from",
+                    characterId = fi.characterId,
+                    intentId = fi.intentId,
+                    fromX = f.fromX,
+                    fromZ = f.fromZ,
+                    minDist = f.minDist,
+                    maxDist = f.maxDist,
+                )
+            }
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.ATTEMPT_HIT -> {
+                val h = fi.attemptHit
+                FrontendIntentEvent(
+                    primitive = "attempt_hit",
+                    characterId = fi.characterId,
+                    intentId = fi.intentId,
+                    targetCharId = h.targetCharId.ifEmpty { null },
+                    swingDirection = h.swingDirection.ifEmpty { null },
+                )
+            }
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.CLEAR_TARGET -> FrontendIntentEvent(
+                primitive = "clear_target",
+                characterId = fi.characterId,
+                intentId = fi.intentId,
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.LOOK_AT -> FrontendIntentEvent(
+                primitive = "look_at",
+                characterId = fi.characterId,
+                intentId = fi.intentId,
+                targetCharId = fi.lookAt.targetCharId.ifEmpty { null },
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.CLEAR_LOOK_AT -> FrontendIntentEvent(
+                primitive = "clear_look_at",
+                characterId = fi.characterId,
+                intentId = fi.intentId,
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.SPEAK -> NPCSpeakIntent(
+                characterId = fi.characterId,
+                message = fi.speak.message,
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.EMOTE_ICON -> NPCEmoteIconIntent(
+                characterId = fi.characterId,
+                emoteId = fi.emoteIcon.emoteId,
+            )
+            com.canefe.storyproto.v1.FrontendIntent.IntentCase.INTENT_NOT_SET, null -> null
+        }
+    }
+
     // Recognized but not consumed by the plugin today: swallow silently so
     // the transport's unknown-type fallback never fires for these.
     SimEvent.EventCase.SIM_INIT,

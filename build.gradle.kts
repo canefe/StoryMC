@@ -158,6 +158,19 @@ protobuf {
     protoc { artifact = "com.google.protobuf:protoc:3.25.5" }
 }
 
+// story-proto intents.proto defines legacy LookAtIntent/SetTargetIntent/
+// ClearTargetIntent that now collide with the same names in events.proto's
+// FrontendIntent surface. The plugin only consumes events.proto types
+// (SimEvent et al.) — exclude intents.proto from protoc so generation
+// doesn't fail on the duplicate FQNs.
+sourceSets {
+    main {
+        proto {
+            exclude("story/v1/intents.proto")
+        }
+    }
+}
+
 val targetJavaVersion = 21
 
 java {

@@ -1,6 +1,6 @@
 package com.canefe.story.bridge
 
-import com.canefe.storyproto.v1.GoToIntent
+import com.canefe.storyproto.v1.GoTo
 import com.google.protobuf.util.JsonFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 class GoToWireTest {
     @Test fun goToRoundTripsCanonicalJson() {
-        val g = GoToIntent.newBuilder()
+        val g = GoTo.newBuilder()
             .setCharacterId("npc_1")
             .setIntentId("abc")
             .setX(1.0).setY(64.0).setZ(2.0)
@@ -18,7 +18,7 @@ class GoToWireTest {
         val json = JsonFormat.printer().omittingInsignificantWhitespace().print(g)
         assertTrue(json.contains("\"characterId\""), "expected camelCase characterId, got: $json")
 
-        val parsed = GoToIntent.newBuilder()
+        val parsed = GoTo.newBuilder()
         JsonFormat.parser().merge(json, parsed)
         val back = parsed.build()
         assertEquals(g.characterId, back.characterId)
@@ -29,7 +29,7 @@ class GoToWireTest {
         val json = this::class.java.classLoader
             .getResourceAsStream("go_to.golden.json")!!
             .bufferedReader().readText()
-        val b = GoToIntent.newBuilder()
+        val b = GoTo.newBuilder()
         JsonFormat.parser().merge(json, b)
         val g = b.build()
         assertEquals("npc_1", g.characterId)
