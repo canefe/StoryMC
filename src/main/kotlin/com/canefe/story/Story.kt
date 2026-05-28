@@ -485,6 +485,10 @@ open class Story :
         gazeBroadcaster = com.canefe.story.perception.GazeBroadcaster(this)
         gazeBroadcaster.start()
         server.pluginManager.registerEvents(com.canefe.story.perception.CombatPerceptionListener(this), this)
+        server.pluginManager.registerEvents(
+            com.canefe.story.bridge.combat.SimAuthoritativeDamageListener(this),
+            this,
+        )
 
         npcTaskTracker = NPCTaskTracker(this)
 

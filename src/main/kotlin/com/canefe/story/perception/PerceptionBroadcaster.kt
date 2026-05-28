@@ -268,51 +268,73 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
      * Character-target perception. Stays Bukkit-coupled because it both
      * drives [PerceptionStimulusEvent] AND the PERCEPTION popup packet,
      * and tracks per-perceiver perceivedSets for popup edge-detection.
+     *
+     * Perceivers are drawn from [CharacterRegistry], which covers both NPCs
+     * and online player-characters. For each registered characterId we resolve
+     * a backing [LivingEntity] (an online player takes precedence over any
+     * stand-in NPC). Players therefore record perception logs identically to
+     * NPCs.
      */
     private fun tickCharacters() {
         val onlinePlayers = Bukkit.getOnlinePlayers()
-        val onlineCharIds = onlinePlayers
-            .mapNotNull { try { it.characterId } catch (_: Exception) { null } }
-            .toSet()
 
-        // Build candidate target list: all spawned NPCs + online players
-        data class Target(
+        // characterId -> backing entity. Online player wins over any NPC stand-in.
+        data class Perceiver(
             val charId: String,
             val entity: LivingEntity,
             val isPlayer: Boolean,
+            /** Display name used in PERCEPTION popups. */
+            val displayName: String,
+            /** UUID to key the popup against (NPC clientFacingUuid, or the entity's own). */
+            val popupUuid: UUID,
         )
 
-        val targets = mutableListOf<Target>()
-        for (npc in plugin.npcRegistry.all()) {
-            val entity = npc.entity as? LivingEntity ?: continue
-            val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
-            targets += Target(charId, entity, charId in onlineCharIds)
-        }
+        val perceiverByCharId = HashMap<String, Perceiver>()
         for (player in onlinePlayers) {
             val charId = try { player.characterId } catch (_: Exception) { null } ?: continue
-            targets += Target(charId, player, true)
+            perceiverByCharId[charId] = Perceiver(
+                charId = charId,
+                entity = player,
+                isPlayer = true,
+                displayName = player.name,
+                popupUuid = player.uniqueId,
+            )
+        }
+        if (plugin.isNpcRegistryReady) {
+            for (npc in plugin.npcRegistry.all()) {
+                val entity = npc.entity as? LivingEntity ?: continue
+                val charId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
+                // Online player already won this charId — skip the stand-in NPC.
+                if (perceiverByCharId.containsKey(charId)) continue
+                perceiverByCharId[charId] = Perceiver(
+                    charId = charId,
+                    entity = entity,
+                    isPlayer = false,
+                    displayName = npc.name,
+                    popupUuid = npc.clientFacingUuid ?: entity.uniqueId,
+                )
+            }
         }
 
-        for (npc in plugin.npcRegistry.all()) {
-            val perceiverEntity = npc.entity as? LivingEntity ?: continue
-            val perceiverCharId = plugin.characterRegistry.getCharacterIdForNPC(npc) ?: continue
-            // Don't perceive if this is a stand-in for an online player
-            if (perceiverCharId in onlineCharIds) continue
+        // Targets are every perceiver — characters perceive each other.
+        val targets = perceiverByCharId.values.toList()
 
-            val stats = plugin.characterStatsCache.get(perceiverCharId)
+        for (perceiver in perceiverByCharId.values) {
+            val stats = plugin.characterStatsCache.get(perceiver.charId)
             if (stats.consciousness < MIN_CONSCIOUSNESS) continue
 
-            val sightRange = plugin.characterStatsCache.effectiveSightRange(perceiverCharId)
-            val fovHalfDeg = plugin.characterStatsCache.effectiveFov(perceiverCharId)
+            val sightRange = plugin.characterStatsCache.effectiveSightRange(perceiver.charId)
+            val fovHalfDeg = plugin.characterStatsCache.effectiveFov(perceiver.charId)
+            val perceiverEntity = perceiver.entity
             val perceiverLoc = perceiverEntity.location
             val perceiverEyeLoc = perceiverEntity.eyeLocation
             val perceiverWorld = perceiverLoc.world ?: continue
 
             val perceivedNow = mutableSetOf<String>()
-            val knownSet = perceivedSets.getOrPut(perceiverCharId) { java.util.concurrent.CopyOnWriteArraySet() }
+            val knownSet = perceivedSets.getOrPut(perceiver.charId) { java.util.concurrent.CopyOnWriteArraySet() }
 
             for (target in targets) {
-                if (target.charId == perceiverCharId) continue
+                if (target.charId == perceiver.charId) continue
                 val targetLoc = target.entity.location
                 if (targetLoc.world != perceiverWorld) continue
 
@@ -333,18 +355,11 @@ class PerceptionBroadcaster(private val plugin: Story) : Listener {
 
                 perceivedNow += target.charId
                 if (knownSet.add(target.charId)) {
-                    val targetName = if (target.isPlayer)
-                        target.entity.name
-                    else
-                        plugin.npcRegistry.all().firstOrNull {
-                            plugin.characterRegistry.getCharacterIdForNPC(it) == target.charId
-                        }?.name ?: target.charId
-                    val clientUuid = npc.clientFacingUuid ?: perceiverEntity.uniqueId
-                    broadcastPerceptionPopup(clientUuid, targetName, PopupType.PERCEPTION)
+                    broadcastPerceptionPopup(perceiver.popupUuid, target.displayName, PopupType.PERCEPTION)
                 }
 
                 plugin.eventBus.emit(PerceptionStimulusEvent(
-                    perceiverCharId = perceiverCharId,
+                    perceiverCharId = perceiver.charId,
                     targetCharId = target.charId,
                     targetAffordanceId = null,
                     stimulusType = "sight",

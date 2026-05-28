@@ -27,11 +27,22 @@ class PerceptionListener(
     /** Throttle combat_enter percepts — key is "npcId:targetName", cleared after 5s. */
     private val recentCombatEnter = mutableSetOf<String>()
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     fun onEntityDamage(event: EntityDamageEvent) {
         val victim = event.entity
         if (victim !is LivingEntity) return
-        
+
+        // Sim-authoritative combat path: SimAuthoritativeDamageListener cancels
+        // EDBEs for sim-tracked swings and runs the round-trip through sim. The
+        // sim's swing_attack_system already applies damage with proper context
+        // (attacker_name, weapon_source, body part). If we also forward this
+        // cancelled event as `npc.damaged`, the Lua entity_hurt_handler
+        // re-applies the damage via World.DamageEntity → double-application,
+        // and the lethal blow lands without swing context so killed=true never
+        // propagates back via combat.attack_resolved. Skip cancelled events to
+        // leave the sim path authoritative.
+        if (event.isCancelled) return
+
         val victimCharId = getCharacterId(victim) ?: return
         if (!plugin.isNpcRegistryReady || plugin.npcRegistry.getByEntity(victim) == null) return
 

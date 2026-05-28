@@ -567,15 +567,13 @@ object IntentExecutor {
 
     /**
      * Returns a refusal reason if a sim spawn for [characterId] must be rejected,
-     * or null if it may proceed. Policy: characterId MUST be a canonical UUID and
-     * MUST have a CharacterRecord — otherwise we refuse rather than mint a random
-     * registry key (which produces an unroutable ghost NPC). See spec
-     * 2026-05-25-npc-identity-canonicalization.
+     * or null if it may proceed. Policy: characterId MUST have a CharacterRecord —
+     * otherwise we'd mint a random registry key (unroutable ghost NPC). Slug-style
+     * IDs like `jonas_57d91261` are accepted as long as a record exists.
      */
     fun npcSpawnRefusalReason(characterId: String, hasRecord: Boolean): String? {
-        val isUuid = try { java.util.UUID.fromString(characterId); true } catch (_: IllegalArgumentException) { false }
         return when {
-            !isUuid -> "characterId is not a canonical UUID"
+            characterId.isBlank() -> "characterId is blank"
             !hasRecord -> "no CharacterRecord for characterId"
             else -> null
         }

@@ -189,3 +189,76 @@ data class CharacterSpokeEvent(
 ) : SerializableStoryEvent {
     override val eventType: String get() = "character.spoke"
 }
+
+// ── Sim-authoritative combat (combat.player_attack → combat.attack_resolved) ──
+//
+// Round-trip pipeline (Phase 8 / Phase 7 of the sim-authoritative combat substrate):
+//
+//   Vanilla EntityDamageByEntityEvent fires
+//     │
+//     ├─ SimAuthoritativeDamageListener cancels the native event
+//     └─ Plugin publishes CombatPlayerAttackEvent (combat.player_attack) to story-go
+//        story-go → NATS → sim → swing_attack_system + resolver + damage primitive
+//                                                                                │
+//                                                                                ↓
+//   Plugin receives ← CombatAttackResolvedEvent (combat.attack_resolved) ←──── sim
+//     │
+//     └─ Listener applies LivingEntity.damage(damageDealt, attacker) so vanilla
+//        plays the hurt animation / flash / knockback / death anim.
+//
+// `entity_hurt` (NPCDamagedEvent / npc.damaged) is NOT replaced — it still fires
+// from PerceptionListener for environment damage (lava, fall, drowning, scripted
+// PvE) where there's no swing to resolve. Per docs/2026-05-27-combat-player-attack-contract.md
+// Stage 1 of the migration both paths coexist; Stage 2 will gate the
+// environment-damage path so attacks only flow through combat.player_attack.
+
+/**
+ * Pre-damage attack intent published by the plugin when a sim-tracked entity
+ * swings at another sim-tracked entity. The sim runs its resolver and replies
+ * with [CombatAttackResolvedEvent] carrying the actual damage to apply.
+ *
+ * Field names match the inbound contract in
+ * `story-sim/docs/2026-05-27-combat-player-attack-contract.md` (snake_case
+ * canonical, camelCase accepted defensively sim-side).
+ *
+ * `weaponItem` is informational only — the sim's resolver picks the weapon
+ * from the attacker's Equipment, never from this field. `null`/omitted means
+ * unarmed; sim falls back to natural weapons.
+ */
+@Serializable
+data class CombatPlayerAttackEvent(
+    val attackerId: String? = null,
+    val attackerName: String,
+    val defenderId: String? = null,
+    val defenderName: String,
+    val weaponItem: String? = null,
+    val tick: Long = 0L,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "combat.player_attack"
+}
+
+/**
+ * Post-resolution outcome from the sim. Field names match the outbound contract
+ * in `story-sim/docs/2026-05-27-combat-attack-resolved-contract.md`
+ * (camelCase canonical sim-side).
+ *
+ * `outcome` is one of `"hit"`, `"glance"`, `"miss"`. On miss, `damageDealt=0`,
+ * `targetPart=null`, `cascadedParts=[]`, `killed=false`.
+ */
+@Serializable
+data class CombatAttackResolvedEvent(
+    val attackerId: String? = null,
+    val attackerName: String = "",
+    val defenderId: String? = null,
+    val defenderName: String = "",
+    val weaponSource: String = "",
+    val outcome: String = "miss",
+    val damageDealt: Float = 0f,
+    val damageType: String = "generic",
+    val targetPart: String? = null,
+    val cascadedParts: List<String> = emptyList(),
+    val killed: Boolean = false,
+    val tick: Long = 0L,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "combat.attack_resolved"
+}
