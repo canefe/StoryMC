@@ -184,25 +184,10 @@ class WebSocketTransport(
     }
 
     private fun handleInboundMessage(payload: String) {
-        // 1) Try the proto SimEvent path first. Sim→go→plugin traffic is wire-shaped
-        //    as the bare protojson of a `story.v1.SimEvent` (no BridgeMessage envelope).
-        //    Anything that parses cleanly AND has a populated oneof is dispatched here;
-        //    everything else falls through to the legacy BridgeMessage path below.
-        tryParseSimEvent(payload)?.let { simEvent ->
-            val event = adaptSimEvent(simEvent)
-            if (event != null) {
-                Bukkit.getScheduler().runTask(
-                    plugin,
-                    Runnable { inboundHandler?.invoke(event) },
-                )
-            }
-            // Recognized SimEvent (even if no-op like SimInit) — do NOT fall through.
-            return
-        }
-
-        // 2) Legacy BridgeMessage envelope path. Used for non-SimEvent inbound flows
-        //    (intelligence.response, permission.ask, frontend.intent, etc.) and for
-        //    plugin→go inbound replies that still use {type, source, timestamp, data}.
+        // Legacy BridgeMessage envelope path. Used for non-SimEvent inbound flows
+        // (intelligence.response, permission.ask, frontend.intent, etc.) and for
+        // plugin→go inbound replies that still use {type, source, timestamp, data}.
+        // Binary frames carrying SimEvent proto are handled by handleInboundBinary.
         try {
             val bridgeMessage = json.decodeFromString<BridgeMessage>(payload)
             val event = deserializeEvent(bridgeMessage) ?: return
@@ -218,26 +203,20 @@ class WebSocketTransport(
         }
     }
 
-    /**
-     * Attempt to parse [payload] as a proto-canonical-JSON [com.canefe.storyproto.v1.SimEvent].
-     * Returns non-null only when parsing succeeds AND the oneof is set — a successful
-     * parse with [com.canefe.storyproto.v1.SimEvent.EventCase.EVENT_NOT_SET] means the
-     * payload happened to be a JSON object with no recognized fields (e.g. a
-     * BridgeMessage envelope), and we want the legacy path to handle it.
-     */
-    private fun tryParseSimEvent(payload: String): com.canefe.storyproto.v1.SimEvent? =
-        try {
-            val builder = com.canefe.storyproto.v1.SimEvent.newBuilder()
-            JsonFormat.parser().ignoringUnknownFields().merge(payload, builder)
-            val built = builder.build()
-            if (built.eventCase == com.canefe.storyproto.v1.SimEvent.EventCase.EVENT_NOT_SET) {
-                null
-            } else {
-                built
-            }
-        } catch (_: Exception) {
-            null
+    private fun handleInboundBinary(bytes: ByteArray) {
+        val simEvent = try {
+            com.canefe.storyproto.v1.SimEvent.parseFrom(bytes)
+        } catch (e: Exception) {
+            logger.warning("Failed to parse binary SimEvent: ${e.message}")
+            return
         }
+        if (simEvent.eventCase == com.canefe.storyproto.v1.SimEvent.EventCase.EVENT_NOT_SET) {
+            logger.warning("Binary SimEvent had no event variant set")
+            return
+        }
+        val event = adaptSimEvent(simEvent) ?: return
+        Bukkit.getScheduler().runTask(plugin, Runnable { inboundHandler?.invoke(event) })
+    }
 
     internal fun serializeEvent(event: SerializableStoryEvent): kotlinx.serialization.json.JsonElement =
         when (event) {
@@ -329,6 +308,7 @@ class WebSocketTransport(
 
     private inner class StoryWebSocketListener : WebSocket.Listener {
         private val buffer = StringBuilder()
+        private val binaryBuffer = java.io.ByteArrayOutputStream()
 
         override fun onOpen(webSocket: WebSocket) {
             logger.info("WebSocket connection established")
@@ -344,6 +324,23 @@ class WebSocketTransport(
             if (last) {
                 handleInboundMessage(buffer.toString())
                 buffer.clear()
+            }
+            webSocket.request(1)
+            return CompletableFuture.completedFuture(null)
+        }
+
+        override fun onBinary(
+            webSocket: WebSocket,
+            data: java.nio.ByteBuffer,
+            last: Boolean,
+        ): CompletionStage<*> {
+            val chunk = ByteArray(data.remaining())
+            data.get(chunk)
+            binaryBuffer.write(chunk)
+            if (last) {
+                val bytes = binaryBuffer.toByteArray()
+                binaryBuffer.reset()
+                handleInboundBinary(bytes)
             }
             webSocket.request(1)
             return CompletableFuture.completedFuture(null)

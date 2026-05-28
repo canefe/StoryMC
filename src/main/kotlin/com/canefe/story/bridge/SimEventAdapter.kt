@@ -21,12 +21,6 @@ import com.canefe.storyproto.v1.SimEvent
  * Field-name mismatches between the proto and the existing Kotlin classes
  * are bridged here so the rest of the plugin (PerceptionBroadcaster,
  * SimAuthoritativeDamageListener, etc.) does not have to change.
- *
- * Known proto↔Kotlin gaps:
- *  - [NpcStateIntent.world]: proto NpcState has no `world` field; defaulted
- *    to "" (the existing "use NPC's current world" sentinel).
- *  - [NpcSpawnIntent.mobTemplate]: proto EntitySpawned has no mob_template
- *    field; defaulted to "Character" (the existing default).
  */
 internal fun adaptSimEvent(sim: SimEvent): StoryEvent? = when (sim.eventCase) {
     SimEvent.EventCase.SIM_STATUS -> SimStatusEvent(
@@ -54,9 +48,7 @@ internal fun adaptSimEvent(sim: SimEvent): StoryEvent? = when (sim.eventCase) {
             x = s.x.toDouble(),
             y = s.y.toDouble(),
             z = s.z.toDouble(),
-            // proto NpcState has no `world` field — fall back to ""
-            // which the rest of the plugin treats as "current world".
-            world = "",
+            world = s.world,
             health = s.health.toDouble(),
             actionId = s.actionId.ifEmpty { null },
             behaviorId = s.behaviorId.ifEmpty { null },
@@ -70,12 +62,11 @@ internal fun adaptSimEvent(sim: SimEvent): StoryEvent? = when (sim.eventCase) {
             characterId = e.characterId,
             name = e.name,
             race = e.race.ifEmpty { "human" },
-            // proto EntitySpawned has no mob_template — default per Kotlin class.
-            mobTemplate = "Character",
+            mobTemplate = e.mobTemplate.ifEmpty { "Character" },
             x = e.x.toDouble(),
             y = e.y.toDouble(),
             z = e.z.toDouble(),
-            world = "",
+            world = e.world,
         )
     }
 
