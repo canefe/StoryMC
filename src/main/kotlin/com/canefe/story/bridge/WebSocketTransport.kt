@@ -184,6 +184,25 @@ class WebSocketTransport(
     }
 
     private fun handleInboundMessage(payload: String) {
+        // 1) Try the proto SimEvent path first. Sim→go→plugin traffic is wire-shaped
+        //    as the bare protojson of a `story.v1.SimEvent` (no BridgeMessage envelope).
+        //    Anything that parses cleanly AND has a populated oneof is dispatched here;
+        //    everything else falls through to the legacy BridgeMessage path below.
+        tryParseSimEvent(payload)?.let { simEvent ->
+            val event = adaptSimEvent(simEvent)
+            if (event != null) {
+                Bukkit.getScheduler().runTask(
+                    plugin,
+                    Runnable { inboundHandler?.invoke(event) },
+                )
+            }
+            // Recognized SimEvent (even if no-op like SimInit) — do NOT fall through.
+            return
+        }
+
+        // 2) Legacy BridgeMessage envelope path. Used for non-SimEvent inbound flows
+        //    (intelligence.response, permission.ask, frontend.intent, etc.) and for
+        //    plugin→go inbound replies that still use {type, source, timestamp, data}.
         try {
             val bridgeMessage = json.decodeFromString<BridgeMessage>(payload)
             val event = deserializeEvent(bridgeMessage) ?: return
@@ -198,6 +217,27 @@ class WebSocketTransport(
             logger.warning("Failed to parse WebSocket message: ${e.message}")
         }
     }
+
+    /**
+     * Attempt to parse [payload] as a proto-canonical-JSON [com.canefe.storyproto.v1.SimEvent].
+     * Returns non-null only when parsing succeeds AND the oneof is set — a successful
+     * parse with [com.canefe.storyproto.v1.SimEvent.EventCase.EVENT_NOT_SET] means the
+     * payload happened to be a JSON object with no recognized fields (e.g. a
+     * BridgeMessage envelope), and we want the legacy path to handle it.
+     */
+    private fun tryParseSimEvent(payload: String): com.canefe.storyproto.v1.SimEvent? =
+        try {
+            val builder = com.canefe.storyproto.v1.SimEvent.newBuilder()
+            JsonFormat.parser().ignoringUnknownFields().merge(payload, builder)
+            val built = builder.build()
+            if (built.eventCase == com.canefe.storyproto.v1.SimEvent.EventCase.EVENT_NOT_SET) {
+                null
+            } else {
+                built
+            }
+        } catch (_: Exception) {
+            null
+        }
 
     internal fun serializeEvent(event: SerializableStoryEvent): kotlinx.serialization.json.JsonElement =
         when (event) {
@@ -238,6 +278,8 @@ class WebSocketTransport(
             is NpcSetStatIntent -> json.encodeToJsonElement(event)
             is NpcKnowIntent -> json.encodeToJsonElement(event)
             is DMControlToggleEvent -> json.encodeToJsonElement(event)
+            is CombatPlayerAttackEvent -> json.encodeToJsonElement(event)
+            is CombatAttackResolvedEvent -> json.encodeToJsonElement(event)
             else -> json.encodeToJsonElement(mapOf("raw" to event.eventType))
         }
 
@@ -267,6 +309,7 @@ class WebSocketTransport(
                 "intent.session.started" -> json.decodeFromString<SessionStartedIntent>(data)
                 "intent.session.ended" -> json.decodeFromString<SessionEndedIntent>(data)
                 "intent.session.narration" -> json.decodeFromString<SessionNarrationIntent>(data)
+                "combat.attack_resolved" -> json.decodeFromString<CombatAttackResolvedEvent>(data)
                 // Pass through unknown event types as generic StoryEvents
                 // so listeners registered by eventType string (e.g. intelligence.response) still receive them
                 else ->
