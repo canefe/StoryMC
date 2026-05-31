@@ -324,6 +324,21 @@ sourceSets {
     }
 }
 
+// The protobuf plugin adds build/generated/source/proto/main/java as a srcDir (re-added
+// above after setSrcDirs), but a srcDir alone is not a task dependency — so on a clean
+// tree tasks that consume the main source set run before generateProto. compileKotlin
+// then fails with "Unresolved reference 'storyproto'/'SimEvent'", and ktlint fails Gradle's
+// strict task-dependency validation because it reads the generated dir too. Incremental
+// local builds hid this because the generated dir was already populated; clean builds
+// (every CI run) did not. Wire the dependency explicitly for every consumer.
+tasks.matching {
+    it.name == "compileKotlin" ||
+        it.name.startsWith("runKtlintCheckOver") ||
+        it.name.startsWith("runKtlintFormatOver")
+}.configureEach {
+    dependsOn("generateProto")
+}
+
 tasks.build {
     dependsOn(tasks.shadowJar)
 }
