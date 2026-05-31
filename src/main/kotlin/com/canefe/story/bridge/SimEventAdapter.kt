@@ -173,10 +173,23 @@ internal fun adaptSimEvent(sim: SimEvent): StoryEvent? = when (sim.eventCase) {
         }
     }
 
+    SimEvent.EventCase.ENTITY_DIED -> {
+        val d = sim.entityDied
+        EntityDiedEvent(
+            characterId = d.characterId,
+            name = d.name,
+            killer = if (d.hasKiller()) d.killer else null,
+            killerCharacterId = if (d.hasKillerCharacterId()) d.killerCharacterId else null,
+            cause = d.cause,
+            partHit = if (d.hasPartHit()) d.partHit else null,
+            cascadedParts = d.cascadedPartsList.toList(),
+            tick = d.tick.toLong(),
+        )
+    }
+
     // Recognized but not consumed by the plugin today: swallow silently so
     // the transport's unknown-type fallback never fires for these.
     SimEvent.EventCase.SIM_INIT,
-    SimEvent.EventCase.ENTITY_DIED,
     SimEvent.EventCase.RECOGNITION_REINFORCE,
     SimEvent.EventCase.NEARBY_QUERY_RESPONSE,
     SimEvent.EventCase.LOCATION_TEMPLATE_GET_RESPONSE,

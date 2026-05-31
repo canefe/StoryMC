@@ -489,6 +489,7 @@ open class Story :
             com.canefe.story.bridge.combat.SimAuthoritativeDamageListener(this),
             this,
         )
+        com.canefe.story.bridge.death.SimDeathListener(this)
 
         npcTaskTracker = NPCTaskTracker(this)
 

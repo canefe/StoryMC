@@ -262,3 +262,25 @@ data class CombatAttackResolvedEvent(
 ) : SerializableStoryEvent {
     override val eventType: String get() = "combat.attack_resolved"
 }
+
+/**
+ * Sim-authoritative death event. Fires for every sim entity that dies,
+ * including non-combat causes the [CombatAttackResolvedEvent] path never
+ * sees (starvation, dehydration, hediff cascade). The plugin uses this to
+ * force-kill the corresponding MythicMob entity so the corpse exists in MC.
+ *
+ * Inbound only — never serialized back out.
+ */
+@Serializable
+data class EntityDiedEvent(
+    val characterId: String = "",
+    val name: String = "",
+    val killer: String? = null,
+    val killerCharacterId: String? = null,
+    val cause: String = "",
+    val partHit: String? = null,
+    val cascadedParts: List<String> = emptyList(),
+    val tick: Long = 0L,
+) : SerializableStoryEvent {
+    override val eventType: String get() = "entity.died"
+}
