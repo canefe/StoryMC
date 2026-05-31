@@ -17,6 +17,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # story-proto is a private submodule (src/main/proto); the default
+          # GITHUB_TOKEN can't read it, so use the PAT. Without this the proto
+          # codegen produces nothing and SimEventAdapter.kt fails to compile.
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Download ReviveMe-API.jar
         run: |
