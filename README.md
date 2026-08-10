@@ -1,18 +1,55 @@
 <div align="center" style="margin-bottom: 1rem;">
   <h1 style="font-size: 2rem; margin: 0;"> StoryMC </h1>
 
+  <img src="https://img.shields.io/badge/status-archived-red.svg?style=flat-square" alt="Archived" />
   <img src="https://img.shields.io/github/v/release/canefe/StoryMC?include_prereleases&style=flat-square" alt="Latest Version" />
-  <img src="https://img.shields.io/github/actions/workflow/status/canefe/StoryMC/ci.yml?style=flat-square" alt="Build Status" />
   <img src="https://img.shields.io/badge/minecraft-1.21.1-brightgreen.svg?style=flat-square" alt="Minecraft Version" />
   <img src="https://img.shields.io/badge/paper-1.21.1-blue.svg?style=flat-square" alt="Paper API" />
 </div>
 
-A Kotlin-based Paper plugin that transforms Minecraft into a living, narrative-driven world through AI-integrated NPCs and voice synthesis. 
+> [!IMPORTANT]
+> **📦 This repository is archived.**
+>
+> StoryMC has been superseded by **story-forged**, a NeoForge mod that replaces this Paper plugin as the Minecraft frontend of the Story platform. Development moved there because the platform outgrew what a server-side plugin can do: story-forged ships both a server mod and a client mod, giving us custom entities and renderers, client-side HUDs (health, needs, skill checks), camera control for cinematics, and a first-class inventory/item pipeline.
+> 
+>
+> This repo remains available read-only as a reference for the original monolith design. No further releases, fixes, or support.
+
+A Kotlin-based Paper plugin that transformed Minecraft into a living, narrative-driven world through AI-integrated NPCs and voice synthesis.
 
 Fully stable as a Human-in-the-loop (HITL) orchestration tool. It provides a robust narration engine and NPC framework managed by a human Game Master.
 
-> [!NOTE]  
-> This project is designed as the client-side implementation of a broader agentic simulation framework. The architecture is transitioning from a standalone monolith to a decoupled system, where this plugin handles environmental rendering and user interaction while a dedicated simulation engine governs autonomous AI behaviors and world-state logic.
+## Where did the project go?
+
+StoryMC started as a standalone monolith: one Paper plugin doing dialogue, memory, voice, scheduling, and world logic. That architecture served its purpose and is preserved here, but the platform has since been decomposed into dedicated services, with Minecraft demoted to just one possible frontend:
+
+```
+┌───────────────────────┐      ┌───────────────────────┐
+│  story-forged         │      │  Other frontends      │
+│  (NeoForge mod,       │      │  (web viewer, ...)    │
+│   client + server)    │      │                       │
+└──────────┬────────────┘      └──────────┬────────────┘
+           │  gRPC / protobuf             │
+           ▼                              ▼
+┌─────────────────────────────────────────────────────┐
+│  story-go — orchestrator & director                 │
+│  (intents, events, LLM brains, narrative direction) │
+└──────────────────────────┬──────────────────────────┘
+                           │  NATS
+                           ▼
+┌─────────────────────────────────────────────────────┐
+│  story-sim — autonomous simulation engine (Rust)    │
+│  (HTN planning, needs, behaviors, Lua authoring)    │
+└─────────────────────────────────────────────────────┘
+```
+
+What this plugin did on its own is now split across that stack, and the roadmap items listed below (external simulation, autonomous agents, semantic memory) became the successor's foundation rather than experiments.
+
+---
+
+*Everything below is the original README, kept for historical reference.*
+
+---
 
 ![Story](https://i.imgur.com/ZqSs2tx.png)
 
@@ -29,10 +66,10 @@ Story is a production-ready Minecraft plugin that enables Dungeon Masters to cre
 - **Character Schedules**. NPCs follow daily routines and autonomous behaviors
 - **Plugin Ecosystem**. Integrates with Citizens, MythicMobs, and other popular plugins
 
-**Roadmap:** 
-Evolving into a comprehensive simulation engine. The goal is to transition from manual GM scheduling to a fully autonomous architecture where AI agents manage their own schedules, behaviors, and world-state interactions with minimal human intervention.
-
 ## Installation
+
+> [!WARNING]
+> Provided as-is for historical reference. No support is offered for new installations — the actively developed successor is story-forged.
 
 ### Requirements
 
@@ -58,9 +95,7 @@ Evolving into a comprehensive simulation engine. The goal is to transition from 
 ### Usage
 Click [here](https://story-2.gitbook.io/story/basics/interactive-blocks/creating-storylocations) to get started.
 
-## Architecture
-
-### Current Production Stack
+## Architecture (as archived)
 
 ```
 ┌─────────────────────────────────────┐
@@ -98,35 +133,6 @@ Click [here](https://story-2.gitbook.io/story/basics/interactive-blocks/creating
 5. **Response Delivery**: Audio and text delivered to players
 6. **Memory Update**: Conversation stored for future context
 
-## Experimental Features
-
-### Vector Database Integration (In Development)
-
-Working on semantic search capabilities using Python + vector databases:
-
-- 13,000+ conversation embeddings from gameplay data
-- Semantic memory retrieval (vs. simple recent + flagged)
-- Improved context relevance for long-term character development
-
-### MCP Server
-
-Model Context Protocol server for external LLM access to story data:
-- Query character information programmatically
-- Retrieve narrative context across sessions
-- Enable advanced AI-assisted storytelling tools
-
-### LangGraph Multi-Agent Architecture 
-
-Exploring autonomous NPC behaviors with sophisticated cognitive architecture:
-- Environmental perception systems
-- Goal-driven decision making
-- Multi-step reasoning for complex interactions
-- Reduced manual DM orchestration
-
-### External Simulation in Go 
-
-Making minecraft solely a frontend layer, and the simulation layer is in a separate server. Using Redis Pub/Sub for communication.
-
 ## Use Cases
 
 ### Narrative Campaigns
@@ -143,13 +149,10 @@ Facilitate creative roleplay with AI-powered characters that stay in character a
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/canefe/story/issues)
-- **Discord**: [Discord Server](https://discord.gg/vbSszBZc)
+This repository is archived and unsupported. For the actively developed successor:
 
-**Note**: Story is under active development. Production features are stable, but experimental features are subject to change.
+- **Discord**: [Discord Server](https://discord.gg/vbSszBZc)
 
 ## License
 
 This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) License.
-
-
